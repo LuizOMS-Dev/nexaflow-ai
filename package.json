@@ -1,0 +1,38 @@
+{
+  "name": "nexaflow-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NexaFlow AI — Plataforma omnichannel com CRM, automação e IA",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev -w @nexaflow/api\" \"npm run dev -w @nexaflow/web\"",
+    "dev:api": "npm run dev -w @nexaflow/api",
+    "dev:web": "npm run dev -w @nexaflow/web",
+    "build": "npm run build -w @nexaflow/db && npm run build -w @nexaflow/api && npm run build -w @nexaflow/web",
+    "db:generate": "npm run generate -w @nexaflow/db",
+    "db:migrate": "npm run migrate -w @nexaflow/db",
+    "db:migrate:deploy": "npm run migrate:deploy -w @nexaflow/db",
+    "db:push": "npm run push -w @nexaflow/db",
+    "db:seed": "npm run seed -w @nexaflow/db",
+    "db:factory-reset": "tsx apps/api/src/scripts/factory-reset.ts",
+    "db:studio": "npm run studio -w @nexaflow/db",
+    "setup": "node scripts/setup.js",
+    "start:api": "npm run start -w @nexaflow/api",
+    "start:web": "npm run start -w @nexaflow/web",
+    "test": "npm run test -w @nexaflow/api",
+    "test:e2e:api": "npm run test -w @nexaflow/api",
+    "test:e2e:ui": "playwright test --config=playwright.config.ts",
+    "audit:deps": "npm audit --audit-level=high",
+    "security:check": "npm run security:check -w @nexaflow/api"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

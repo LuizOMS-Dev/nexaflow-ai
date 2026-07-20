@@ -1,0 +1,656 @@
+{
+  "generatedAt": "2026-07-15T18:12:05.352Z",
+  "base": "http://localhost:3000",
+  "viewports": [
+    "1920x1080",
+    "1600x900",
+    "1440x900",
+    "1366x768",
+    "1280x720",
+    "1024x768",
+    "768x1024",
+    "430x932",
+    "390x844",
+    "375x812",
+    "360x800"
+  ],
+  "routes": [
+    "/admin",
+    "/admin/companies",
+    "/admin/users",
+    "/admin/finance",
+    "/admin/plans",
+    "/admin/audit",
+    "/app/account",
+    "/app/account/security"
+  ],
+  "findings": [
+    {
+      "severity": "ALTO",
+      "msg": "Console no login: Failed to load resource: the server responded with a status of 401 (Unauthorized) | Failed to load resource: the server responded with a status of 401 (Unauthorized) | Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    }
+  ],
+  "results": [
+    {
+      "viewport": "1920x1080",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1920x1080",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1600x900",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1440x900",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1366x768",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "1024x768",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "430x932",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "390x844",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "375x812",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/admin",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/admin/companies",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/admin/users",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/admin/finance",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/admin/plans",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/admin/audit",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/app/account",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    },
+    {
+      "viewport": "360x800",
+      "route": "/app/account/security",
+      "overflowX": 0,
+      "fixedIssues": 0,
+      "crashed": false
+    }
+  ],
+  "screenshotsDir": "docs/qa-screenshots",
+  "physicalDevice": "NOT_TESTED_ON_PHYSICAL_DEVICE",
+  "browsers": [
+    "Chromium (Playwright)"
+  ]
+}

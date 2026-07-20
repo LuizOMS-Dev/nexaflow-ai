@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  security-and-tests:
+    name: Audit + Tests + Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency audit (high+)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Dependency audit report
+        if: always()
+        run: npm audit --audit-level=moderate || true
+
+      - name: Prisma generate
+        run: npm run db:generate
+        env:
+          DATABASE_URL: file:./packages/db/test.db
+
+      - name: Prisma db push (test)
+        run: npm run db:push
+        env:
+          DATABASE_URL: file:./packages/db/test.db
+
+      - name: Security check (non-prod soft)
+        run: npm run security:check
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-test-jwt-secret-nexaflow-32chars-min
+          COOKIE_SECRET: ci-test-cookie-secret-nexaflow
+          ENCRYPTION_KEY: ci-test-encryption-key-nexaflow-32
+          RATE_LIMIT_REDIS: "0"
+
+      - name: Typecheck API
+        run: npx tsc -p apps/api/tsconfig.json --noEmit
+        env:
+          DATABASE_URL: file:./packages/db/test.db
+
+      - name: Unit + isolation + auth tests
+        run: npm run test -w @nexaflow/api
+        env:
+          NODE_ENV: test
+          DATABASE_URL: file:./packages/db/test.db
+          JWT_SECRET: ci-test-jwt-secret-nexaflow-32chars-min
+          COOKIE_SECRET: ci-test-cookie-secret-nexaflow
+          ENCRYPTION_KEY: ci-test-encryption-key-nexaflow-32
+          RATE_LIMIT_REDIS: "0"
+          CORS_ORIGIN: http://localhost:3000
+
+  web-typecheck:
+    name: Web typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -p apps/web/tsconfig.json --noEmit

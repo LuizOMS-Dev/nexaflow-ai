@@ -1,0 +1,162 @@
+# NexaFlow AI — stack de produção para EasyPanel.
+# Todas as credenciais marcadas com :? devem ser definidas no painel antes do deploy.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexaflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no EasyPanel}
+      POSTGRES_DB: ${POSTGRES_DB:-nexaflow}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Defina REDIS_PASSWORD no EasyPanel}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  evolution:
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: 8080
+      SERVER_URL: ${EVOLUTION_SERVER_URL:?Defina EVOLUTION_SERVER_URL no EasyPanel}
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?Defina EVOLUTION_API_KEY no EasyPanel}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: ${EVOLUTION_DATABASE_URL:?Defina EVOLUTION_DATABASE_URL no EasyPanel}
+      DATABASE_CONNECTION_CLIENT_NAME: nexaflow_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: ${REDIS_URL:?Defina REDIS_URL no EasyPanel}
+      CACHE_REDIS_PREFIX_KEY: evolution
+      LOG_LEVEL: ERROR,WARN,INFO
+      DEL_INSTANCE: "false"
+      CONFIG_SESSION_PHONE_CLIENT: NexaFlow
+      CONFIG_SESSION_PHONE_NAME: Chrome
+    volumes:
+      - evolution_data:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "4000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL no EasyPanel}
+      REDIS_URL: ${REDIS_URL:?Defina REDIS_URL no EasyPanel}
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      API_URL: ${API_URL:?Defina API_URL no EasyPanel}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:?Defina APP_PUBLIC_URL no EasyPanel}
+      INTERNAL_API_URL: http://api:4000
+      CORS_ORIGIN: ${CORS_ORIGIN:?Defina CORS_ORIGIN no EasyPanel}
+      TRUST_PROXY: "true"
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET no EasyPanel}
+      COOKIE_SECRET: ${COOKIE_SECRET:?Defina COOKIE_SECRET no EasyPanel}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Defina ENCRYPTION_KEY no EasyPanel}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
+      SUPERADMIN_MFA_REQUIRED: "1"
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WA_GATEWAY_PROVIDER: evolution
+      WA_GATEWAY_URL: http://evolution:8080
+      WA_GATEWAY_API_KEY: ${EVOLUTION_API_KEY:?Defina EVOLUTION_API_KEY no EasyPanel}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?Defina EVOLUTION_API_KEY no EasyPanel}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-none}
+      MAIL_API_KEY: ${MAIL_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SALES_EMAIL: ${SALES_EMAIL:-}
+      CAMPAIGN_BATCH_LIMIT: ${CAMPAIGN_BATCH_LIMIT:-100}
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: /app/uploads
+      WA_SESSIONS_DIR: /app/data/wa-sessions
+      RUN_SEED_ON_BOOT: ${RUN_SEED_ON_BOOT:-0}
+      SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-}
+      SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-}
+      SEED_SUPERADMIN_NAME: ${SEED_SUPERADMIN_NAME:-Super Admin}
+      SEED_CREATE_TENANT: ${SEED_CREATE_TENANT:-0}
+      SEED_COMPANY_NAME: ${SEED_COMPANY_NAME:-Minha Empresa}
+      SEED_TENANT_SLUG: ${SEED_TENANT_SLUG:-minha-empresa}
+      SEED_WIPE_ALL: "0"
+    volumes:
+      - uploads_data:/app/uploads
+      - wa_sessions:/app/data/wa-sessions
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /nexa-api
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-NexaFlow AI}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?Defina NEXT_PUBLIC_WS_URL no EasyPanel}
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NEXT_PUBLIC_API_URL: /nexa-api
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-NexaFlow AI}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:?Defina NEXT_PUBLIC_WS_URL no EasyPanel}
+      API_PROXY_TARGET: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  evolution_data:
+  wa_sessions:
