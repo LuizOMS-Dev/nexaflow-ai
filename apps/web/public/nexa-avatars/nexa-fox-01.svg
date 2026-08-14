@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5B21B6"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fff" stop-opacity="0.14"/>
+      <stop offset="55%" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <rect width="256" height="256" rx="56" fill="url(#shine)"/>
+  <circle cx="196" cy="52" r="48" fill="#fff" fill-opacity="0.06"/>
+  <g fill="none" stroke="#EEF2FF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M80 170c10-52 28-72 48-72s38 20 48 72"/>
+    <path d="M92 108L76 70l40 22"/>
+    <path d="M164 108l16-38-40 22"/>
+    <circle cx="112" cy="128" r="5" fill="#EEF2FF" stroke="none"/>
+    <circle cx="144" cy="128" r="5" fill="#EEF2FF" stroke="none"/>
+    <path d="M128 140l-8 14h16z" fill="#EEF2FF" stroke="none" opacity="0.9"/>
+  </g>
+</svg>

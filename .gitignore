@@ -1,0 +1,44 @@
+# dependencies
+node_modules/
+
+# builds
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+!.env.docker.example
+packages/db/.env
+apps/web/.env.local
+
+# local data
+apps/api/uploads/**
+!apps/api/uploads/.gitkeep
+**/wa-sessions/
+**/*auth_info_baileys*
+data/
+tmp/
+*.db
+*.db-journal
+
+# tests / QA artifacts
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+docs/qa-screenshots/
+docs/_playwright-results.json
+
+# logs / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# editors
+.idea/
+.vscode/
+*.swp

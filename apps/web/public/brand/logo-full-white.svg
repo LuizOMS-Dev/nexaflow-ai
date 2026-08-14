@@ -1,0 +1,22 @@
+<svg width="200" height="48" viewBox="0 0 200 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="6" y1="2" x2="44" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#312E81"/>
+      <stop offset="0.35" stop-color="#4338CA"/>
+      <stop offset="0.7" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="n" x1="15" y1="12" x2="35" y2="36" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0E7FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" rx="14" fill="url(#bg)"/>
+  <path d="M13 31.5c5.5-9 10-13.5 11.5-13.5S30 23 35 31.5" stroke="white" stroke-opacity="0.22" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <path d="M16 34V14h3.85c.5 0 .88.18 1.15.6L30.1 28.4V14H33.5v20h-3.9c-.5 0-.88-.18-1.15-.6L18.35 19.6V34H16z" fill="url(#n)"/>
+  <circle cx="34.2" cy="14.2" r="2.15" fill="#C4B5FD"/>
+  <circle cx="34.2" cy="14.2" r="1" fill="white"/>
+  <text x="58" y="31" font-family="Plus Jakarta Sans, Inter, system-ui, sans-serif" font-size="22" font-weight="600" letter-spacing="-0.03em" fill="white">NexaFlow</text>
+  <rect x="166" y="15" width="26" height="18" rx="5" fill="white" fill-opacity="0.12" stroke="white" stroke-opacity="0.15"/>
+  <text x="171" y="28" font-family="Inter, system-ui, sans-serif" font-size="10" font-weight="700" letter-spacing="0.08em" fill="white" fill-opacity="0.9">AI</text>
+</svg>
