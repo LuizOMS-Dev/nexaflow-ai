@@ -135,8 +135,12 @@ export function collectProductionIssues(opts?: {
   if (env.mailProvider === "none" || env.mailProvider === "log" || env.mailProvider === "console") {
     issues.push({
       code: "MAIL_DISABLED",
-      severity: "HIGH",
-      message: "MAIL_PROVIDER não entrega e-mails — convites e reset de senha ficariam indisponíveis.",
+      severity: process.env.ALLOW_MAIL_DISABLED === "1" ? "MEDIUM" : "HIGH",
+      message:
+        "MAIL_PROVIDER não entrega e-mails — convites e reset de senha ficariam indisponíveis." +
+        (process.env.ALLOW_MAIL_DISABLED === "1"
+          ? " ALLOW_MAIL_DISABLED=1: API sobe, e-mail fica pendente."
+          : ""),
     });
   } else if (env.mailProvider === "resend" && !env.mailApiKey) {
     issues.push({

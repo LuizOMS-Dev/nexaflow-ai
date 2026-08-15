@@ -1,0 +1,184 @@
+# NexaFlow AI — produção EasyPanel
+# Serviço Compose apontando para este arquivo. Sem portas públicas em postgres/redis/waha.
+# Secrets vêm do Environment do EasyPanel (Create .env file). Nunca commitar senhas.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  waha:
+    image: devlikeapro/waha:noweb-2026.7.2
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: ${WAHA_ENGINE:-NOWEB}
+      WHATSAPP_API_PORT: "3000"
+      WAHA_PRINT_QR: "False"
+      WAHA_LOG_FORMAT: JSON
+      WAHA_LOG_LEVEL: ${WAHA_LOG_LEVEL:-info}
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_CLIENT_DEVICE_NAME: NexaFlow
+      WAHA_CLIENT_BROWSER_NAME: Chrome
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WAHA_LOCAL_STORE_BASE_DIR: /app/.sessions
+      WHATSAPP_HOOK_HMAC_KEY: ${WAHA_API_KEY}
+    volumes:
+      - waha_sessions:/app/.sessions
+      - waha_media:/tmp/whatsapp-files
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+    expose:
+      - "4000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      API_URL: ${API_URL}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      INTERNAL_API_URL: http://api:4000
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-15}
+      REFRESH_TOKEN_DAYS: ${REFRESH_TOKEN_DAYS:-30}
+      SUPERADMIN_MFA_REQUIRED: ${SUPERADMIN_MFA_REQUIRED:-1}
+      AUTH_LOGIN_MAINTENANCE: ${AUTH_LOGIN_MAINTENANCE:-0}
+      ALLOW_MAIL_DISABLED: ${ALLOW_MAIL_DISABLED:-0}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WA_GATEWAY_PROVIDER: waha
+      WA_GATEWAY_URL: http://waha:3000
+      WA_GATEWAY_API_KEY: ${WAHA_API_KEY}
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-log}
+      MAIL_API_KEY: ${MAIL_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-NexaFlow <noreply@localhost>}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      SALES_EMAIL: ${SALES_EMAIL:-}
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: /app/uploads
+      WA_SESSIONS_DIR: /app/data/wa-sessions
+      RUN_SEED_ON_BOOT: ${RUN_SEED_ON_BOOT:-0}
+    volumes:
+      - uploads_data:/app/uploads
+      - wa_sessions:/app/data/wa-sessions
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      waha:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /nexa-api
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-NexaFlow}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NEXT_PUBLIC_API_URL: /nexa-api
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-NexaFlow}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
+      API_PROXY_TARGET: http://api:4000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  wa_sessions:
+  waha_sessions:
+  waha_media:

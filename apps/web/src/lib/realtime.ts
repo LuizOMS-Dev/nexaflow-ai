@@ -6,17 +6,21 @@ export function resolveWsUrl(): string {
   const envWs = (process.env.NEXT_PUBLIC_WS_URL || "").trim().replace(/\/$/, "");
   let base: string;
 
-  if (envWs) {
+  if (envWs && !/localhost|127\.0\.0\.1/.test(envWs)) {
     base = envWs;
   } else {
     const api = (process.env.NEXT_PUBLIC_API_URL || "").trim();
     if (api.startsWith("http://") || api.startsWith("https://")) {
       base = api.replace(/^http/, "ws").replace(/\/$/, "") + "/ws";
     } else if (typeof window !== "undefined") {
-      // proxy /nexa-api não faz WS — usa a API na porta 4000 do mesmo host
-      const host = window.location.hostname || "localhost";
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      base = `${proto}//${host}:4000/ws`;
+      // Produção: wss://<host-da-página>/ws exige o domínio da API (NEXT_PUBLIC_WS_URL).
+      // Fallback local: mesma máquina na porta 4000.
+      const host = window.location.hostname || "localhost";
+      base =
+        window.location.protocol === "https:"
+          ? `${proto}//${host}/ws`
+          : `${proto}//${host}:4000/ws`;
     } else {
       base = "ws://localhost:4000/ws";
     }

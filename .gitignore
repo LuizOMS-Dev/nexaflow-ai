@@ -12,6 +12,7 @@ out/
 .env.*
 !.env.example
 !.env.docker.example
+!.env.easypanel.example
 packages/db/.env
 apps/web/.env.local
 

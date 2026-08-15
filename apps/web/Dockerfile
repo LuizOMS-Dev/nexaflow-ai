@@ -10,7 +10,7 @@ RUN npm install --workspace=@nexaflow/web
 FROM base AS build
 ARG NEXT_PUBLIC_API_URL=/nexa-api
 ARG NEXT_PUBLIC_APP_NAME=NexaFlow
-ARG NEXT_PUBLIC_WS_URL=ws://localhost:4000/ws
+ARG NEXT_PUBLIC_WS_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
@@ -30,10 +30,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 WORKDIR /app
+RUN apk add --no-cache wget
 
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --retries=10 --start-period=40s \
+  CMD wget -qO- http://127.0.0.1:3000/login >/dev/null || exit 1
 CMD ["node", "apps/web/server.js"]

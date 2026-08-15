@@ -158,6 +158,13 @@ Em produção, troque todos os secrets. Os valores de desenvolvimento **não** s
 
 ---
 
+## Produção (EasyPanel)
+
+Deploy pelo GitHub com serviço **Compose** e o arquivo `docker-compose.easypanel.yml`.  
+Guia: [`docs/EASYPANEL.md`](docs/EASYPANEL.md). Variáveis: [`.env.easypanel.example`](.env.easypanel.example).
+
+Não publique Postgres, Redis nem WAHA. O front fala com a API em `/nexa-api` (mesmo origin) e o WebSocket no domínio da API (`wss://…/ws`).
+
 ## Licença
 
 Repositório privado. Todos os direitos reservados.
