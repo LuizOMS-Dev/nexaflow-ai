@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Spinner, useToast } from "@/components/ui";
 import { useAuth, type UserInfo } from "@/store/auth";
+import { getDetectedTimezone, TIMEZONE_OPTIONS } from "@/lib/user";
 import { applyUser, getRoleLabel } from "./account-utils";
 import {
   AccountField,
@@ -19,18 +20,27 @@ export default function AccountProfilePage() {
   const { toast } = useToast();
 
   const [name, setName] = useState(user?.name || "");
+  const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [phone, setPhone] = useState(user?.phone || "");
+  const [timezone, setTimezone] = useState(user?.timezone || getDetectedTimezone() || "America/Sao_Paulo");
 
   useEffect(() => {
     setName(user?.name || "");
+    setDisplayName(user?.displayName || "");
     setPhone(user?.phone || "");
-  }, [user?.name, user?.phone]);
+    setTimezone(user?.timezone || getDetectedTimezone() || "America/Sao_Paulo");
+  }, [user?.name, user?.displayName, user?.phone, user?.timezone]);
 
   const profileMut = useMutation({
     mutationFn: () =>
       api<{ user: UserInfo }>("/auth/profile", {
         method: "PATCH",
-        json: { name: name.trim(), phone: phone.trim() || null },
+        json: {
+          name: name.trim(),
+          displayName: displayName.trim() || null,
+          phone: phone.trim() || null,
+          timezone: timezone.trim() || "America/Sao_Paulo",
+        },
       }),
     onSuccess: (data) => {
       if (data.user) applyUser(data.user);
@@ -49,7 +59,11 @@ export default function AccountProfilePage() {
   }
 
   const roleLabel = getRoleLabel(user, memberships);
-  const isDirty = name !== (user.name || "") || phone !== (user.phone || "");
+  const isDirty =
+    name !== (user.name || "") ||
+    displayName !== (user.displayName || "") ||
+    phone !== (user.phone || "") ||
+    timezone !== (user.timezone || getDetectedTimezone() || "America/Sao_Paulo");
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -57,8 +71,15 @@ export default function AccountProfilePage() {
       toast({ kind: "error", title: "Informe seu nome." });
       return;
     }
+    if (displayName.trim() && displayName.trim().length < 2) {
+      toast({ kind: "error", title: "Nome de exibição deve ter pelo menos 2 caracteres." });
+      return;
+    }
     profileMut.mutate();
   }
+
+  // Grupos de fusos horários para o optgroup
+  const timezoneGroups = Array.from(new Set(TIMEZONE_OPTIONS.map((o) => o.group)));
 
   return (
     <>
@@ -74,11 +95,12 @@ export default function AccountProfilePage() {
                 Informações pessoais
               </h3>
               <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-muted dark:text-zinc-400">
-                Seus dados de identificação e contato na plataforma.
+                Seus dados de identificação, visualização e contato na plataforma.
               </p>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
+              {/* Linha 1: Nome completo | Nome de exibição */}
               <AccountField label="Nome completo" htmlFor="account-name">
                 <input
                   id="account-name"
@@ -91,6 +113,23 @@ export default function AccountProfilePage() {
                 />
               </AccountField>
 
+              <AccountField
+                label="Nome de exibição"
+                htmlFor="account-display-name"
+                hint="Como seu nome aparece nas áreas colaborativas (inbox, menções, equipe)."
+              >
+                <input
+                  id="account-display-name"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="input h-9.5 w-full text-[13px]"
+                  placeholder={name || "Como gostaria de ser chamado"}
+                  maxLength={60}
+                />
+              </AccountField>
+
+              {/* Linha 2: Telefone / WhatsApp | Fuso horário */}
               <AccountField label="Telefone / WhatsApp" htmlFor="account-phone">
                 <input
                   id="account-phone"
@@ -102,6 +141,30 @@ export default function AccountProfilePage() {
                 />
               </AccountField>
 
+              <AccountField
+                label="Fuso horário"
+                htmlFor="account-timezone"
+                hint="Utilizado para visualização de relatórios, atividades e sessões."
+              >
+                <select
+                  id="account-timezone"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="input h-9.5 w-full text-[13px] bg-[var(--surface-raised)]"
+                >
+                  {timezoneGroups.map((group) => (
+                    <optgroup key={group} label={group}>
+                      {TIMEZONE_OPTIONS.filter((opt) => opt.group === group).map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </AccountField>
+
+              {/* Linha 3: E-mail de acesso (largura total e bloqueado) */}
               <div className="sm:col-span-2">
                 <AccountField
                   label="E-mail de acesso"
@@ -128,7 +191,9 @@ export default function AccountProfilePage() {
           onSave={() => profileMut.mutate()}
           onDiscard={() => {
             setName(user.name || "");
+            setDisplayName(user.displayName || "");
             setPhone(user.phone || "");
+            setTimezone(user.timezone || getDetectedTimezone() || "America/Sao_Paulo");
           }}
         />
       </form>

@@ -8,14 +8,14 @@ export const THEME_STORAGE_KEY = "nexaflow_theme";
 export function resolveEffectiveTheme(pref: ThemePreference): "light" | "dark" {
   if (pref === "dark") return "dark";
   if (pref === "light") return "light";
-  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+  if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
     return "dark";
   }
   return "light";
 }
 
 /**
- * Lê a preferência salva no localStorage.
+ * Lê a preferência salva no localStorage com fallback seguro para "system".
  */
 export function getStoredThemePreference(): ThemePreference {
   if (typeof window === "undefined") return "system";
@@ -31,6 +31,22 @@ export function getStoredThemePreference(): ThemePreference {
 }
 
 /**
+ * Grava a preferência de tema no localStorage.
+ */
+export function setStoredThemePreference(pref: ThemePreference): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (pref === "system") {
+      localStorage.removeItem(THEME_STORAGE_KEY);
+    } else {
+      localStorage.setItem(THEME_STORAGE_KEY, pref);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * Aplica o tema diretamente no elemento raiz (document.documentElement)
  * e opcionalmente persiste no localStorage.
  */
@@ -39,7 +55,7 @@ export function applyTheme(
   options?: { persist?: boolean }
 ): "light" | "dark" {
   const effective = resolveEffectiveTheme(pref);
-  if (typeof document !== "undefined") {
+  if (typeof document !== "undefined" && document.documentElement) {
     if (effective === "dark") {
       document.documentElement.classList.add("dark");
       document.documentElement.style.colorScheme = "dark";
@@ -49,16 +65,8 @@ export function applyTheme(
     }
   }
 
-  if (options?.persist !== false && typeof window !== "undefined") {
-    try {
-      if (pref === "system") {
-        localStorage.removeItem(THEME_STORAGE_KEY);
-      } else {
-        localStorage.setItem(THEME_STORAGE_KEY, pref);
-      }
-    } catch {
-      /* ignore */
-    }
+  if (options?.persist !== false) {
+    setStoredThemePreference(pref);
   }
 
   return effective;
@@ -72,24 +80,28 @@ export function setupSystemThemeListener(onThemeChange?: (effective: "light" | "
 
   const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-  const listener = (e: MediaQueryListEvent) => {
+  const listener = (e: MediaQueryListEvent | MediaQueryList) => {
     const currentPref = getStoredThemePreference();
     if (currentPref === "system") {
-      const isDark = e.matches;
-      if (isDark) {
-        document.documentElement.classList.add("dark");
-        document.documentElement.style.colorScheme = "dark";
-      } else {
-        document.documentElement.classList.remove("dark");
-        document.documentElement.style.colorScheme = "light";
+      const isDark = "matches" in e ? e.matches : false;
+      if (typeof document !== "undefined" && document.documentElement) {
+        if (isDark) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
+        } else {
+          document.documentElement.classList.remove("dark");
+          document.documentElement.style.colorScheme = "light";
+        }
       }
       onThemeChange?.(isDark ? "dark" : "light");
     }
   };
 
   if (mediaQuery.addEventListener) {
-    mediaQuery.addEventListener("change", listener);
-    return () => mediaQuery.removeEventListener("change", listener);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mediaQuery.addEventListener("change", listener as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return () => mediaQuery.removeEventListener("change", listener as any);
   } else if ("addListener" in mediaQuery) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (mediaQuery as any).addListener(listener);
@@ -98,4 +110,11 @@ export function setupSystemThemeListener(onThemeChange?: (effective: "light" | "
   }
 
   return () => {};
+}
+
+/**
+ * Script inline minimalista e ultra rápido para inserção no <head> (SSR anti-flash).
+ */
+export function getAntiFlashScript(): string {
+  return `(function(){try{var p=localStorage.getItem("${THEME_STORAGE_KEY}");var d=p==="dark"||(!p&&window.matchMedia("(prefers-color-scheme:dark)").matches)||(p==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);if(d){document.documentElement.classList.add("dark");document.documentElement.style.colorScheme="dark";}else{document.documentElement.classList.remove("dark");document.documentElement.style.colorScheme="light";}}catch(e){}})();`;
 }

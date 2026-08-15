@@ -75,6 +75,15 @@
   --nf-sidebar-w-collapsed: var(--nf-sidebar-collapsed);
 }
 
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
 .dark {
   --bg: #0b0c10;
   --card: #12141a;

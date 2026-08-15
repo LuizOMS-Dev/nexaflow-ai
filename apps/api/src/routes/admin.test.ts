@@ -100,7 +100,7 @@ describe("platform admin — isolamento e contratos", () => {
       headers: { authorization: `Bearer ${tenantToken}`, origin: "http://localhost:3000" },
     });
     expect(res.statusCode).toBe(403);
-    expect((res.json() as { code?: string }).code).toBe("FORBIDDEN");
+    expect((res.json() as { error?: string }).error).toBe("FORBIDDEN");
   });
 
   it("superadmin lê overview sem carregar fixtures de teste como empresa real", async () => {

@@ -20,6 +20,8 @@ export type UserInfo = {
   id: string;
   email: string;
   name: string;
+  displayName?: string | null;
+  timezone?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
   avatarType?: "UPLOAD" | "INITIALS" | "NEXA_AVATAR" | string | null;
@@ -27,6 +29,11 @@ export type UserInfo = {
   avatarColor?: string | null;
   preferences?: {
     theme?: "light" | "dark" | "system";
+    reduceMotion?: boolean;
+    notificationSound?: boolean;
+    browserNotificationsEnabled?: boolean;
+    adminLandingPage?: "OVERVIEW" | "COMPANIES" | "USERS" | "FINANCE" | "PLANS" | "SYSTEM" | string;
+    workspaceLandingPage?: "HOME" | "INBOX" | "CRM" | "CONTACTS" | "TASKS" | "AUTOMATIONS" | "AI" | "REPORTS" | "SETTINGS" | string;
     language?: string;
     notifyMentions?: boolean;
     notifyAssigned?: boolean;

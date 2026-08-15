@@ -268,29 +268,11 @@ function SidebarNavLink({
   return link;
 }
 
-/** Prioridade: nome real da pessoa → local do e-mail (se não genérico) → nome cadastrado → e-mail */
-function resolveDisplayName(name: string | null | undefined, email: string | null | undefined): string {
-  const raw = (name || "").trim();
-  const mail = (email || "").trim();
-  const normalized = raw.toLowerCase();
+import { getUserDisplayName } from "@/lib/user";
 
-  if (raw && !GENERIC_PERSON_NAMES.has(normalized)) {
-    return raw;
-  }
-
-  const local = mail.includes("@") ? mail.split("@")[0] : "";
-  if (local && !GENERIC_PERSON_NAMES.has(local.toLowerCase())) {
-    return local
-      .replace(/[._-]+/g, " ")
-      .split(" ")
-      .filter(Boolean)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(" ");
-  }
-
-  if (raw) return raw;
-  if (mail) return mail;
-  return "Usuário";
+/** Resolução do nome de exibição do usuário com fallback amigável */
+function resolveDisplayName(user: { name?: string | null; displayName?: string | null; email?: string | null } | null | undefined): string {
+  return getUserDisplayName(user);
 }
 
 /** Papel para badge / tooltip */
@@ -667,7 +649,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     .toUpperCase()
     .slice(0, 2);
 
-  const displayName = resolveDisplayName(user?.name, user?.email);
+  const displayName = resolveDisplayName(user);
   const roleBadge = resolveRoleBadge(user?.platformRole, tenant?.role, {
     platformContext: isPlatformContext,
     impersonating,

@@ -124,6 +124,8 @@ function publicUser(user: {
   id: string;
   email: string;
   name: string;
+  displayName?: string | null;
+  timezone?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
   avatarType?: string | null;
@@ -136,6 +138,8 @@ function publicUser(user: {
     id: user.id,
     email: user.email,
     name: user.name,
+    displayName: user.displayName ?? null,
+    timezone: user.timezone ?? "America/Sao_Paulo",
     phone: user.phone ?? null,
     avatarUrl: user.avatarUrl ?? null,
     avatarType: (user.avatarType as "UPLOAD" | "INITIALS" | "NEXA_AVATAR") || "INITIALS",
@@ -1323,7 +1327,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
   );
 
-  /** PROFILE — atualiza dados pessoais (nome + preferências de avatar sem upload) */
+  /** PROFILE — atualiza dados pessoais (nome, displayName, timezone, phone, avatarColor) e preferências */
   app.patch("/auth/profile", { preHandler: [app.authenticate], bodyLimit: 32_768 }, async (request) => {
     const body = z
       .object({
@@ -1333,11 +1337,22 @@ export async function authRoutes(app: FastifyInstance) {
           .min(2, "Informe um nome com pelo menos 2 caracteres")
           .max(80, "Nome muito longo")
           .optional(),
+        displayName: z
+          .string()
+          .max(60, "Nome de exibição muito longo")
+          .optional()
+          .nullable(),
+        timezone: z.string().max(80).optional().nullable(),
         phone: z.string().max(40).optional().nullable(),
         avatarColor: z.string().max(32).optional().nullable(),
         preferences: z
           .object({
             theme: z.enum(["light", "dark", "system"]).optional(),
+            reduceMotion: z.boolean().optional(),
+            notificationSound: z.boolean().optional(),
+            browserNotificationsEnabled: z.boolean().optional(),
+            adminLandingPage: z.enum(["OVERVIEW", "COMPANIES", "USERS", "FINANCE", "PLANS", "SYSTEM"]).optional(),
+            workspaceLandingPage: z.enum(["HOME", "INBOX", "CRM", "CONTACTS", "TASKS", "AUTOMATIONS", "AI", "REPORTS", "SETTINGS"]).optional(),
             language: z.string().max(16).optional(),
             notifyMentions: z.boolean().optional(),
             notifyAssigned: z.boolean().optional(),
@@ -1351,11 +1366,32 @@ export async function authRoutes(app: FastifyInstance) {
       normalizeAvatarColor,
       isValidAvatarColor,
     } = await import("../services/security/avatar");
+    const { isValidAdminLanding, isValidWorkspaceLanding } = await import("../services/landing-pages");
 
     const jwtUser = request.user as JwtUser;
     const existing = assertFound(await prisma.user.findUnique({ where: { id: jwtUser.sub } }));
     const data: Record<string, unknown> = {};
     if (body.name !== undefined) data.name = body.name;
+    if (body.displayName !== undefined) {
+      const trimmed = body.displayName ? body.displayName.trim() : null;
+      if (trimmed !== null && trimmed.length > 0 && trimmed.length < 2) {
+        throw new AppError("Nome de exibição deve ter pelo menos 2 caracteres.", 400, "DISPLAY_NAME_TOO_SHORT");
+      }
+      data.displayName = trimmed || null;
+    }
+    if (body.timezone !== undefined) {
+      if (body.timezone) {
+        const tz = body.timezone.trim();
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: tz });
+          data.timezone = tz;
+        } catch {
+          throw new AppError("Fuso horário inválido.", 400, "INVALID_TIMEZONE");
+        }
+      } else {
+        data.timezone = "America/Sao_Paulo";
+      }
+    }
     if (body.phone !== undefined) data.phone = body.phone || null;
     if (body.avatarColor !== undefined) {
       if (body.avatarColor === null || body.avatarColor === "") {
@@ -1366,24 +1402,85 @@ export async function authRoutes(app: FastifyInstance) {
         data.avatarColor = normalizeAvatarColor(body.avatarColor);
       }
     }
+
+    let updatedWorkspaceLanding: string | null = null;
+
     if (body.preferences) {
       const prev =
         existing.preferences && typeof existing.preferences === "object"
           ? (existing.preferences as Record<string, unknown>)
           : {};
-      data.preferences = { ...prev, ...body.preferences };
+
+      const userPrefsToSave: Record<string, unknown> = { ...prev };
+
+      if (body.preferences.theme !== undefined) userPrefsToSave.theme = body.preferences.theme;
+      if (body.preferences.reduceMotion !== undefined) userPrefsToSave.reduceMotion = body.preferences.reduceMotion;
+      if (body.preferences.notificationSound !== undefined) userPrefsToSave.notificationSound = body.preferences.notificationSound;
+      if (body.preferences.browserNotificationsEnabled !== undefined) userPrefsToSave.browserNotificationsEnabled = body.preferences.browserNotificationsEnabled;
+      if (body.preferences.notifyMentions !== undefined) userPrefsToSave.notifyMentions = body.preferences.notifyMentions;
+      if (body.preferences.notifyAssigned !== undefined) userPrefsToSave.notifyAssigned = body.preferences.notifyAssigned;
+      if (body.preferences.notifySecurity !== undefined) userPrefsToSave.notifySecurity = body.preferences.notifySecurity;
+      if (body.preferences.language !== undefined) userPrefsToSave.language = body.preferences.language;
+
+      if (body.preferences.adminLandingPage !== undefined) {
+        if (existing.platformRole !== "SUPERADMIN") {
+          throw new AppError("Apenas Superadministrador pode configurar página inicial administrativa.", 403, "FORBIDDEN");
+        }
+        if (!isValidAdminLanding(body.preferences.adminLandingPage)) {
+          throw new AppError("Página administrativa inválida.", 400, "INVALID_ADMIN_LANDING");
+        }
+        userPrefsToSave.adminLandingPage = body.preferences.adminLandingPage;
+      }
+
+      data.preferences = userPrefsToSave;
+
+      // Preferência de empresa isolada por membership (workspaceLandingPage)
+      if (body.preferences.workspaceLandingPage !== undefined) {
+        const tenantId = jwtUser.tenantId || (request.headers["x-tenant-id"] as string | undefined);
+        if (tenantId) {
+          if (!isValidWorkspaceLanding(body.preferences.workspaceLandingPage)) {
+            throw new AppError("Página de workspace inválida.", 400, "INVALID_WORKSPACE_LANDING");
+          }
+          const membership = await prisma.membership.findFirst({
+            where: {
+              userId: jwtUser.sub,
+              tenantId,
+              isActive: true,
+            },
+          });
+          if (!membership) {
+            throw new AppError("Membro não encontrado nesta empresa.", 403, "MEMBERSHIP_NOT_FOUND");
+          }
+          const currentSettings =
+            membership.settings && typeof membership.settings === "object"
+              ? (membership.settings as Record<string, unknown>)
+              : {};
+          await prisma.membership.update({
+            where: { id: membership.id },
+            data: {
+              settings: {
+                ...currentSettings,
+                workspaceLandingPage: body.preferences.workspaceLandingPage,
+              },
+            },
+          });
+          updatedWorkspaceLanding = body.preferences.workspaceLandingPage;
+        }
+      }
     }
 
-    if (!Object.keys(data).length) {
+    if (!Object.keys(data).length && !updatedWorkspaceLanding) {
       throw new AppError("Nada para atualizar.", 400, "EMPTY_PATCH");
     }
 
-    const user = assertFound(
-      await prisma.user.update({
-        where: { id: jwtUser.sub },
-        data,
-      })
-    );
+    const user = Object.keys(data).length
+      ? assertFound(
+          await prisma.user.update({
+            where: { id: jwtUser.sub },
+            data,
+          })
+        )
+      : existing;
 
     await recordSecurityEvent({
       type: "PROFILE_UPDATED",
@@ -1395,7 +1492,105 @@ export async function authRoutes(app: FastifyInstance) {
 
     return {
       user: publicUser(user),
+      workspaceLandingPage: updatedWorkspaceLanding,
       message: "Perfil atualizado.",
+    };
+  });
+
+  /** PREFERENCES — rota dedicada para atualização de preferências globais e do workspace */
+  app.patch("/auth/preferences", { preHandler: [app.authenticate], bodyLimit: 32_768 }, async (request) => {
+    const body = z
+      .object({
+        theme: z.enum(["light", "dark", "system"]).optional(),
+        reduceMotion: z.boolean().optional(),
+        notificationSound: z.boolean().optional(),
+        browserNotificationsEnabled: z.boolean().optional(),
+        adminLandingPage: z.enum(["OVERVIEW", "COMPANIES", "USERS", "FINANCE", "PLANS", "SYSTEM"]).optional(),
+        workspaceLandingPage: z.enum(["HOME", "INBOX", "CRM", "CONTACTS", "TASKS", "AUTOMATIONS", "AI", "REPORTS", "SETTINGS"]).optional(),
+        language: z.string().max(16).optional(),
+        notifyMentions: z.boolean().optional(),
+        notifyAssigned: z.boolean().optional(),
+        notifySecurity: z.boolean().optional(),
+      })
+      .parse(request.body);
+
+    const { isValidAdminLanding, isValidWorkspaceLanding } = await import("../services/landing-pages");
+
+    const jwtUser = request.user as JwtUser;
+    const existing = assertFound(await prisma.user.findUnique({ where: { id: jwtUser.sub } }));
+
+    const prev =
+      existing.preferences && typeof existing.preferences === "object"
+        ? (existing.preferences as Record<string, unknown>)
+        : {};
+
+    const userPrefsToSave: Record<string, unknown> = { ...prev };
+
+    if (body.theme !== undefined) userPrefsToSave.theme = body.theme;
+    if (body.reduceMotion !== undefined) userPrefsToSave.reduceMotion = body.reduceMotion;
+    if (body.notificationSound !== undefined) userPrefsToSave.notificationSound = body.notificationSound;
+    if (body.browserNotificationsEnabled !== undefined) userPrefsToSave.browserNotificationsEnabled = body.browserNotificationsEnabled;
+    if (body.notifyMentions !== undefined) userPrefsToSave.notifyMentions = body.notifyMentions;
+    if (body.notifyAssigned !== undefined) userPrefsToSave.notifyAssigned = body.notifyAssigned;
+    if (body.notifySecurity !== undefined) userPrefsToSave.notifySecurity = body.notifySecurity;
+    if (body.language !== undefined) userPrefsToSave.language = body.language;
+
+    if (body.adminLandingPage !== undefined) {
+      if (existing.platformRole !== "SUPERADMIN") {
+        throw new AppError("Apenas Superadministrador pode configurar página inicial administrativa.", 403, "FORBIDDEN");
+      }
+      if (!isValidAdminLanding(body.adminLandingPage)) {
+        throw new AppError("Página administrativa inválida.", 400, "INVALID_ADMIN_LANDING");
+      }
+      userPrefsToSave.adminLandingPage = body.adminLandingPage;
+    }
+
+    let updatedWorkspaceLanding: string | null = null;
+
+    if (body.workspaceLandingPage !== undefined) {
+      const tenantId = jwtUser.tenantId || (request.headers["x-tenant-id"] as string | undefined);
+      if (tenantId) {
+        if (!isValidWorkspaceLanding(body.workspaceLandingPage)) {
+          throw new AppError("Página de workspace inválida.", 400, "INVALID_WORKSPACE_LANDING");
+        }
+        const membership = await prisma.membership.findFirst({
+          where: {
+            userId: jwtUser.sub,
+            tenantId,
+            isActive: true,
+          },
+        });
+        if (!membership) {
+          throw new AppError("Membro não encontrado nesta empresa.", 403, "MEMBERSHIP_NOT_FOUND");
+        }
+        const currentSettings =
+          membership.settings && typeof membership.settings === "object"
+            ? (membership.settings as Record<string, unknown>)
+            : {};
+        await prisma.membership.update({
+          where: { id: membership.id },
+          data: {
+            settings: {
+              ...currentSettings,
+              workspaceLandingPage: body.workspaceLandingPage,
+            },
+          },
+        });
+        updatedWorkspaceLanding = body.workspaceLandingPage;
+      }
+    }
+
+    const user = assertFound(
+      await prisma.user.update({
+        where: { id: jwtUser.sub },
+        data: { preferences: userPrefsToSave },
+      })
+    );
+
+    return {
+      user: publicUser(user),
+      workspaceLandingPage: updatedWorkspaceLanding,
+      message: "Preferências salvas com sucesso.",
     };
   });
 

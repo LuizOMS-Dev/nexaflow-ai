@@ -300,6 +300,10 @@ model User {
   email                String        @unique
   passwordHash         String
   name                 String
+  /// Nome de exibição amigável em áreas colaborativas (fallback automático para name se nulo)
+  displayName          String?
+  /// Fuso horário IANA do usuário (ex.: America/Sao_Paulo)
+  timezone             String?       @default("America/Sao_Paulo")
   /// URL pública do upload (/media/avatars/...) ou null
   avatarUrl            String?
   /// UPLOAD | INITIALS | NEXA_AVATAR
@@ -350,6 +354,8 @@ model Membership {
   tenantId  String
   userId    String
   role      MemberRole @default(AGENT)
+  /// Configurações e preferências do membro nesta empresa (ex.: workspaceLandingPage)
+  settings  Json?
   isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt

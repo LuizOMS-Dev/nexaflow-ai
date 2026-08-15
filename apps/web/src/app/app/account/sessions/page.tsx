@@ -52,76 +52,14 @@ function formatHumanActivity(iso: string) {
   }
 }
 
+import { parseUserAgent } from "@/lib/user-agent";
+
 function parseDeviceInfo(label: string | null, ua: string | null) {
-  const source = `${ua || ""} ${label || ""}`.trim();
-  let icon = Laptop;
-  let typeLabel = "Desktop";
-  let browser: string | null = null;
-  let os: string | null = null;
-
-  if (/ipad|tablet/i.test(source)) {
-    icon = Tablet;
-    typeLabel = "Tablet";
-  } else if (/iphone|android|mobile/i.test(source)) {
-    icon = Smartphone;
-    typeLabel = "Smartphone";
-  }
-
-  // 1. Detecção rigorosa de Browser por ordem de precedência
-  if (/OPR\/|Opera/i.test(source)) {
-    browser = "Opera";
-  } else if (/Edg\//i.test(source)) {
-    browser = "Edge";
-  } else if (/SamsungBrowser/i.test(source)) {
-    browser = "Samsung Internet";
-  } else if (/Brave/i.test(source)) {
-    browser = "Brave";
-  } else if (/Firefox\/|FxiOS\//i.test(source)) {
-    browser = "Firefox";
-  } else if (/Chrome\/|Chromium\/|CriOS\//i.test(source)) {
-    browser = "Chrome";
-  } else if (/Safari/i.test(source) && !/Chrome|Android/i.test(source)) {
-    browser = "Safari";
-  }
-
-  // 2. Detecção de Sistema Operacional
-  if (/Windows NT|Windows/i.test(source)) {
-    os = "Windows";
-  } else if (/Macintosh|Mac OS X/i.test(source)) {
-    os = "macOS";
-  } else if (/Android/i.test(source)) {
-    os = "Android";
-  } else if (/iPhone|iPod/i.test(source)) {
-    os = "iOS";
-  } else if (/iPad/i.test(source)) {
-    os = "iPadOS";
-  } else if (/CrOS/i.test(source)) {
-    os = "ChromeOS";
-  } else if (/Linux/i.test(source)) {
-    os = "Linux";
-  }
-
-  let displayTitle = "";
-  if (browser && os) {
-    displayTitle = `${browser} · ${os}`;
-  } else if (browser) {
-    displayTitle = `${browser} · ${typeLabel}`;
-  } else if (os) {
-    displayTitle = `${typeLabel} · ${os}`;
-  } else if (
-    label &&
-    !/^(desktop|mobile|tablet|unknown|desconhecido|generic|dispositivo desconhecido|navegador web|sistema operacional)$/i.test(
-      label.trim()
-    )
-  ) {
-    displayTitle = label;
-  } else {
-    displayTitle = typeLabel;
-  }
-
+  const parsed = parseUserAgent(ua, label);
+  const Icon = parsed.deviceType === "Tablet" ? Tablet : parsed.deviceType === "Smartphone" ? Smartphone : Laptop;
   return {
-    Icon: icon,
-    displayTitle,
+    Icon,
+    displayTitle: parsed.displayTitle,
   };
 }
 

@@ -65,9 +65,11 @@ describe("team invite + accept", () => {
     expect(body.email).toBe(email);
     expect(body.inviteTokenDevOnly).toBeTruthy();
 
+    const uniqueIp = `10.0.1.${Math.floor(Math.random() * 200 + 10)}`;
     const accept = await app.inject({
       method: "POST",
       url: "/auth/accept-invite",
+      remoteAddress: uniqueIp,
       headers: { origin: "http://localhost:3000", "content-type": "application/json" },
       payload: {
         token: body.inviteTokenDevOnly,
@@ -84,6 +86,7 @@ describe("team invite + accept", () => {
     const replay = await app.inject({
       method: "POST",
       url: "/auth/accept-invite",
+      remoteAddress: `10.0.1.${Math.floor(Math.random() * 200 + 10)}`,
       headers: { origin: "http://localhost:3000", "content-type": "application/json" },
       payload: {
         token: body.inviteTokenDevOnly,
