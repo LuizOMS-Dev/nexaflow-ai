@@ -9,13 +9,13 @@ Crie um serviço **Compose**, não App. Não existe Dockerfile na raiz.
 
 | Serviço | Papel | Porta interna | Público |
 |---------|--------|---------------|---------|
-| `postgres` | PostgreSQL 16 | 5432 | não |
+| `postgres-main` | PostgreSQL 16 (serviço separado) | 5432 | não |
 | `redis` | cache / rate-limit | 6379 | não |
 | `waha` | WhatsApp HTTP API | 3000 | não |
 | `api` | Fastify + WebSocket | 4000 | domínio API |
 | `web` | Next.js | 3000 | domínio do app |
 
-Comunicação interna: `postgres`, `redis`, `waha`, `api`, `web` (rede do Compose).
+O Compose contém `redis`, `waha`, `api` e `web`. O `postgres-main` é criado como serviço separado e a API recebe a conexão exclusivamente por `DATABASE_URL` nas variáveis protegidas do EasyPanel.
 
 ## Domínios
 
@@ -30,17 +30,19 @@ HTTPS pelo Traefik do EasyPanel.
 
 | Volume | Conteúdo |
 |--------|----------|
-| `postgres_data` | banco |
 | `redis_data` | AOF do Redis |
 | `uploads_data` | avatars, logos, mídia |
 | `wa_sessions` | sessões Baileys |
 | `waha_sessions` | sessões WAHA |
 | `waha_media` | arquivos temporários WAHA |
 
+O volume do PostgreSQL pertence ao serviço separado `postgres-main`, não ao Compose.
+
 ## Health
 
 - API liveness: `GET /health`
-- API ready (Postgres + Redis): `GET /health/ready` — healthcheck do container
+- API ready (Postgres + Redis): `GET /health/ready`
+- Healthcheck do container da API: `GET /health`
 - Web: `GET /login`
 
 ## Migrations
@@ -48,7 +50,7 @@ HTTPS pelo Traefik do EasyPanel.
 O entrypoint da API roda `prisma migrate deploy` em todo boot.  
 Não usa `db push`. Seed automático fica desligado (`RUN_SEED_ON_BOOT=0`).
 
-Banco existente: restore do dump **antes** de apontar tráfego, com a API parada ou em seguida `restart` do Compose. O volume `postgres_data` sobrevive a rebuild.
+Banco existente: restaure o dump no serviço `postgres-main` **antes** de apontar tráfego, com a API parada; depois reinicie o Compose. O volume do serviço PostgreSQL sobrevive a rebuilds do NexaFlow.
 
 ## Variáveis
 
