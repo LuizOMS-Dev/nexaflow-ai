@@ -244,23 +244,15 @@ function SidebarNavLink({
     </Link>
   );
 
-  // Tooltip: recolhido (nome + grupo) ou desabilitado (motivo MFA)
-  if (collapsed || disabled) {
-    const tipContent = disabled ? label : label;
-    const tipSub = disabled
-      ? disabledReason || "Indisponível"
-      : group
-        ? group
-        : platform
-          ? "Administração"
-          : undefined;
+  // Tooltip apenas quando a barra estiver recolhida (collapsed)
+  if (collapsed) {
     return (
       <Tooltip
-        content={tipContent}
-        subtitle={tipSub}
+        content={label}
+        subtitle={group ? group : platform ? "Administração" : undefined}
         side="right"
-        delay={collapsed ? 160 : 280}
-        className={cn("flex w-full", collapsed && "justify-center")}
+        delay={120}
+        className="flex w-full justify-center"
       >
         {link}
       </Tooltip>
@@ -573,10 +565,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       mfaStatus.data.requiredForAdmin === undefined &&
       mfaStatus.data.policyRequired !== false &&
       mfaStatus.data.enabled === false);
-  const adminNavLocked =
-    isPlatformContext && (mfaStatus.isLoading || mfaBlocksAdmin);
-  const adminNavLockReason =
-    "Configure a autenticação em duas etapas para continuar.";
+  const adminNavLocked = false;
+  const adminNavLockReason = undefined;
 
   if (!hydrated || !user) {
     return (

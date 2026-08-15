@@ -100,14 +100,14 @@ export function SidebarItem({
     </Link>
   );
 
-  if (collapsed || disabled) {
+  if (collapsed) {
     return (
       <Tooltip
         content={label}
-        subtitle={disabled ? disabledReason || "Indisponível" : group || "Administração"}
+        subtitle={group || "Administração"}
         side="right"
-        delay={collapsed ? 100 : 220}
-        className={cn("flex w-full", collapsed && "justify-center")}
+        delay={120}
+        className="flex w-full justify-center"
       >
         {link}
       </Tooltip>

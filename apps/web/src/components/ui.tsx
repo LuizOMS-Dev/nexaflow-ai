@@ -1637,9 +1637,18 @@ export function Tooltip({
   }
 
   function hide() {
-    if (timer.current) clearTimeout(timer.current);
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
     setVisible(false);
   }
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
 
   /* Base de ancoragem + micro-slide de entrada */
   const transform =
@@ -1665,12 +1674,14 @@ export function Tooltip({
       <span
         role="tooltip"
         id={id}
-        className="nf-tooltip"
+        className="nf-tooltip pointer-events-none select-none"
         style={{
           position: "fixed",
           top: coords.top,
           left: coords.left,
-          zIndex: 90,
+          zIndex: 9999,
+          pointerEvents: "none",
+          userSelect: "none",
           ["--nf-tt-from" as string]: enterFrom,
           ["--nf-tt-to" as string]: transform,
           transform,
@@ -1690,6 +1701,7 @@ export function Tooltip({
       onMouseLeave={hide}
       onFocus={show}
       onBlur={hide}
+      onClick={hide}
     >
       {children}
       {typeof document !== "undefined" && tooltip
