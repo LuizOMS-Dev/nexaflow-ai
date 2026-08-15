@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   ImageIcon,
+  Lock,
   Palette,
   ShieldCheck,
   Trash2,
@@ -284,7 +285,7 @@ export default function AccountProfilePage() {
       {/* 1. Header do Perfil: Avatar + Nome + E-mail + Cargo */}
       <div className="relative p-6 sm:p-7 bg-gradient-to-r from-violet-500/[0.03] via-transparent to-transparent">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center gap-4.5 min-w-0">
             <div className="relative shrink-0">
               <div className="rounded-full ring-2 ring-violet-500/20 shadow-md">
                 <UserAvatar user={liveUser} size="xl" ring />
@@ -296,19 +297,20 @@ export default function AccountProfilePage() {
               ) : null}
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink dark:text-white">
-                  {liveUser.name}
-                </h2>
-                <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-400/15 dark:text-violet-300">
+            {/* Identidade em ordem estrita: Nome -> E-mail -> Cargo */}
+            <div className="min-w-0 flex flex-col justify-center">
+              <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink dark:text-white">
+                {liveUser.name}
+              </h2>
+              <p className="mt-0.5 truncate text-xs text-ink-muted dark:text-zinc-400">
+                {user.email}
+              </p>
+              <div className="mt-2">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-400/15 dark:text-violet-300">
                   <ShieldCheck className="h-3 w-3" />
                   {roleLabel}
                 </span>
               </div>
-              <p className="mt-0.5 truncate text-xs text-ink-muted dark:text-zinc-400">
-                {user.email}
-              </p>
             </div>
           </div>
 
@@ -455,19 +457,18 @@ export default function AccountProfilePage() {
             <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-email">
               E-mail de acesso
             </label>
-            <div className="relative mt-1">
-              <input
-                id="account-email"
-                className="input h-9 pr-24 text-xs opacity-75 cursor-not-allowed bg-black/[0.02] dark:bg-white/[0.03]"
-                value={user.email}
-                disabled
-                readOnly
-                title="E-mail de login — não editável"
-              />
-              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-black/[0.05] px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted dark:bg-white/[0.08] dark:text-zinc-400">
+            <div className="mt-1 flex items-center justify-between rounded-xl border border-black/[0.07] bg-black/[0.02] px-3.5 py-2 dark:border-white/[0.07] dark:bg-white/[0.03]">
+              <span className="truncate text-xs font-medium text-ink dark:text-zinc-200">
+                {user.email}
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-black/[0.06] bg-black/[0.03] px-2 py-0.5 text-[10.5px] font-semibold text-ink-muted dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-zinc-400">
+                <Lock className="h-2.5 w-2.5 opacity-60" strokeWidth={2} />
                 Não editável
               </span>
             </div>
+            <p className="mt-1.5 text-[11px] text-ink-faint dark:text-zinc-500">
+              O e-mail é a chave de login da conta e não pode ser alterado diretamente.
+            </p>
           </div>
 
           {dirty ? (

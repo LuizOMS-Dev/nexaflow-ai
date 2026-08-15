@@ -7,7 +7,6 @@ import {
   KeyRound,
   Laptop,
   SlidersHorizontal,
-  Sparkles,
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,7 +77,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1020px] px-2 py-4 pb-20 sm:px-4">
-      {/* ── Topo Refinado com Badge + Título Direto ── */}
+      {/* ── Topo Refinado: Título + Descrição + Divisor ── */}
       <header className="relative mb-8 pb-6 border-b border-black/[0.06] dark:border-white/[0.07]">
         {/* Glow sutil no topo esquerdo */}
         <div
@@ -86,12 +85,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
           aria-hidden
         />
 
-        <div className="relative z-10 flex flex-col gap-2">
-          <div className="inline-flex items-center gap-1.5 self-start rounded-full border border-violet-500/20 bg-violet-500/[0.08] px-2.5 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/[0.12] dark:text-violet-300">
-            <Sparkles className="h-3 w-3" strokeWidth={2} />
-            <span>Configurações pessoais</span>
-          </div>
-
+        <div className="relative z-10 flex flex-col gap-1.5">
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink dark:text-white sm:text-3xl">
             Minha Conta
           </h1>
