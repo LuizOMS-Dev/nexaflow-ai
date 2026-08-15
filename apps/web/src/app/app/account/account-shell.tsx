@@ -10,7 +10,11 @@ import {
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { UserAvatar } from "@/components/user-avatar";
+import { TenantModule } from "@/components/tenant/tenant-module";
 import { useAuth } from "@/store/auth";
+import { getRoleLabel } from "./account-utils";
+import { AccountStatusBadge } from "./account-ui";
 
 type NavItem = {
   id: string;
@@ -18,6 +22,7 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   match: (pathname: string) => boolean;
+  group: "conta" | "acesso" | "sistema";
   hideForPlatformAdmin?: boolean;
 };
 
@@ -28,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Perfil",
     icon: UserRound,
     match: (p) => p === "/app/account",
+    group: "conta",
   },
   {
     id: "security",
@@ -35,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Segurança",
     icon: KeyRound,
     match: (p) => p.startsWith("/app/account/security"),
+    group: "acesso",
   },
   {
     id: "sessions",
@@ -42,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Sessões",
     icon: Laptop,
     match: (p) => p.startsWith("/app/account/sessions"),
+    group: "acesso",
   },
   {
     id: "preferences",
@@ -49,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Preferências",
     icon: SlidersHorizontal,
     match: (p) => p.startsWith("/app/account/preferences"),
+    group: "sistema",
   },
   {
     id: "companies",
@@ -56,14 +65,79 @@ const NAV_ITEMS: NavItem[] = [
     label: "Empresas",
     icon: Building2,
     match: (p) => p.startsWith("/app/account/companies"),
+    group: "sistema",
     hideForPlatformAdmin: true,
   },
 ];
+
+const GROUP_LABELS: Record<NavItem["group"], string> = {
+  conta: "Conta",
+  acesso: "Acesso",
+  sistema: "Sistema",
+};
+
+function renderNavLink(item: NavItem, pathname: string, mobile?: boolean) {
+  const Icon = item.icon;
+  const active = item.match(pathname);
+
+  if (mobile) {
+    return (
+      <Link
+        key={item.id}
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors",
+          active
+            ? "bg-violet-500/12 text-violet-700 dark:bg-violet-500/18 dark:text-violet-200"
+            : "text-ink-muted hover:bg-black/[0.04] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.05]"
+        )}
+      >
+        <Icon className="h-3.5 w-3.5 opacity-70" strokeWidth={1.75} />
+        {item.label}
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      key={item.id}
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "group relative flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+        active
+          ? "bg-violet-500/[0.09] text-ink dark:bg-violet-500/[0.12] dark:text-white"
+          : "text-ink-muted hover:bg-black/[0.03] hover:text-ink dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
+      )}
+    >
+      <span
+        className={cn(
+          "absolute left-0 top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-violet-500 transition-opacity",
+          active ? "opacity-100" : "opacity-0"
+        )}
+        aria-hidden
+      />
+      <Icon
+        className={cn(
+          "h-3.5 w-3.5 shrink-0",
+          active ? "text-violet-600 opacity-100 dark:text-violet-300" : "opacity-45"
+        )}
+        strokeWidth={1.75}
+      />
+      <span className={cn("text-[13px] leading-none", active ? "font-semibold" : "font-medium")}>
+        {item.label}
+      </span>
+    </Link>
+  );
+}
 
 export function AccountShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/app/account";
   const user = useAuth((s) => s.user);
   const memberships = useAuth((s) => s.memberships) || [];
+  const tenant = useAuth((s) => s.tenant);
+
   const isPlatformAdmin =
     user?.platformRole === "SUPERADMIN" && memberships.length === 0;
 
@@ -71,108 +145,74 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
     (item) => !(isPlatformAdmin && item.hideForPlatformAdmin)
   );
 
+  const groups = (["conta", "acesso", "sistema"] as const).map((group) => ({
+    group,
+    label: GROUP_LABELS[group],
+    items: items.filter((i) => i.group === group),
+  })).filter((g) => g.items.length > 0);
+
+  const roleLabel = user ? getRoleLabel(user, memberships) : "";
+  const kicker = tenant?.name || user?.email || "Conta pessoal";
+
   return (
-    <div className="relative mx-auto w-full min-w-0 max-w-[1180px] px-4 py-5 pb-20 sm:px-6">
-      {/* ── Ambientação de Fundo (Glow Violeta Difuso + Radial Gradient) ── */}
-      <div
-        className="pointer-events-none absolute -right-20 -top-20 h-[560px] w-[560px] rounded-full bg-violet-600/[0.06] blur-[150px] dark:bg-violet-500/[0.08]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -left-20 bottom-10 h-[500px] w-[500px] rounded-full bg-indigo-600/[0.04] blur-[140px] dark:bg-indigo-500/[0.05]"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(139,92,246,0.05),transparent_75%)] dark:bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(139,92,246,0.07),transparent_75%)]"
-        aria-hidden
-      />
-
-      {/* ── Topo: Título + Descrição + Divisor ── */}
-      <header className="relative z-10 mb-6 border-b border-black/[0.06] pb-5 dark:border-white/[0.07]">
-        <div className="flex flex-col gap-1.5">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-ink dark:text-white sm:text-3xl">
-            Minha Conta
-          </h1>
-          <p className="max-w-2xl text-xs text-ink-muted dark:text-zinc-400 sm:text-sm">
-            Gerencie suas informações pessoais, credenciais de acesso, dispositivos e preferências do sistema.
-          </p>
-        </div>
-      </header>
-
-      {/* ── Layout: Navegação Lateral (220px) + Conteúdo (Restante) ── */}
-      <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-8">
-        {/* Menu Lateral */}
-        <nav className="lg:w-56 lg:shrink-0" aria-label="Navegação da conta">
-          {/* Mobile: Tabs Horizontais */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1.5 lg:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {items.map((item) => {
-              const Icon = item.icon;
-              const active = item.match(pathname);
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-all duration-150",
-                    active
-                      ? "bg-violet-600 text-white shadow-sm shadow-violet-500/25"
-                      : "text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-zinc-100"
-                  )}
-                >
-                  <Icon className="h-4 w-4" strokeWidth={active ? 2 : 1.75} />
-                  {item.label}
-                </Link>
-              );
-            })}
+    <TenantModule
+      kind="settings"
+      title="Minha conta"
+      kicker={kicker}
+      className="account-page settings-page settings-page--split"
+    >
+      {/* Hero — identidade do usuário */}
+      {user ? (
+        <div className="account-hero">
+          <div className="account-hero__glow" aria-hidden />
+          <div className="account-hero__body">
+            <UserAvatar user={user} size="xl" className="account-hero__avatar" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-display text-[17px] font-bold tracking-tight text-ink dark:text-white">
+                {user.name}
+              </p>
+              {user.email ? (
+                <p className="mt-0.5 truncate text-[12px] text-ink-muted dark:text-zinc-400">
+                  {user.email}
+                </p>
+              ) : null}
+              <div className="mt-2">
+                <AccountStatusBadge tone="brand" label={roleLabel} />
+              </div>
+            </div>
           </div>
+        </div>
+      ) : null}
 
-          {/* Desktop: Lista Vertical com Indicador Roxo */}
-          <ul className="hidden space-y-1 lg:block">
-            {items.map((item) => {
-              const Icon = item.icon;
-              const active = item.match(pathname);
-              return (
-                <li key={item.id}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium transition-all duration-150",
-                      active
-                        ? "bg-violet-500/[0.08] text-violet-900 dark:bg-violet-500/[0.14] dark:text-violet-200 font-semibold"
-                        : "text-ink-secondary hover:bg-black/[0.035] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100"
-                    )}
-                  >
-                    {active ? (
-                      <span
-                        className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.5)]"
-                        aria-hidden
-                      />
-                    ) : null}
+      {/* Mobile: chips */}
+      <div className="-mx-1 overflow-x-auto px-1 pb-0.5 lg:hidden" aria-label="Seções da conta">
+        <div className="flex w-max min-w-full gap-1">
+          {items.map((item) => renderNavLink(item, pathname, true))}
+        </div>
+      </div>
 
-                    <Icon
-                      className={cn(
-                        "h-4 w-4 shrink-0 transition-colors duration-150",
-                        active
-                          ? "text-violet-600 dark:text-violet-400"
-                          : "text-ink-faint group-hover:text-ink dark:text-zinc-500 dark:group-hover:text-zinc-300"
-                      )}
-                      strokeWidth={active ? 2 : 1.75}
-                    />
-                    <span>{item.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+      {/* Desktop: nav + conteúdo */}
+      <div className="settings-layout flex flex-col gap-5 lg:gap-0">
+        <nav
+          className="settings-subnav hidden lg:block"
+          aria-label="Navegação da conta"
+        >
+          {groups.map(({ group, label, items: groupItems }, idx) => (
+            <div key={group} className={cn(idx > 0 && "mt-4")}>
+              <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+                {label}
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {groupItems.map((item) => renderNavLink(item, pathname))}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        {/* Superfície Principal */}
-        <main className="min-w-0 flex-1">
-          {children}
-        </main>
+        <div className="settings-main relative min-w-0 w-full">
+          <div className="account-panel nf-settings-fade space-y-4">{children}</div>
+        </div>
       </div>
-    </div>
+    </TenantModule>
   );
 }

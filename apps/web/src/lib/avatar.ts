@@ -19,6 +19,21 @@ export const AVATAR_COLOR_OPTIONS = [
   { id: "slate", hex: "#64748B", label: "Ardósia" },
 ] as const;
 
+export const NEXA_AVATAR_PRESETS = [
+  { id: "nexa-dog-01", label: "Cachorro", category: "animal" },
+  { id: "nexa-cat-01", label: "Gato", category: "animal" },
+  { id: "nexa-fox-01", label: "Raposa", category: "animal" },
+  { id: "nexa-lion-01", label: "Leão", category: "animal" },
+  { id: "nexa-robot-01", label: "Robô", category: "tech" },
+  { id: "nexa-tech-01", label: "Tecnologia", category: "tech" },
+  { id: "nexa-music-01", label: "Música", category: "lifestyle" },
+  { id: "nexa-game-01", label: "Gamer", category: "lifestyle" },
+  { id: "nexa-football-01", label: "Futebol", category: "lifestyle" },
+  { id: "nexa-space-01", label: "Explorador", category: "abstract" },
+  { id: "nexa-abstract-01", label: "Abstrato", category: "abstract" },
+  { id: "nexa-core-01", label: "Símbolo Nexa", category: "brand" },
+] as const;
+
 /** Iniciais: primeiro + último nome; 1 nome → até 2 letras */
 export function userInitials(name?: string | null, email?: string | null): string {
   const raw = (name || "").trim();

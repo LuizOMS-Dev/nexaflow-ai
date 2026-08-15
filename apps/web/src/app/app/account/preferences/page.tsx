@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   AtSign,
@@ -8,31 +8,20 @@ import {
   MessagesSquare,
   Monitor,
   Moon,
-  Palette,
   ShieldAlert,
-  SlidersHorizontal,
   Sun,
 } from "lucide-react";
 import { api, getAccessToken } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Spinner, Switch, useToast } from "@/components/ui";
 import { useAuth, type UserInfo } from "@/store/auth";
+import { applyUser } from "../account-utils";
 import {
-  AccountBody,
-  AccountCard,
-  AccountCardHeader,
   AccountRow,
+  AccountSaveBar,
+  AccountSectionTitle,
+  AccountSurface,
 } from "../account-ui";
-import { cn } from "@/lib/utils";
-
-function applyUser(user: UserInfo) {
-  const token = getAccessToken() || useAuth.getState().token;
-  const { tenant, memberships } = useAuth.getState();
-  if (token) {
-    useAuth.getState().setSession({ token, user, tenant, memberships });
-  } else {
-    useAuth.setState({ user });
-  }
-}
 
 export default function AccountPreferencesPage() {
   const user = useAuth((s) => s.user);
@@ -86,10 +75,10 @@ export default function AccountPreferencesPage() {
         const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.classList.toggle("dark", prefersDark);
       }
-      toast({ kind: "success", title: "Preferências salvas com sucesso." });
+      toast({ kind: "success", title: "Preferências salvas." });
     },
     onError: (e: Error) =>
-      toast({ kind: "error", title: "Erro ao salvar preferências", description: e.message }),
+      toast({ kind: "error", title: "Erro ao salvar", description: e.message }),
   });
 
   if (!user) {
@@ -101,77 +90,52 @@ export default function AccountPreferencesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <AccountCard>
-        <AccountCardHeader
-          title="Preferências do sistema"
-          subtitle="Configure a interface visual e os canais de notificação da sua conta"
-          icon={SlidersHorizontal}
-        />
+    <>
+      <AccountSectionTitle
+        title="Preferências"
+        description="Aparência do app e alertas da sua conta."
+      />
 
-        {/* ── 1. Aparência / Tema ── */}
-        <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-7 sm:py-5.5 hover:bg-black/[0.01] dark:hover:bg-white/[0.015] transition-colors">
-          <div className="flex items-start gap-3.5 min-w-0 flex-1">
-            <div className="mt-0.5 flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-xl bg-black/[0.035] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300 shadow-xs">
-              <Palette className="h-4 w-4" strokeWidth={1.75} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13.5px] font-medium text-ink dark:text-zinc-200">Tema do aplicativo</p>
-              <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400 leading-relaxed">
-                Selecione o modo visual claro, escuro ou sincronizado automaticamente com seu dispositivo.
-              </p>
-            </div>
+      <AccountSurface title="Aparência" flush>
+        <div className="flex flex-col gap-3 border-b border-black/[0.05] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.06]">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-ink dark:text-zinc-200">Tema</p>
+            <p className="mt-0.5 text-[12px] text-ink-muted dark:text-zinc-400">
+              Claro, escuro ou conforme o sistema.
+            </p>
           </div>
-
-          {/* Segmented Control: Sistema, Claro, Escuro */}
-          <div className="inline-flex shrink-0 items-center rounded-xl bg-black/[0.04] p-1 dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-xs">
-            <button
-              type="button"
-              onClick={() => setPrefs((p) => ({ ...p, theme: "system" }))}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150",
-                prefs.theme === "system"
-                  ? "bg-white text-ink shadow-sm font-semibold dark:bg-[#1f222e] dark:text-white"
-                  : "text-ink-secondary hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
-              )}
-            >
-              <Monitor className="h-3.5 w-3.5" strokeWidth={prefs.theme === "system" ? 2 : 1.75} />
-              <span>Sistema</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrefs((p) => ({ ...p, theme: "light" }))}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150",
-                prefs.theme === "light"
-                  ? "bg-white text-ink shadow-sm font-semibold dark:bg-[#1f222e] dark:text-white"
-                  : "text-ink-secondary hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
-              )}
-            >
-              <Sun className="h-3.5 w-3.5" strokeWidth={prefs.theme === "light" ? 2 : 1.75} />
-              <span>Claro</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrefs((p) => ({ ...p, theme: "dark" }))}
-              className={cn(
-                "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150",
-                prefs.theme === "dark"
-                  ? "bg-violet-600/20 text-violet-700 dark:bg-violet-600/30 dark:text-violet-200 shadow-sm font-semibold ring-1 ring-violet-500/30"
-                  : "text-ink-secondary hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
-              )}
-            >
-              <Moon className="h-3.5 w-3.5" strokeWidth={prefs.theme === "dark" ? 2 : 1.75} />
-              <span>Escuro</span>
-            </button>
+          <div className="inline-flex shrink-0 items-center rounded-xl border border-black/[0.06] bg-black/[0.03] p-1 dark:border-white/[0.08] dark:bg-white/[0.05]">
+            {(
+              [
+                { id: "system" as const, label: "Sistema", Icon: Monitor },
+                { id: "light" as const, label: "Claro", Icon: Sun },
+                { id: "dark" as const, label: "Escuro", Icon: Moon },
+              ] as const
+            ).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setPrefs((p) => ({ ...p, theme: id }))}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium transition-all",
+                  prefs.theme === id
+                    ? "bg-white text-ink shadow-sm dark:bg-[#1f222e] dark:text-white"
+                    : "text-ink-muted hover:text-ink dark:text-zinc-400"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                {label}
+              </button>
+            ))}
           </div>
         </div>
+      </AccountSurface>
 
-        {/* ── 2. Alertas e Notificações ── */}
+      <AccountSurface title="Notificações" description="O que você quer receber no painel." flush className="mt-4">
         <AccountRow
           icon={MessagesSquare}
-          title="Conversas e chamados atribuídos"
-          description="Receba avisos instantâneos quando um novo atendimento for direcionado a você."
+          title="Conversas atribuídas"
+          description="Aviso quando um atendimento for direcionado a você."
           control={
             <Switch
               id="pref-assigned"
@@ -182,11 +146,10 @@ export default function AccountPreferencesPage() {
             />
           }
         />
-
         <AccountRow
           icon={AtSign}
-          title="Menções e notas internas"
-          description="Seja notificado quando outro membro da equipe citar seu nome em conversas ou notas."
+          title="Menções e notas"
+          description="Quando alguém citar seu nome em conversas ou notas internas."
           control={
             <Switch
               id="pref-mentions"
@@ -197,11 +160,10 @@ export default function AccountPreferencesPage() {
             />
           }
         />
-
         <AccountRow
           icon={ShieldAlert}
-          title="Alertas de segurança e novos logins"
-          description="Notificações imediatas sobre novos acessos a partir de dispositivos ou localidades diferentes."
+          title="Alertas de segurança"
+          description="Novos logins a partir de dispositivos ou locais diferentes."
           control={
             <Switch
               id="pref-security"
@@ -212,28 +174,14 @@ export default function AccountPreferencesPage() {
             />
           }
         />
-      </AccountCard>
+      </AccountSurface>
 
-      {dirty ? (
-        <div className="flex justify-end gap-2.5 pt-2">
-          <button
-            type="button"
-            className="btn-secondary h-8.5 px-3.5 text-xs font-medium"
-            disabled={savePrefs.isPending}
-            onClick={() => setPrefs(baseline)}
-          >
-            Descartar
-          </button>
-          <button
-            type="button"
-            className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 shadow-xs shadow-violet-500/25"
-            disabled={savePrefs.isPending}
-            onClick={() => savePrefs.mutate()}
-          >
-            {savePrefs.isPending ? "Salvando…" : "Salvar alterações"}
-          </button>
-        </div>
-      ) : null}
-    </div>
+      <AccountSaveBar
+        dirty={dirty}
+        saving={savePrefs.isPending}
+        onSave={() => savePrefs.mutate()}
+        onDiscard={() => setPrefs(baseline)}
+      />
+    </>
   );
 }
