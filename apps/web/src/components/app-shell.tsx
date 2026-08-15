@@ -319,6 +319,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
   const [dark, setDark] = useState(false);
+  const [appTheme, setAppThemeState] = useState<"light" | "dark" | "system">("system");
   const [enterAnim, setEnterAnim] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [companyOpen, setCompanyOpen] = useState(false);
@@ -357,6 +358,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setDark(document.documentElement.classList.contains("dark"));
+    const saved = localStorage.getItem("nexaflow_theme");
+    if (saved === "dark" || saved === "light") {
+      setAppThemeState(saved);
+    } else {
+      setAppThemeState("system");
+    }
     setUserMenuPortalReady(true);
     try {
       setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
@@ -582,21 +589,32 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen bg-[#F4F5F7] dark:bg-[#0B0C10]">{children}</div>;
   }
 
-  function toggleTheme() {
-    const next = !document.documentElement.classList.contains("dark");
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("nexaflow_theme", next ? "dark" : "light");
-    setDark(next);
-    // Mantém preferência em memória alinhada ao tema ativo (sem nova API)
+  function handleSetTheme(t: "light" | "dark" | "system") {
+    setAppThemeState(t);
+    if (t === "dark" || t === "light") {
+      localStorage.setItem("nexaflow_theme", t);
+      document.documentElement.classList.toggle("dark", t === "dark");
+      setDark(t === "dark");
+    } else {
+      localStorage.removeItem("nexaflow_theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.classList.toggle("dark", prefersDark);
+      setDark(prefersDark);
+    }
     const u = useAuth.getState().user;
     if (u) {
       useAuth.setState({
         user: {
           ...u,
-          preferences: { ...(u.preferences || {}), theme: next ? "dark" : "light" },
+          preferences: { ...(u.preferences || {}), theme: t },
         },
       });
     }
+  }
+
+  function toggleTheme() {
+    const next = !document.documentElement.classList.contains("dark");
+    handleSetTheme(next ? "dark" : "light");
   }
 
   function toggleCollapsed() {
@@ -872,6 +890,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           floating={floating}
           maxHeight={maxHeight}
           impersonating={impersonating}
+          theme={appTheme}
+          onSetTheme={handleSetTheme}
           onAccount={() => goUserMenu("/app/account")}
           onPreferences={() => goUserMenu("/app/account/preferences")}
           onLogout={() => {
@@ -896,9 +916,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         floating={floating}
         maxHeight={maxHeight}
         impersonating={impersonating}
+        theme={appTheme}
+        onSetTheme={handleSetTheme}
         onAccount={() => goUserMenu("/app/account")}
         onPreferences={() => goUserMenu("/app/account/preferences")}
-        onToggleTheme={() => toggleTheme()}
         onLogout={() => {
           closeUserMenu();
           setMobileOpen(false);
