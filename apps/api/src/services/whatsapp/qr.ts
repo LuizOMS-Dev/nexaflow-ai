@@ -1,5 +1,15 @@
 import { normalizeQrInput } from "../qrcode";
 
+/** TTL típico do QR do WhatsApp (segundos). */
+export const WA_QR_TTL_SEC = 20;
+
+export function qrSecondsLeft(iso?: string | null): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, WA_QR_TTL_SEC - Math.floor((Date.now() - t) / 1000));
+}
+
 /**
  * Normaliza respostas de QR de Evolution/WAHA/Baileys
  * para um data URL estável e escaneável.

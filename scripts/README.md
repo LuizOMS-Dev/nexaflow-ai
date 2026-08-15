@@ -10,7 +10,6 @@ Não confundir com `apps/api/src/scripts/` (one-offs da API).
 | `db/sync-official-plans.mjs` | Sincroniza o catálogo oficial de planos |
 | `db/reset-platform-tour.sql` | Reset do tour da plataforma |
 | `ops/easypanel-mcp.mjs` | Operações EasyPanel |
-| `ops/update-agents-model.js` | One-off: atualiza modelo dos agentes |
 | `qa/check-ui-exports.mjs` | Checagem de exports da UI |
 | `qa/responsive-qa.mjs` | QA responsivo (artefatos em `tmp/` / `docs/qa-screenshots`) |
 

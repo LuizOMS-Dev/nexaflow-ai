@@ -149,6 +149,8 @@ export const env = {
     process.env.SUPERADMIN_MFA_REQUIRED,
     nodeEnv === "production"
   ),
+  /** Pausa o login público (tela de manutenção). */
+  authLoginMaintenance: envBool(process.env.AUTH_LOGIN_MAINTENANCE, false),
   /** Limite de envios de campanha por execução síncrona (proteção) */
   campaignBatchLimit: Math.min(
     500,

@@ -1,3 +1,5 @@
+import { wahaStatusToRuntime } from "./waha-client";
+
 /**
  * Parsers de webhook Evolution API e WAHA → formato interno do NexaFlow.
  */
@@ -8,6 +10,8 @@ export type ParsedInboundMessage = {
   content: string;
   externalId?: string;
   fromMe: boolean;
+  mediaUrl?: string;
+  mediaMime?: string;
 };
 
 export type ParsedWebhook = {
@@ -226,9 +230,11 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
   if (event.includes("session") || event.includes("status") || payload.status) {
     const status = String(payload.status || dig(payload, "session", "status") || "");
     if (status) {
+      const runtime = wahaStatusToRuntime(status);
+      const meId = dig(payload, "me", "id") || dig(root, "me", "id");
       result.connection = {
-        state: status,
-        phone: jidToPhone(dig(payload, "me", "id")) || null,
+        state: runtime.state,
+        phone: jidToPhone(meId) || null,
       };
     }
   }
@@ -239,6 +245,9 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
     (dig(payload, "from") as string) ||
     (dig(payload, "_data", "id", "remote") as string) ||
     "";
+  if (typeof from === "string" && from.endsWith("@g.us")) {
+    return result;
+  }
   const fromMe = Boolean(payload.fromMe ?? dig(payload, "fromMe"));
   const bodyText =
     (typeof payload.body === "string" && payload.body) ||
@@ -249,8 +258,17 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
     extractText(payload.message) ||
     "";
 
+  const media = asRecord(payload.media);
+  const mediaUrl = media && typeof media.url === "string" ? media.url : undefined;
+  const mediaMime = media && typeof media.mimetype === "string" ? media.mimetype : undefined;
+  const rawId =
+    (typeof payload.id === "string" && payload.id) ||
+    (typeof dig(payload, "id", "_serialized") === "string"
+      ? (dig(payload, "id", "_serialized") as string)
+      : undefined);
+
   const phone = jidToPhone(from) || String(from).replace(/\D/g, "");
-  if (phone && (bodyText || event.includes("message"))) {
+  if (phone && (bodyText || event.includes("message") || mediaUrl)) {
     result.messages.push({
       phone,
       name:
@@ -258,12 +276,10 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
         (typeof payload.pushName === "string" && payload.pushName) ||
         undefined,
       content: bodyText || "[mensagem]",
-      externalId:
-        (typeof payload.id === "string" && payload.id) ||
-        (typeof dig(payload, "id", "_serialized") === "string"
-          ? (dig(payload, "id", "_serialized") as string)
-          : undefined),
+      externalId: rawId ? `waha:${rawId}` : undefined,
       fromMe,
+      mediaUrl,
+      mediaMime,
     });
   }
 
