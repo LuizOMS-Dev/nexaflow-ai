@@ -3,7 +3,10 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-/** Painel principal da conta — estética moderna em cartão glassmorphism */
+/**
+ * Superfície única principal da conta — sem cards dentro de cards.
+ * Utiliza borda sutil e divisores internos.
+ */
 export function AccountPanel({
   children,
   className,
@@ -17,7 +20,8 @@ export function AccountPanel({
     <div
       id={id}
       className={cn(
-        "overflow-hidden rounded-2xl border border-black/[0.06] bg-white/80 shadow-xs backdrop-blur-md transition-shadow duration-200 dark:border-white/[0.07] dark:bg-zinc-900/70",
+        "rounded-xl border border-black/[0.06] bg-white dark:border-white/[0.07] dark:bg-zinc-900/50",
+        "divide-y divide-black/[0.05] dark:divide-white/[0.06] overflow-hidden",
         className
       )}
     >
@@ -26,34 +30,34 @@ export function AccountPanel({
   );
 }
 
-/** Título de seção compacto dentro do painel */
+/** Cabeçalho de seção dentro da superfície principal */
 export function AccountPanelHead({
   title,
-  action,
   subtitle,
+  action,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-black/[0.05] px-5 py-4 dark:border-white/[0.06]">
+    <div className="flex flex-col gap-1 px-6 py-4.5 sm:flex-row sm:items-center sm:justify-between bg-black/[0.015] dark:bg-white/[0.015]">
       <div>
-        <h2 className="text-[14px] font-bold tracking-tight text-ink dark:text-zinc-100">
+        <h2 className="text-sm font-semibold tracking-tight text-ink dark:text-zinc-100">
           {title}
         </h2>
         {subtitle ? (
-          <p className="mt-0.5 text-[12px] text-ink-muted dark:text-zinc-400">
+          <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">
             {subtitle}
           </p>
         ) : null}
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {action ? <div className="shrink-0 mt-2 sm:mt-0">{action}</div> : null}
     </div>
   );
 }
 
-/** Linha de ação (Segurança / lista densa) */
+/** Linha de ação/configuração com divisor */
 export function AccountActionRow({
   title,
   meta,
@@ -68,59 +72,24 @@ export function AccountActionRow({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 px-5 py-4 transition-colors duration-150 sm:flex-row sm:items-center sm:justify-between sm:gap-4 hover:bg-black/[0.015] dark:hover:bg-white/[0.015]",
+        "flex flex-col gap-3 px-6 py-4 transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-6",
         className
       )}
     >
-      <div className="min-w-0">
-        <p className="text-[13.5px] font-semibold text-ink dark:text-zinc-100">{title}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-medium text-ink dark:text-zinc-200">{title}</p>
         {meta ? (
-          <div className="mt-0.5 text-[12.5px] leading-relaxed text-ink-muted dark:text-zinc-400">
+          <div className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400 leading-relaxed">
             {meta}
           </div>
         ) : null}
       </div>
-      {action ? <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div> : null}
+      {action ? <div className="shrink-0 flex items-center gap-2">{action}</div> : null}
     </div>
   );
 }
 
-/** Banner de alerta / status na conta */
-export function AccountBanner({
-  tone = "info",
-  title,
-  description,
-  action,
-}: {
-  tone?: "info" | "warning" | "success";
-  title: string;
-  description?: string;
-  action?: ReactNode;
-}) {
-  const tones = {
-    info: "border-indigo-500/20 bg-indigo-500/[0.07] text-indigo-950 dark:border-indigo-400/20 dark:bg-indigo-500/10 dark:text-indigo-200",
-    warning: "border-amber-500/25 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200",
-    success: "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-950 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200",
-  };
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between",
-        tones[tone]
-      )}
-    >
-      <div className="min-w-0">
-        <p className="text-[13.5px] font-bold leading-snug">{title}</p>
-        {description ? (
-          <p className="mt-0.5 text-[12px] leading-relaxed opacity-90">{description}</p>
-        ) : null}
-      </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
-    </div>
-  );
-}
-
-/** Linha de preferência (switch) */
+/** Linha de preferência simples (ex: switch ou select) */
 export function AccountRow({
   title,
   description,
@@ -135,14 +104,14 @@ export function AccountRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 px-5 py-4 transition-colors duration-150 hover:bg-black/[0.015] dark:hover:bg-white/[0.015]",
+        "flex items-center justify-between gap-6 px-6 py-4 transition-colors",
         className
       )}
     >
-      <div className="min-w-0">
-        <p className="text-[13.5px] font-semibold text-ink dark:text-zinc-100">{title}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-medium text-ink dark:text-zinc-200">{title}</p>
         {description ? (
-          <p className="mt-0.5 text-[12px] leading-relaxed text-ink-muted dark:text-zinc-400">
+          <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400 leading-relaxed">
             {description}
           </p>
         ) : null}
@@ -152,36 +121,38 @@ export function AccountRow({
   );
 }
 
-/** @deprecated use AccountPanel — mantido para imports legados */
+/** Seção de conteúdo genérico dentro do painel */
 export function AccountSection({
   title,
   description,
-  actions,
+  action,
   children,
   className,
   id,
 }: {
-  title: string;
+  title?: string;
   description?: string;
-  actions?: ReactNode;
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
   id?: string;
 }) {
   return (
-    <AccountPanel id={id} className={className}>
-      <div className="flex flex-col gap-1 border-b border-black/[0.05] px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.06]">
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-bold tracking-tight text-ink dark:text-zinc-100">
-            {title}
-          </h2>
-          {description ? (
-            <p className="mt-0.5 text-[12px] text-ink-muted dark:text-zinc-400">{description}</p>
-          ) : null}
+    <div id={id} className={className}>
+      {title ? (
+        <div className="flex items-center justify-between gap-4 border-b border-black/[0.05] px-6 py-4 bg-black/[0.015] dark:border-white/[0.06] dark:bg-white/[0.015]">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight text-ink dark:text-zinc-100">
+              {title}
+            </h2>
+            {description ? (
+              <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">{description}</p>
+            ) : null}
+          </div>
+          {action ? <div className="shrink-0">{action}</div> : null}
         </div>
-        {actions}
-      </div>
-      <div className="p-5">{children}</div>
-    </AccountPanel>
+      ) : null}
+      <div className="p-6">{children}</div>
+    </div>
   );
 }

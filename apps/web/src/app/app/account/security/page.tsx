@@ -2,15 +2,12 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldOff } from "lucide-react";
+import { ShieldCheck, ShieldAlert, KeyRound, Lock, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  EntitySummary,
   FormField,
-  FormSection,
   Modal,
   Spinner,
   Switch,
@@ -19,7 +16,6 @@ import {
 import { useAuth } from "@/store/auth";
 import {
   AccountActionRow,
-  AccountBanner,
   AccountPanel,
   AccountPanelHead,
 } from "../account-ui";
@@ -36,15 +32,6 @@ export default function AccountSecurityPage() {
   const mfaStatus = useQuery({
     queryKey: ["mfa-status"],
     queryFn: () => api<{ enabled: boolean; backupCodesRemaining: number }>("/auth/mfa/status"),
-  });
-
-  const sessions = useQuery({
-    queryKey: ["auth-sessions"],
-    queryFn: () =>
-      api<{ currentSessionId: string | null; sessions: Array<{ id: string; isCurrent: boolean }> }>(
-        "/auth/sessions"
-      ),
-    staleTime: 30_000,
   });
 
   const [pwdOpen, setPwdOpen] = useState(false);
@@ -196,136 +183,104 @@ export default function AccountSecurityPage() {
 
   const enabled = Boolean(mfaStatus.data?.enabled);
   const backupRemaining = mfaStatus.data?.backupCodesRemaining ?? 0;
-  const sessionCount = sessions.data?.sessions?.length ?? 0;
+  const isSuperadmin = authUser?.platformRole === "SUPERADMIN";
 
   return (
-    <div className="space-y-3">
-      {authUser?.platformRole === "SUPERADMIN" && !enabled && (
-        <AccountBanner
-          tone="warning"
-          title="Verificação em duas etapas obrigatória"
-          description="Ative para liberar a Administração da plataforma."
-        />
-      )}
+    <AccountPanel id="mfa-section" className="scroll-mt-6">
+      <AccountPanelHead
+        title="Credenciais e Segurança"
+        subtitle="Gerencie sua senha de acesso e camadas de autenticação"
+      />
 
-      {authUser?.platformRole === "SUPERADMIN" && enabled && !backupCodes && (
-        <AccountBanner
-          tone="success"
-          title="Verificação em duas etapas ativa"
-          action={
-            <button
-              type="button"
-              className="btn-primary h-8 shrink-0 text-xs"
-              onClick={() => router.push("/admin")}
-            >
-              Ir para Administração
-            </button>
-          }
-        />
-      )}
+      {/* Linha 1: Senha */}
+      <AccountActionRow
+        title="Senha de Acesso"
+        meta="Altere sua senha periodicamente para manter a conta segura"
+        action={
+          <button
+            type="button"
+            className="btn-secondary h-8 px-3 text-xs"
+            onClick={() => {
+              setPwd({ current: "", next: "", confirm: "" });
+              setPwdOpen(true);
+            }}
+          >
+            Alterar senha
+          </button>
+        }
+      />
 
-      <AccountPanel id="mfa-section" className="scroll-mt-6 divide-y divide-black/[0.05] dark:divide-white/[0.06]">
-        <AccountPanelHead title="Segurança" />
-
-        <AccountActionRow
-          title="Senha"
-          meta="Protege o acesso à sua conta"
-          action={
-            <button
-              type="button"
-              className="btn-secondary h-8 px-3 text-[12.5px]"
-              onClick={() => {
-                setPwd({ current: "", next: "", confirm: "" });
-                setPwdOpen(true);
-              }}
-            >
-              Alterar senha
-            </button>
-          }
-        />
-
-        <AccountActionRow
-          title="Autenticação em duas etapas"
-          meta={
-            <span className="inline-flex items-center gap-2">
+      {/* Linha 2: Autenticação em Duas Etapas (2FA/MFA) com status integrado */}
+      <AccountActionRow
+        title="Autenticação em Duas Etapas (2FA)"
+        meta={
+          <div className="space-y-1 mt-0.5">
+            <div className="flex flex-wrap items-center gap-2">
               <span
                 className={cn(
-                  "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium",
                   enabled
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : "bg-black/[0.05] text-ink-muted dark:bg-white/[0.06]"
+                    ? "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                    : "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-400"
                 )}
               >
-                {enabled ? "Ativada" : "Desativada"}
+                {enabled ? (
+                  <>
+                    <ShieldCheck className="h-3 w-3" />
+                    Ativada
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert className="h-3 w-3" />
+                    Desativada
+                  </>
+                )}
               </span>
-              {enabled && backupRemaining > 0 ? (
-                <span className="text-ink-faint">{backupRemaining} códigos de recuperação</span>
-              ) : null}
-            </span>
-          }
-          action={
-            !enabled && !backupCodes ? (
-              <button
-                type="button"
-                className="btn-primary h-8 px-3 text-[12.5px]"
-                onClick={() => {
-                  setMfaCode("");
-                  mfaSetupMutation.mutate();
-                }}
-                disabled={mfaSetupMutation.isPending}
-              >
-                {mfaSetupMutation.isPending ? "Gerando…" : "Ativar"}
-              </button>
-            ) : enabled && !backupCodes ? (
-              <button
-                type="button"
-                className="btn-secondary h-8 px-3 text-[12.5px]"
-                onClick={() => setManageOpen(true)}
-              >
-                Gerenciar
-              </button>
-            ) : null
-          }
-        />
 
-        {enabled ? (
-          <AccountActionRow
-            title="Códigos de recuperação"
-            meta={
-              backupRemaining > 0
-                ? `${backupRemaining} disponíveis`
-                : "Nenhum disponível — reative o MFA se necessário"
-            }
-            action={
-              <button
-                type="button"
-                className="btn-secondary h-8 px-3 text-[12.5px]"
-                onClick={() => setManageOpen(true)}
-              >
-                Gerenciar
-              </button>
-            }
-          />
-        ) : null}
+              {isSuperadmin && !enabled && (
+                <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-amber-600 dark:text-amber-400">
+                  <AlertCircle className="h-3 w-3" />
+                  Obrigatório para Super Admin
+                </span>
+              )}
 
-        <AccountActionRow
-          title="Sessões"
-          meta={
-            sessions.isLoading
-              ? "Carregando…"
-              : sessionCount === 1
-                ? "1 dispositivo conectado"
-                : `${sessionCount} dispositivos conectados`
-          }
-          action={
-            <Link href="/app/account/sessions" className="btn-secondary h-8 px-3 text-[12.5px] leading-8">
-              Ver sessões
-            </Link>
-          }
-        />
-      </AccountPanel>
+              {enabled && backupRemaining > 0 && (
+                <span className="text-[11.5px] text-ink-faint dark:text-zinc-500">
+                  · {backupRemaining} códigos de recuperação restantes
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-ink-muted dark:text-zinc-400">
+              Exige código do aplicativo autenticador (Google Authenticator, Authy) a cada login.
+            </p>
+          </div>
+        }
+        action={
+          !enabled && !backupCodes ? (
+            <button
+              type="button"
+              className="btn-primary h-8 px-3.5 text-xs bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500"
+              onClick={() => {
+                setMfaCode("");
+                mfaSetupMutation.mutate();
+              }}
+              disabled={mfaSetupMutation.isPending}
+            >
+              {mfaSetupMutation.isPending ? "Gerando…" : "Ativar 2FA"}
+            </button>
+          ) : enabled && !backupCodes ? (
+            <button
+              type="button"
+              className="btn-secondary h-8 px-3 text-xs"
+              onClick={() => setManageOpen(true)}
+            >
+              Gerenciar 2FA
+            </button>
+          ) : null
+        }
+      />
 
-      {/* Modal senha */}
+      {/* Modal: Alterar Senha */}
       <Modal
         open={pwdOpen}
         onClose={() => {
@@ -341,7 +296,7 @@ export default function AccountSecurityPage() {
           <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
-              className="btn-secondary h-9 px-3.5"
+              className="btn-secondary h-8 px-3 text-xs"
               disabled={changePassword.isPending}
               onClick={() => {
                 setPwdOpen(false);
@@ -353,7 +308,7 @@ export default function AccountSecurityPage() {
             <button
               type="submit"
               form="nf-change-password-form"
-              className="btn-primary h-9 px-4"
+              className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
               disabled={
                 changePassword.isPending ||
                 !pwd.current ||
@@ -371,7 +326,7 @@ export default function AccountSecurityPage() {
             <input
               id="pwd-current"
               type="password"
-              className="input"
+              className="input mt-1 h-9 text-xs"
               autoComplete="current-password"
               value={pwd.current}
               onChange={(e) => setPwd((s) => ({ ...s, current: e.target.value }))}
@@ -382,49 +337,203 @@ export default function AccountSecurityPage() {
             <input
               id="pwd-new"
               type="password"
-              className="input"
+              className="input mt-1 h-9 text-xs"
               autoComplete="new-password"
               value={pwd.next}
               onChange={(e) => setPwd((s) => ({ ...s, next: e.target.value }))}
               required
               minLength={10}
             />
-            <p className="mt-1 text-[11px] text-ink-faint">Mínimo de 10 caracteres.</p>
+            <p className="mt-1 text-[11px] text-ink-faint dark:text-zinc-500">Mínimo de 10 caracteres.</p>
           </FormField>
           <FormField label="Confirmar nova senha" htmlFor="pwd-confirm" required>
             <input
               id="pwd-confirm"
               type="password"
-              className="input"
+              className="input mt-1 h-9 text-xs"
               autoComplete="new-password"
               value={pwd.confirm}
               onChange={(e) => setPwd((s) => ({ ...s, confirm: e.target.value }))}
               required
             />
           </FormField>
-          <p className="text-[11.5px] leading-relaxed text-ink-faint dark:text-zinc-500">
-            Outras sessões serão encerradas após a alteração.
+          <p className="text-xs text-ink-muted dark:text-zinc-400">
+            Outras sessões ativas serão automaticamente desconectadas após a alteração.
           </p>
         </form>
       </Modal>
 
-      {/* Códigos de recuperação */}
+      {/* Modal: Configurar / Gerenciar 2FA */}
       <Modal
-        open={Boolean(backupCodes?.length)}
+        open={manageOpen && Boolean(mfaSetup)}
         onClose={() => {
-          /* não fecha sem confirmação */
+          if (mfaEnableMutation.isPending) return;
+          setManageOpen(false);
+          setMfaSetup(null);
         }}
-        preventClose
-        title="Códigos de recuperação"
-        description="Aparecem só uma vez. Guarde em local seguro."
+        title="Ativar autenticação em duas etapas"
         size="md"
         variant="contextual"
-        tone="warning"
+        preventClose={mfaEnableMutation.isPending}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-ink-muted dark:text-zinc-400">
+            Escaneie o QR Code abaixo com seu aplicativo autenticador (Google Authenticator, Authy, 1Password) e insira o código de 6 dígitos gerado:
+          </p>
+
+          {mfaSetup?.qrDataUrl ? (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <div className="rounded-xl border border-black/[0.08] bg-white p-3 dark:border-white/[0.1]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={mfaSetup.qrDataUrl}
+                  alt="QR Code MFA"
+                  className="h-44 w-44 rounded-lg"
+                />
+              </div>
+              <p className="font-mono text-xs text-ink-muted dark:text-zinc-400">
+                Chave secreta: <span className="font-semibold text-ink dark:text-white select-all">{mfaSetup.secret}</span>
+              </p>
+            </div>
+          ) : null}
+
+          <div>
+            <label className="label text-xs font-medium" htmlFor="mfa-verify-code">
+              Código de verificação (6 dígitos)
+            </label>
+            <input
+              id="mfa-verify-code"
+              className="input mt-1 h-9 text-xs text-center font-mono text-base tracking-widest"
+              placeholder="000000"
+              maxLength={6}
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="btn-secondary h-8 px-3 text-xs"
+              onClick={() => {
+                setManageOpen(false);
+                setMfaSetup(null);
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              disabled={mfaCode.length !== 6 || mfaEnableMutation.isPending}
+              onClick={() => mfaEnableMutation.mutate()}
+            >
+              {mfaEnableMutation.isPending ? "Validando…" : "Verificar e Ativar"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Gerenciar 2FA quando já ativo */}
+      <Modal
+        open={manageOpen && !mfaSetup}
+        onClose={() => setManageOpen(false)}
+        title="Gerenciar 2FA"
+        size="sm"
+        variant="contextual"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-ink-muted dark:text-zinc-400">
+            A autenticação em duas etapas está atualmente ativa na sua conta.
+          </p>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              type="button"
+              className="btn-secondary h-8 justify-center text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+              onClick={() => {
+                setManageOpen(false);
+                setDisableOpen(true);
+              }}
+            >
+              Desativar 2FA
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Desativar 2FA */}
+      <Modal
+        open={disableOpen}
+        onClose={() => {
+          if (mfaDisableMutation.isPending) return;
+          setDisableOpen(false);
+          setMfaDisable({ password: "", code: "" });
+        }}
+        title="Desativar 2FA"
+        size="sm"
+        variant="contextual"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-ink-muted dark:text-zinc-400">
+            Informe sua senha atual e o código de 6 dígitos do autenticador para confirmar a desativação:
+          </p>
+
+          <FormField label="Senha atual" htmlFor="mfa-dis-pwd" required>
+            <input
+              id="mfa-dis-pwd"
+              type="password"
+              className="input mt-1 h-9 text-xs"
+              value={mfaDisable.password}
+              onChange={(e) => setMfaDisable((s) => ({ ...s, password: e.target.value }))}
+            />
+          </FormField>
+
+          <FormField label="Código de 6 dígitos" htmlFor="mfa-dis-code" required>
+            <input
+              id="mfa-dis-code"
+              className="input mt-1 h-9 text-xs font-mono text-center tracking-wider"
+              placeholder="000000"
+              maxLength={6}
+              value={mfaDisable.code}
+              onChange={(e) => setMfaDisable((s) => ({ ...s, code: e.target.value.replace(/\D/g, "") }))}
+            />
+          </FormField>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="btn-secondary h-8 px-3 text-xs"
+              onClick={() => setDisableOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn-primary h-8 px-4 text-xs bg-red-600 hover:bg-red-700"
+              disabled={!mfaDisable.password || mfaDisable.code.length !== 6 || mfaDisableMutation.isPending}
+              onClick={() => mfaDisableMutation.mutate()}
+            >
+              {mfaDisableMutation.isPending ? "Desativando…" : "Confirmar Desativação"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Códigos de recuperação exibidos na ativação */}
+      <Modal
+        open={Boolean(backupCodes?.length)}
+        onClose={() => {}}
+        preventClose
+        title="Códigos de recuperação"
+        description="Estes códigos são exibidos apenas uma vez. Guarde-os em um local seguro."
+        size="md"
+        variant="contextual"
         initialFocus="panel"
         footer={
           <button
             type="button"
-            className="btn-primary h-9 w-full px-4 sm:w-auto sm:min-w-[12rem]"
+            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
             disabled={!backupCodesAck}
             onClick={confirmBackupCodesAndContinue}
           >
@@ -434,174 +543,28 @@ export default function AccountSecurityPage() {
           </button>
         }
       >
-        <div className="space-y-3">
-          <ul className="grid grid-cols-2 gap-1.5 rounded-xl border border-amber-500/20 bg-amber-50/60 p-3 font-mono text-[12px] dark:bg-amber-500/5">
+        <div className="space-y-4">
+          <ul className="grid grid-cols-2 gap-2 rounded-xl border border-black/[0.08] bg-black/[0.02] p-4 font-mono text-xs dark:border-white/[0.08] dark:bg-white/[0.03]">
             {(backupCodes || []).map((c) => (
-              <li key={c} className="tabular-nums text-ink dark:text-gray-100">
+              <li key={c} className="tabular-nums font-semibold text-ink dark:text-zinc-100">
                 {c}
               </li>
             ))}
           </ul>
-          <div className="rounded-xl border border-line-soft px-3 py-2.5 dark:border-white/[0.08]">
-            <Switch
+          <div className="flex items-center gap-3">
+            <input
               id="mfa-backup-ack"
-              label="Códigos guardados com segurança"
-              description="Não serão mostrados de novo."
+              type="checkbox"
+              className="h-4 w-4 rounded border-black/[0.15] text-violet-600 focus:ring-violet-500 dark:border-white/[0.2] dark:bg-zinc-800"
               checked={backupCodesAck}
-              onChange={setBackupCodesAck}
-              className="py-0"
+              onChange={(e) => setBackupCodesAck(e.target.checked)}
             />
+            <label htmlFor="mfa-backup-ack" className="text-xs text-ink-secondary dark:text-zinc-300 cursor-pointer">
+              Eu copiei e guardei estes códigos em local seguro.
+            </label>
           </div>
         </div>
       </Modal>
-
-      <Modal
-        open={manageOpen && (!!mfaSetup || enabled) && !backupCodes}
-        onClose={() => {
-          if (mfaEnableMutation.isPending) return;
-          setManageOpen(false);
-          if (!enabled) setMfaSetup(null);
-        }}
-        title={enabled ? "Autenticação em duas etapas" : "Ativar verificação em duas etapas"}
-        description={enabled ? undefined : "Escaneie o QR e confirme o código."}
-        size="sm"
-        variant="contextual"
-        initialFocus="panel"
-        footer={
-          mfaSetup ? (
-            <button
-              type="button"
-              className="btn-primary h-9 w-full px-4 sm:w-auto sm:min-w-[10rem]"
-              disabled={mfaEnableMutation.isPending || mfaCode.length < 6}
-              onClick={() => mfaEnableMutation.mutate()}
-            >
-              {mfaEnableMutation.isPending ? "Ativando…" : "Confirmar e ativar"}
-            </button>
-          ) : enabled && !mfaSetup && authUser?.platformRole !== "SUPERADMIN" ? (
-            <button
-              type="button"
-              className="btn-danger h-9 w-full px-4 sm:w-auto"
-              onClick={() => {
-                setManageOpen(false);
-                setMfaDisable({ password: "", code: "" });
-                setDisableOpen(true);
-              }}
-            >
-              <ShieldOff className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Desativar
-            </button>
-          ) : undefined
-        }
-      >
-        {mfaSetup && (
-          <div className="space-y-4">
-            <FormSection title="1 · Aplicativo autenticador" surface>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={mfaSetup.qrDataUrl}
-                alt="QR MFA"
-                className="mx-auto h-40 w-40 rounded-xl bg-white p-2 ring-1 ring-black/[0.06]"
-              />
-              <p className="mt-2 break-all text-center text-[10px] text-ink-faint">
-                {mfaSetup.secret}
-              </p>
-            </FormSection>
-            <FormSection title="2 · Código de verificação" surface>
-              <FormField label="Código" htmlFor="mfa-setup-code" required>
-                <input
-                  id="mfa-setup-code"
-                  className="input"
-                  value={mfaCode}
-                  onChange={(e) => setMfaCode(e.target.value.replace(/\s/g, ""))}
-                  placeholder="000000"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                />
-              </FormField>
-            </FormSection>
-          </div>
-        )}
-
-        {enabled && !mfaSetup && (
-          <EntitySummary
-            title="Status: ativa"
-            meta={[
-              {
-                label: "Códigos",
-                value: `${backupRemaining} restantes`,
-              },
-            ]}
-          />
-        )}
-      </Modal>
-
-      <Modal
-        open={disableOpen}
-        onClose={() => {
-          if (mfaDisableMutation.isPending) return;
-          setDisableOpen(false);
-          setMfaDisable({ password: "", code: "" });
-        }}
-        title="Desativar autenticação em duas etapas"
-        description="Confirme com senha e um código do autenticador."
-        variant="danger"
-        tone="danger"
-        size="sm"
-        preventClose={mfaDisableMutation.isPending}
-        footer={
-          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              className="btn-secondary h-9 px-3.5"
-              disabled={mfaDisableMutation.isPending}
-              onClick={() => {
-                setDisableOpen(false);
-                setMfaDisable({ password: "", code: "" });
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="btn-danger h-9 px-4"
-              disabled={
-                mfaDisableMutation.isPending ||
-                !mfaDisable.password ||
-                mfaDisable.code.length < 6
-              }
-              onClick={() => mfaDisableMutation.mutate()}
-            >
-              {mfaDisableMutation.isPending ? "Desativando…" : "Confirmar desativação"}
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-3">
-          <FormField label="Senha atual" htmlFor="mfa-dis-pwd" required>
-            <input
-              id="mfa-dis-pwd"
-              type="password"
-              className="input"
-              autoComplete="current-password"
-              value={mfaDisable.password}
-              onChange={(e) => setMfaDisable((s) => ({ ...s, password: e.target.value }))}
-            />
-          </FormField>
-          <FormField label="Código" htmlFor="mfa-dis-code" required>
-            <input
-              id="mfa-dis-code"
-              className="input"
-              value={mfaDisable.code}
-              onChange={(e) =>
-                setMfaDisable((s) => ({ ...s, code: e.target.value.replace(/\s/g, "") }))
-              }
-              placeholder="000000"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-            />
-          </FormField>
-        </div>
-      </Modal>
-    </div>
+    </AccountPanel>
   );
 }

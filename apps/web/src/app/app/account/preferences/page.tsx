@@ -88,37 +88,46 @@ export default function AccountPreferencesPage() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <AccountPanel>
-        <AccountPanelHead title="Aparência" />
-        <div className="px-3.5 py-3 sm:max-w-sm">
-          <label className="label" htmlFor="pref-theme">
-            Tema
-          </label>
-          <Select
-            id="pref-theme"
-            value={prefs.theme}
-            onChange={(theme) =>
-              setPrefs((p) => ({
-                ...p,
-                theme: theme as "light" | "dark" | "system",
-              }))
-            }
-            options={[
-              { value: "system", label: "Sistema" },
-              { value: "light", label: "Claro" },
-              { value: "dark", label: "Escuro" },
-            ]}
-            aria-label="Tema"
-          />
-        </div>
-      </AccountPanel>
+        {/* Cabeçalho Unificado */}
+        <AccountPanelHead
+          title="Preferências da Conta"
+          subtitle="Personalize a aparência do sistema e suas notificações"
+        />
 
-      <AccountPanel className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
-        <AccountPanelHead title="Notificações" />
+        {/* 1. Aparência */}
+        <div className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13.5px] font-medium text-ink dark:text-zinc-200">Tema da interface</p>
+            <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">
+              Escolha entre o modo claro, escuro ou sincronizado com o seu sistema operacional.
+            </p>
+          </div>
+          <div className="w-40 shrink-0">
+            <Select
+              id="pref-theme"
+              value={prefs.theme}
+              onChange={(theme) =>
+                setPrefs((p) => ({
+                  ...p,
+                  theme: theme as "light" | "dark" | "system",
+                }))
+              }
+              options={[
+                { value: "system", label: "Sistema" },
+                { value: "light", label: "Claro" },
+                { value: "dark", label: "Escuro" },
+              ]}
+              aria-label="Tema"
+            />
+          </div>
+        </div>
+
+        {/* 2. Notificações */}
         <AccountRow
           title="Conversas atribuídas"
-          description="Quando uma conversa for atribuída a você"
+          description="Receba alertas quando uma nova conversa for designada a você"
           control={
             <Switch
               id="pref-assigned"
@@ -129,9 +138,10 @@ export default function AccountPreferencesPage() {
             />
           }
         />
+
         <AccountRow
-          title="Menções"
-          description="Quando alguém mencionar você"
+          title="Menções e comentários"
+          description="Receba alertas quando for mencionado em mensagens ou notas internas"
           control={
             <Switch
               id="pref-mentions"
@@ -142,9 +152,10 @@ export default function AccountPreferencesPage() {
             />
           }
         />
+
         <AccountRow
           title="Alertas de segurança"
-          description="Logins e alterações sensíveis"
+          description="Notificações críticas sobre novos logins e alterações em credenciais"
           control={
             <Switch
               id="pref-security"
@@ -158,10 +169,10 @@ export default function AccountPreferencesPage() {
       </AccountPanel>
 
       {dirty ? (
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
-            className="btn-secondary h-9 px-3.5"
+            className="btn-secondary h-8 px-3 text-xs"
             disabled={savePrefs.isPending}
             onClick={() => setPrefs(baseline)}
           >
@@ -169,7 +180,7 @@ export default function AccountPreferencesPage() {
           </button>
           <button
             type="button"
-            className="btn-primary h-9 px-4"
+            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500"
             disabled={savePrefs.isPending}
             onClick={() => savePrefs.mutate()}
           >
