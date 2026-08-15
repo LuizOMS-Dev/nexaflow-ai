@@ -3,7 +3,6 @@
  * CLOUD_API reservado para migração futura (Meta) — stub sem implementação completa.
  */
 export type WhatsAppProvider =
-  | "evolution"
   | "waha"
   | "baileys"
   | "simulated"

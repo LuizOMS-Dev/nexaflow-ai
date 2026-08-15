@@ -591,7 +591,7 @@ export async function getTenantWhatsAppStatus(
         const p = String(
           (r.config as { provider?: string } | null)?.provider || env.waGatewayProvider || ""
         ).toLowerCase();
-        return p === "evolution" || p === "waha";
+        return p === "waha";
       }));
 
   const channels = await Promise.all(

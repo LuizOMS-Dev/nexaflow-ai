@@ -7,7 +7,6 @@ import {
   asConfig,
   getConnector,
   ingestInboundMessage,
-  parseEvolutionWebhook,
   parseWahaWebhook,
   type WhatsAppProvider,
 } from "../services/whatsapp";
@@ -22,7 +21,7 @@ function publicApiUrl() {
 
 /**
  * URL interna para webhooks entre containers Docker.
- * Evolution (container) deve chamar a API por nome de serviço, não localhost.
+ * WAHA (container) deve chamar a API por nome de serviço, não localhost.
  */
 function webhookBaseUrl() {
   return (
@@ -186,7 +185,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
         mode: z.enum(["platform", "custom", "simulated"]).default("platform"),
         customBaseUrl: z.string().url().optional(),
         customApiKey: z.string().optional(),
-        customProvider: z.enum(["evolution", "waha"]).optional(),
+        customProvider: z.enum(["waha", "baileys"]).optional(),
         riskAcknowledged: z.boolean().default(true),
       })
       .parse(request.body || {});
@@ -218,7 +217,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
       apiKey = body.customApiKey || "";
       mode = "custom";
     } else {
-      // PADRÃO: gateway central da plataforma (Baileys nativo ou Evolution/WAHA)
+      // PADRÃO: gateway central da plataforma (Baileys nativo ou WAHA)
       if (!isWaGatewayReady()) {
         // fallback amigável para dev sem gateway
         if (process.env.NODE_ENV !== "production") {
@@ -236,13 +235,8 @@ export async function whatsappRoutes(app: FastifyInstance) {
         baseUrl = "";
         apiKey = "";
         mode = "platform";
-      } else if (env.waGatewayProvider === "waha") {
-        provider = "waha";
-        baseUrl = env.waGatewayUrl;
-        apiKey = env.waGatewayApiKey;
-        mode = "platform";
       } else {
-        provider = "evolution";
+        provider = "waha";
         baseUrl = env.waGatewayUrl;
         apiKey = env.waGatewayApiKey;
         mode = "platform";
@@ -328,11 +322,9 @@ export async function whatsappRoutes(app: FastifyInstance) {
     }
 
     const webhookUrl =
-      provider === "evolution"
-        ? `${webhookBaseUrl()}/webhooks/evolution/${channel.id}`
-        : provider === "waha"
-          ? `${webhookBaseUrl()}/webhooks/waha/${channel.id}`
-          : undefined;
+      provider === "waha"
+        ? `${webhookBaseUrl()}/webhooks/waha/${channel.id}`
+        : undefined;
 
     try {
       let activeProvider = provider;
@@ -417,22 +409,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
         nextConfig.phone = nextConfig.phone || "simulacao";
       }
 
-      // Reaplica webhook Evolution (headers apikey) — crítico para receber mensagens
-      if (activeProvider === "evolution" && webhookUrl) {
-        try {
-          const { EvolutionConnector } = await import("../services/whatsapp/evolution");
-          const evo = new EvolutionConnector();
-          await evo.ensureWebhook({
-            provider: "evolution",
-            baseUrl: activeBaseUrl,
-            apiKey: activeApiKey,
-            instanceName,
-            webhookUrl,
-          } as never);
-        } catch (err) {
-          request.log.warn({ err }, "evolution ensureWebhook after connect");
-        }
-      }
+
 
       // Snapshot de status real do gateway
       let phone: string | null = null;
@@ -614,11 +591,11 @@ export async function whatsappRoutes(app: FastifyInstance) {
       ...config,
       baseUrl:
         (config.baseUrl as string) ||
-        (provider === "evolution" || config.mode === "platform" ? env.waGatewayUrl : "") ||
+        (provider === "waha" || config.mode === "platform" ? env.waGatewayUrl : "") ||
         "",
       apiKey:
         (config.apiKey as string) ||
-        (provider === "evolution" || config.mode === "platform" ? env.waGatewayApiKey : "") ||
+        (provider === "waha" || config.mode === "platform" ? env.waGatewayApiKey : "") ||
         "",
     };
 
@@ -641,11 +618,11 @@ export async function whatsappRoutes(app: FastifyInstance) {
       })
     );
     const config = asConfig(channel.config);
-    // Atualiza DB primeiro; Evolution em background
+    // Atualiza DB primeiro; logout em background
     logoutChannelBackground(request, config);
 
     const nextConfig = {
-      provider: config.provider || "evolution",
+      provider: config.provider || "waha",
       mode: config.mode || "platform",
       instanceName: config.instanceName,
       session: config.session || config.instanceName,
@@ -783,136 +760,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     }
   }
 
-  // Webhooks
-  app.post("/webhooks/evolution/:channelId", async (request, reply) => {
-    const { channelId } = request.params as { channelId: string };
-    const channel = await prisma.channel.findUnique({ where: { id: channelId } });
-    // 200 (não 404): evita retry infinito da Evolution em canal removido
-    if (!channel) {
-      return reply.code(200).send({ ok: false, reason: "channel_gone" });
-    }
 
-    const config = asConfig(channel.config);
-    try {
-      assertWebhookAuthorized(request, config);
-    } catch (err) {
-      if (err instanceof AppError) {
-        console.warn(`[webhook/evolution] auth fail channel=${channelId} code=${err.code}`);
-        return reply.code(err.statusCode).send({ ok: false, code: err.code });
-      }
-      throw err;
-    }
-
-    let parsed;
-    try {
-      parsed = parseEvolutionWebhook(request.body);
-    } catch (err) {
-      console.error(
-        "[webhook/evolution] parse failed:",
-        err instanceof Error ? err.message : err
-      );
-      return { ok: true, parsed: false };
-    }
-
-    const eventHint =
-      typeof (request.body as { event?: string })?.event === "string"
-        ? String((request.body as { event: string }).event)
-        : "";
-    if (
-      !parsed.messages.length &&
-      !parsed.connection &&
-      !parsed.qrcode &&
-      env.nodeEnv !== "production"
-    ) {
-      console.log(
-        `[webhook/evolution] empty parse event=${eventHint || "?"} keys=${Object.keys((request.body as object) || {}).join(",")}`
-      );
-    }
-
-    const { asInputJson } = await import("../lib/json");
-
-    if (parsed.qrcode) {
-      const resolved = await resolveWhatsAppQr({ existing: parsed.qrcode });
-      const fresh = asConfig(
-        (await prisma.channel.findUnique({ where: { id: channelId } }))?.config
-      );
-      await prisma.channel.update({
-        where: { id: channelId },
-        data: {
-          isActive: true,
-          config: asInputJson({
-            ...fresh,
-            qrcode: resolved.qrcode,
-            qrUpdatedAt: new Date().toISOString(),
-            status: "connecting",
-          }),
-        },
-      });
-    }
-
-    if (parsed.connection?.state) {
-      const raw = parsed.connection.state.toLowerCase();
-      const state = raw.includes("open")
-        ? "open"
-        : raw.includes("close")
-          ? "close"
-          : "connecting";
-      const fresh = asConfig(
-        (await prisma.channel.findUnique({ where: { id: channelId } }))?.config
-      );
-      const now = new Date().toISOString();
-      await prisma.channel.update({
-        where: { id: channelId },
-        data: {
-          isActive: state !== "close",
-          config: asInputJson({
-            ...fresh,
-            status: state,
-            phone: parsed.connection.phone || fresh.phone,
-            qrcode: state === "open" ? null : fresh.qrcode,
-            everConnected: state === "open" ? true : fresh.everConnected,
-            lastConnectedAt:
-              state === "open" ? now : fresh.lastConnectedAt || null,
-            lastError: state === "close" ? fresh.lastError : null,
-          }),
-        },
-      });
-      if (state === "open") {
-        void import("../services/tenant-setup-checklist")
-          .then(({ markWhatsAppConfigured }) => markWhatsAppConfigured(channel.tenantId))
-          .catch(() => null);
-      }
-    }
-
-    if (parsed.messages.length) {
-      console.log(
-        `[webhook/evolution] ${parsed.messages.length} msg(s) canal=${channelId} tenant=${channel.tenantId}`
-      );
-    }
-
-    let ingested = 0;
-    for (const msg of parsed.messages) {
-      if (msg.fromMe) continue;
-      try {
-        const result = await ingestInboundMessage({
-          tenantId: channel.tenantId,
-          channelId: channel.id,
-          phone: msg.phone,
-          name: msg.name,
-          content: msg.content,
-          externalId: msg.externalId,
-        });
-        if (!result.duplicate) ingested += 1;
-      } catch (err) {
-        console.error(
-          "[webhook/evolution] ingest failed:",
-          err instanceof Error ? err.message : err
-        );
-      }
-    }
-
-    return { ok: true, ingested, messages: parsed.messages.length };
-  });
 
   app.post("/webhooks/waha/:channelId", async (request, reply) => {
     const { channelId } = request.params as { channelId: string };

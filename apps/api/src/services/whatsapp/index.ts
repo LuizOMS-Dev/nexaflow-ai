@@ -1,4 +1,3 @@
-import { EvolutionConnector } from "./evolution";
 import { WahaConnector } from "./waha";
 import type {
   ConnectionStatus,
@@ -13,7 +12,7 @@ import { asInputJson } from "../../lib/json";
 import { broadcastToTenant } from "../../ws/hub";
 
 export * from "./types";
-export { parseEvolutionWebhook, parseWahaWebhook } from "./webhook-parse";
+export { parseWahaWebhook } from "./webhook-parse";
 export type { ParsedInboundMessage, ParsedWebhook } from "./webhook-parse";
 export {
   getTenantWhatsAppStatus,
@@ -61,7 +60,6 @@ class SimulatedConnector implements WhatsAppConnector {
 }
 
 export function getConnector(provider: string | WhatsAppProvider): WhatsAppConnector {
-  if (provider === "evolution") return new EvolutionConnector();
   if (provider === "waha") return new WahaConnector();
   if (provider === "baileys") {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -79,20 +77,16 @@ export async function sendWhatsAppText(channelId: string, to: string, text: stri
   const config = asConfig(channel.config);
   // Baileys: nativo na API — não injeta URL/key de gateway externo
   if (config.provider === "baileys" || env.waGatewayProvider === "baileys") {
-    if (!config.provider || config.provider === "evolution" || config.provider === "waha") {
+    if (!config.provider || config.provider === "waha") {
       config.provider = "baileys";
     }
   } else if (
-    (config.provider === "evolution" ||
-      config.provider === "waha" ||
-      config.mode === "platform") &&
+    (config.provider === "waha" || config.mode === "platform") &&
     (!config.baseUrl || !config.apiKey)
   ) {
     config.baseUrl = config.baseUrl || env.waGatewayUrl;
     config.apiKey = config.apiKey || env.waGatewayApiKey;
-    config.provider =
-      (config.provider as WhatsAppProvider) ||
-      (env.waGatewayProvider === "waha" ? "waha" : "evolution");
+    config.provider = "waha";
   }
   if (!config.instanceName) {
     return { ok: false, error: "Instância WhatsApp não configurada no canal" };

@@ -1,7 +1,7 @@
 import { wahaStatusToRuntime } from "./waha-client";
 
 /**
- * Parsers de webhook Evolution API e WAHA → formato interno do NexaFlow.
+ * Parser de webhook WAHA → formato interno do NexaFlow.
  */
 
 export type ParsedInboundMessage = {
@@ -77,7 +77,7 @@ function extractText(message: unknown): string {
   if (m.locationMessage || m.liveLocationMessage) return "[localização]";
   if (m.buttonsResponseMessage) {
     const b = asRecord(m.buttonsResponseMessage);
-    return (b && (b.selectedDisplayText || b.selectedButtonId)) as string || "[botão]";
+    return ((b && (b.selectedDisplayText || b.selectedButtonId)) as string) || "[botão]";
   }
   if (m.listResponseMessage) {
     const l = asRecord(m.listResponseMessage);
@@ -93,128 +93,6 @@ function extractText(message: unknown): string {
   if (viewOnce) return extractText(viewOnce);
 
   return "";
-}
-
-function normalizeEventName(event: unknown): string {
-  if (typeof event !== "string") return "";
-  return event.toLowerCase().replace(/_/g, ".");
-}
-
-/**
- * Evolution API (v1/v2) — messages.upsert, connection.update, qrcode.updated
- */
-export function parseEvolutionWebhook(body: unknown): ParsedWebhook {
-  const root = asRecord(body) || {};
-  const event = normalizeEventName(root.event || root.type || root.action);
-  const data = root.data ?? root.payload ?? root;
-
-  const result: ParsedWebhook = { messages: [] };
-
-  // QR code
-  if (event.includes("qrcode") || dig(data, "qrcode") || dig(root, "qrcode")) {
-    const qr =
-      (dig(data, "qrcode", "base64") as string) ||
-      (dig(data, "base64") as string) ||
-      (dig(root, "qrcode", "base64") as string) ||
-      (dig(root, "base64") as string) ||
-      (typeof dig(data, "qrcode") === "string" ? (dig(data, "qrcode") as string) : null);
-    if (qr) result.qrcode = qr;
-  }
-
-  // Connection
-  if (event.includes("connection") || dig(data, "state") || dig(data, "instance", "state")) {
-    const state =
-      (dig(data, "state") as string) ||
-      (dig(data, "status") as string) ||
-      (dig(data, "instance", "state") as string) ||
-      (dig(root, "state") as string);
-    const phone =
-      (dig(data, "instance", "owner") as string) ||
-      (dig(data, "owner") as string) ||
-      (dig(data, "wuid") as string) ||
-      null;
-    if (state) {
-      result.connection = {
-        state: String(state),
-        phone: phone ? jidToPhone(phone) || String(phone) : null,
-      };
-    }
-  }
-
-  // Messages — data pode ser 1 msg, array, ou { messages: [] }
-  // Evolution 2.x: event "messages.upsert" | "MESSAGES_UPSERT", data = { key, message, pushName }
-  const rawList: unknown[] = [];
-  if (Array.isArray(data)) {
-    rawList.push(...data);
-  } else {
-    const d = asRecord(data);
-    if (d) {
-      if (Array.isArray(d.messages)) rawList.push(...d.messages);
-      else if (d.key || d.message || d.messageStubType != null) rawList.push(d);
-      else if (Array.isArray(d.message)) rawList.push(...(d.message as unknown[]));
-      // nested: data.data
-      const nested = asRecord(d.data);
-      if (nested && (nested.key || nested.message)) rawList.push(nested);
-    }
-  }
-
-  // Fallback: qualquer evento de mensagem com payload no root
-  if (!rawList.length) {
-    const looksLikeMsg =
-      event.includes("message") ||
-      event.includes("messages") ||
-      Boolean(asRecord(root)?.key) ||
-      Boolean(dig(root, "data", "key"));
-    if (looksLikeMsg) {
-      const d = asRecord(data) || asRecord(root);
-      if (d) rawList.push(d);
-    }
-  }
-
-  for (const item of rawList) {
-    const msg = asRecord(item);
-    if (!msg) continue;
-
-    const key = asRecord(msg.key) || asRecord(dig(msg, "key"));
-    const fromMe = Boolean(key?.fromMe ?? msg.fromMe);
-    const remoteJid = (key?.remoteJid || key?.remoteJidAlt || msg.remoteJid || "") as string;
-
-    // ignora grupos / status / newsletters
-    if (
-      typeof remoteJid === "string" &&
-      (remoteJid.endsWith("@g.us") ||
-        remoteJid.includes("status@broadcast") ||
-        remoteJid.includes("@newsletter"))
-    ) {
-      continue;
-    }
-
-    const phone = jidToPhone(remoteJid) || jidToPhone(msg.participant);
-    if (!phone) continue;
-
-    const content = extractText(msg.message) || extractText(msg) || "";
-    if (!content && !fromMe) continue; // reações vazias etc.
-
-    const name =
-      (typeof msg.pushName === "string" && msg.pushName) ||
-      (typeof dig(msg, "pushName") === "string" ? (dig(msg, "pushName") as string) : undefined) ||
-      undefined;
-
-    const externalId =
-      (typeof key?.id === "string" && key.id) ||
-      (typeof msg.id === "string" && msg.id) ||
-      undefined;
-
-    result.messages.push({
-      phone,
-      name,
-      content: content || "[mensagem]",
-      externalId,
-      fromMe,
-    });
-  }
-
-  return result;
 }
 
 /**
