@@ -407,8 +407,8 @@ export function Select({
         aria-controls={open ? listId : undefined}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
-        aria-required={required || undefined}
-        aria-invalid={error || undefined}
+        data-required={required || undefined}
+        data-invalid={error || undefined}
         className={cn(
           "nf-select-trigger",
           size === "sm" && "nf-select-trigger--sm",

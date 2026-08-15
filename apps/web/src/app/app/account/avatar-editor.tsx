@@ -22,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Menu, MenuItem, MenuSeparator, Modal, Spinner, useToast } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
-import { useAuth, type UserInfo } from "@/store/auth";
+import type { UserInfo } from "@/store/auth";
 import { applyUser } from "./account-utils";
 
 export function ProfileAvatarSection({
@@ -131,7 +131,7 @@ export function ProfileAvatarSection({
     }
   }
 
-  function useInitials(color?: string) {
+  function applyInitials(color?: string) {
     setPreview({
       avatarType: "INITIALS",
       avatarUrl: null,
@@ -153,7 +153,7 @@ export function ProfileAvatarSection({
 
   function confirmColor() {
     if (!pickedColor) return;
-    useInitials(pickedColor);
+    applyInitials(pickedColor);
   }
 
   const showRemove =
@@ -244,7 +244,7 @@ export function ProfileAvatarSection({
               Cor das iniciais
             </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={RotateCcw} onClick={() => useInitials()}>
+            <MenuItem icon={RotateCcw} onClick={() => applyInitials()}>
               Restaurar padrão
             </MenuItem>
             {showRemove ? (

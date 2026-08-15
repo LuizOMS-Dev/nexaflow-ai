@@ -204,7 +204,7 @@ export default function AdminPlansPage() {
     const errors: Partial<Record<keyof PlanForm, string>> = {};
     if (!form.name.trim()) errors.name = "Informe o nome do plano.";
 
-    let slug = form.slug.trim() || slugify(form.name);
+    const slug = form.slug.trim() || slugify(form.name);
     if (forCreate) {
       if (!slug) errors.slug = "Informe o slug.";
       else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {

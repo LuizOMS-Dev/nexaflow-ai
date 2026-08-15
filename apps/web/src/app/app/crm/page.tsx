@@ -367,7 +367,7 @@ export default function CrmPage() {
     autoScrollDirRef.current = 0;
   }, []);
 
-  const tickAutoScroll = useCallback(() => {
+  const tickAutoScroll = useCallback(function tickAutoScrollFrame() {
     const track = trackRef.current;
     const dir = autoScrollDirRef.current;
     if (!track || dir === 0) {
@@ -377,7 +377,7 @@ export default function CrmPage() {
     // velocidade moderada — não “pula” etapas de uma vez
     track.scrollLeft += dir * 12;
     updateOverflow();
-    autoScrollRef.current = window.requestAnimationFrame(tickAutoScroll);
+    autoScrollRef.current = window.requestAnimationFrame(tickAutoScrollFrame);
   }, [updateOverflow]);
 
   const handleBoardDragOver = useCallback(
