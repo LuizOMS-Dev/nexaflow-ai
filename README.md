@@ -5,7 +5,6 @@ Feita para pequenas e médias empresas brasileiras: conversas, contatos, vendas 
 
 - **Produção:** [https://nexaflow.161.97.107.241.sslip.io](https://nexaflow.161.97.107.241.sslip.io)
 - **API (health):** [https://nexaflow-api.161.97.107.241.sslip.io/health](https://nexaflow-api.161.97.107.241.sslip.io/health)
-- **Painel EasyPanel:** [https://easypanel2.i9atendimento.com.br](https://easypanel2.i9atendimento.com.br)
 - **Desenvolvimento local:** Web em http://localhost:3000 · API em http://localhost:4000/health
 
 Não existe login padrão. O primeiro usuário é criado pelo seed; em uma instalação nova, o banco começa sem usuários.
@@ -168,8 +167,7 @@ Guia: [`docs/EASYPANEL.md`](docs/EASYPANEL.md). Variáveis: [`.env.easypanel.exa
 A arquitetura de produção usa:
 
 - `nexaflow`: Compose com Web, API, Redis e WAHA;
-- `postgres-main`: serviço separado com PostgreSQL 16;
-- hostname interno do banco: `i9atendimento_postgres-main:5432`;
+- PostgreSQL 16 executado em serviço separado e acessível apenas pela rede interna;
 - banco e usuário: `nexaflow`;
 - Postgres, Redis e WAHA sem exposição pública.
 
