@@ -135,9 +135,9 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
       avatarType: "INITIALS",
       avatarUrl: null,
       avatarPresetId: null,
-      avatarColor: color || user.avatarColor || "#6366F1",
+      avatarColor: color || user?.avatarColor || "#6366F1",
     });
-    initialsMut.mutate(color || user.avatarColor || undefined);
+    initialsMut.mutate(color || user?.avatarColor || undefined);
   }
 
   function confirmPreset() {
@@ -215,7 +215,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
             <MenuItem
               icon={ImageIcon}
               onClick={() => {
-                setPickedPreset(user.avatarPresetId || null);
+                setPickedPreset(user?.avatarPresetId || null);
                 setPickerOpen(true);
               }}
             >
@@ -224,7 +224,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
             <MenuItem
               icon={Palette}
               onClick={() => {
-                setPickedColor(user.avatarColor || "#6366F1");
+                setPickedColor(user?.avatarColor || "#6366F1");
                 setColorPickerOpen(true);
               }}
             >
