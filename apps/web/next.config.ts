@@ -22,7 +22,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  turbopack: {},
   // Dev em OneDrive/Windows: menos thrash de FS e build mais leve
   experimental: {
     optimizePackageImports: ["lucide-react"],
