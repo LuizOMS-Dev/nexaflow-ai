@@ -15,7 +15,14 @@ npx prisma generate --schema=packages/db/prisma/schema.prisma
 echo "[nexaflow-api] Aplicando migrações versionadas..."
 # Produção é fail-closed: nunca usar db push/accept-data-loss automaticamente.
 # Banco legado deve receber baseline manual antes do primeiro deploy.
-npx prisma migrate deploy --schema=packages/db/prisma/schema.prisma
+if ! npx prisma migrate deploy --schema=packages/db/prisma/schema.prisma; then
+  echo "[nexaflow-api] migrate deploy FALHOU — ver logs acima"
+  if [ "${ALLOW_INSECURE_BOOT:-0}" = "1" ]; then
+    echo "[nexaflow-api] ALLOW_INSECURE_BOOT=1, seguindo para diagnóstico"
+  else
+    exit 1
+  fi
+fi
 
 if [ "${RUN_SEED_ON_BOOT:-0}" = "1" ]; then
   echo "[nexaflow-api] Seed explícito (RUN_SEED_ON_BOOT=1)..."

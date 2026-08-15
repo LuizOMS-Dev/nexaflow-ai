@@ -227,6 +227,10 @@ export function assertProductionSafe(opts?: { redisOk?: boolean | null }) {
   const blockers = issues.filter((i) => i.severity === "CRITICAL" || i.severity === "HIGH");
   if (blockers.length && env.nodeEnv === "production") {
     const msg = blockers.map((b) => `[${b.code}] ${b.message}`).join("\n");
+    if (process.env.ALLOW_INSECURE_BOOT === "1") {
+      console.error(`PRODUCTION SECURITY FAIL-CLOSED (ALLOW_INSECURE_BOOT=1, continuando):\n${msg}`);
+      return issues;
+    }
     throw new Error(`PRODUCTION SECURITY FAIL-CLOSED:\n${msg}`);
   }
   return issues;
