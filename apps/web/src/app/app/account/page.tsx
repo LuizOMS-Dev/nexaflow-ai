@@ -185,7 +185,6 @@ export default function AccountProfilePage() {
   }
 
   function useInitials(color?: string) {
-    setPhotoMenuOpen(false);
     setPreview({
       avatarType: "INITIALS",
       avatarUrl: null,
@@ -196,13 +195,11 @@ export default function AccountProfilePage() {
   }
 
   function openPicker() {
-    setPhotoMenuOpen(false);
     setPickedPreset(user?.avatarPresetId || null);
     setPickerOpen(true);
   }
 
   function openColorPicker() {
-    setPhotoMenuOpen(false);
     setPickedColor(user?.avatarColor || "#6366F1");
     setColorPickerOpen(true);
   }
