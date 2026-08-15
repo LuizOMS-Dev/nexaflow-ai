@@ -48,6 +48,12 @@ import { CommandPalette } from "./command-palette";
 import { UserAvatar } from "./user-avatar";
 import { NotificationBell } from "./notification-bell";
 import { WhatsAppStatusBanner } from "./whatsapp-status-banner";
+import {
+  applyTheme,
+  getStoredThemePreference,
+  setupSystemThemeListener,
+  type ThemePreference,
+} from "@/lib/theme";
 import { HumanQueueBanner } from "./human-queue-banner";
 import { PlatformTourController } from "./platform-tour/platform-tour-controller";
 import { tourHrefToDataAttr } from "@/lib/platform-tour";
@@ -357,13 +363,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [hydrated, user, tenant, pathname, router, onboarding, isOnboardingRoute]);
 
   useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-    const saved = localStorage.getItem("nexaflow_theme");
-    if (saved === "dark" || saved === "light") {
-      setAppThemeState(saved);
-    } else {
-      setAppThemeState("system");
-    }
+    const pref = getStoredThemePreference();
+    const effective = applyTheme(pref);
+    setAppThemeState(pref);
+    setDark(effective === "dark");
+
+    const cleanup = setupSystemThemeListener((eff) => {
+      setDark(eff === "dark");
+    });
+
     setUserMenuPortalReady(true);
     try {
       setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
@@ -371,6 +379,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore */
     }
+
+    return cleanup;
   }, []);
 
   // SUPERADMIN global: limpa tenant residual e não usa /app operacional
@@ -577,18 +587,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 
 
-  function handleSetTheme(t: "light" | "dark" | "system") {
+  function handleSetTheme(t: ThemePreference) {
     setAppThemeState(t);
-    if (t === "dark" || t === "light") {
-      localStorage.setItem("nexaflow_theme", t);
-      document.documentElement.classList.toggle("dark", t === "dark");
-      setDark(t === "dark");
-    } else {
-      localStorage.removeItem("nexaflow_theme");
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.classList.toggle("dark", prefersDark);
-      setDark(prefersDark);
-    }
+    const effective = applyTheme(t);
+    setDark(effective === "dark");
     const u = useAuth.getState().user;
     if (u) {
       useAuth.setState({

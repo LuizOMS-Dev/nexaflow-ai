@@ -7,6 +7,7 @@ import { useAuth } from "@/store/auth";
 import { useRealtime } from "@/hooks/use-realtime";
 import { ToastProvider } from "@/components/ui";
 import { PlatformReleaseToastListener } from "@/components/platform-release-toast";
+import { applyTheme, getStoredThemePreference, setupSystemThemeListener } from "@/lib/theme";
 
 function RealtimeBridge() {
   useRealtime();
@@ -36,8 +37,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const hydrate = useAuth((s) => s.hydrate);
 
   useEffect(() => {
-    const theme = localStorage.getItem("nexaflow_theme") || "light";
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    const pref = getStoredThemePreference();
+    applyTheme(pref);
+    const cleanup = setupSystemThemeListener();
+    return cleanup;
   }, []);
 
   useEffect(() => {

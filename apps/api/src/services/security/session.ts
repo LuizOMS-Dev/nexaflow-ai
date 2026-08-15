@@ -20,14 +20,49 @@ export function refreshExpiresAt(): Date {
 }
 
 export function deviceLabelFromUa(ua?: string | null): string {
-  if (!ua) return "Dispositivo desconhecido";
-  const s = ua.slice(0, 180);
-  if (/mobile/i.test(s)) return "Mobile";
-  if (/edg\//i.test(s)) return "Edge";
-  if (/chrome/i.test(s)) return "Chrome";
-  if (/firefox/i.test(s)) return "Firefox";
-  if (/safari/i.test(s)) return "Safari";
-  return "Desktop";
+  if (!ua) return "Desktop";
+  const s = ua.slice(0, 300);
+
+  // 1. Browser
+  let browser = "";
+  if (/OPR\/|Opera/i.test(s)) {
+    browser = "Opera";
+  } else if (/Edg\//i.test(s)) {
+    browser = "Edge";
+  } else if (/SamsungBrowser/i.test(s)) {
+    browser = "Samsung Internet";
+  } else if (/Brave/i.test(s)) {
+    browser = "Brave";
+  } else if (/Firefox\/|FxiOS\//i.test(s)) {
+    browser = "Firefox";
+  } else if (/Chrome\/|Chromium\/|CriOS\//i.test(s)) {
+    browser = "Chrome";
+  } else if (/Safari/i.test(s) && !/Chrome|Android/i.test(s)) {
+    browser = "Safari";
+  }
+
+  // 2. OS
+  let os = "";
+  if (/Windows NT|Windows/i.test(s)) {
+    os = "Windows";
+  } else if (/Macintosh|Mac OS X/i.test(s)) {
+    os = "macOS";
+  } else if (/Android/i.test(s)) {
+    os = "Android";
+  } else if (/iPhone|iPod/i.test(s)) {
+    os = "iOS";
+  } else if (/iPad/i.test(s)) {
+    os = "iPadOS";
+  } else if (/CrOS/i.test(s)) {
+    os = "ChromeOS";
+  } else if (/Linux/i.test(s)) {
+    os = "Linux";
+  }
+
+  if (browser && os) return `${browser} · ${os}`;
+  if (browser) return browser;
+  if (os) return /mobile/i.test(s) ? `Dispositivo móvel · ${os}` : `Desktop · ${os}`;
+  return /mobile/i.test(s) ? "Dispositivo móvel" : "Desktop";
 }
 
 export async function createAuthSession(params: {

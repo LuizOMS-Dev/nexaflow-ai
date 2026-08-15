@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Spinner, Switch, useToast } from "@/components/ui";
 import { useAuth, type UserInfo } from "@/store/auth";
+import { applyTheme, getStoredThemePreference, type ThemePreference } from "@/lib/theme";
 import { applyUser } from "../account-utils";
 import {
   AccountRow,
@@ -26,15 +27,16 @@ export default function AccountPreferencesPage() {
   const { toast } = useToast();
 
   const [prefs, setPrefs] = useState({
-    theme: (user?.preferences?.theme || "system") as "light" | "dark" | "system",
+    theme: (user?.preferences?.theme || getStoredThemePreference() || "system") as ThemePreference,
     notifyMentions: user?.preferences?.notifyMentions !== false,
     notifyAssigned: user?.preferences?.notifyAssigned !== false,
     notifySecurity: user?.preferences?.notifySecurity !== false,
   });
 
   useEffect(() => {
+    const userTheme = (user?.preferences?.theme || getStoredThemePreference() || "system") as ThemePreference;
     setPrefs({
-      theme: (user?.preferences?.theme || "system") as "light" | "dark" | "system",
+      theme: userTheme,
       notifyMentions: user?.preferences?.notifyMentions !== false,
       notifyAssigned: user?.preferences?.notifyAssigned !== false,
       notifySecurity: user?.preferences?.notifySecurity !== false,
@@ -43,7 +45,7 @@ export default function AccountPreferencesPage() {
 
   const baseline = useMemo(
     () => ({
-      theme: (user?.preferences?.theme || "system") as "light" | "dark" | "system",
+      theme: (user?.preferences?.theme || getStoredThemePreference() || "system") as ThemePreference,
       notifyMentions: user?.preferences?.notifyMentions !== false,
       notifyAssigned: user?.preferences?.notifyAssigned !== false,
       notifySecurity: user?.preferences?.notifySecurity !== false,
@@ -57,6 +59,26 @@ export default function AccountPreferencesPage() {
     prefs.notifyAssigned !== baseline.notifyAssigned ||
     prefs.notifySecurity !== baseline.notifySecurity;
 
+  useEffect(() => {
+    return () => {
+      // Restaura o tema salvo no localStorage caso o usuário saia sem salvar
+      const saved = getStoredThemePreference();
+      applyTheme(saved);
+    };
+  }, []);
+
+  function handleThemeChange(id: ThemePreference) {
+    setPrefs((p) => ({ ...p, theme: id }));
+    // Live preview imediato do tema escolhido
+    applyTheme(id, { persist: false });
+  }
+
+  function handleDiscard() {
+    setPrefs(baseline);
+    // Restaura o tema salvo
+    applyTheme(baseline.theme, { persist: true });
+  }
+
   const savePrefs = useMutation({
     mutationFn: () =>
       api<{ user: UserInfo }>("/auth/profile", {
@@ -65,14 +87,7 @@ export default function AccountPreferencesPage() {
       }),
     onSuccess: (data) => {
       if (data.user) applyUser(data.user);
-      if (prefs.theme === "dark" || prefs.theme === "light") {
-        document.documentElement.classList.toggle("dark", prefs.theme === "dark");
-        localStorage.setItem("nexaflow_theme", prefs.theme);
-      } else {
-        localStorage.removeItem("nexaflow_theme");
-        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        document.documentElement.classList.toggle("dark", prefersDark);
-      }
+      applyTheme(prefs.theme, { persist: true });
       toast({ kind: "success", title: "Preferências salvas com sucesso." });
     },
     onError: (e: Error) =>
@@ -108,7 +123,7 @@ export default function AccountPreferencesPage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setPrefs((p) => ({ ...p, theme: id }))}
+                onClick={() => handleThemeChange(id)}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all",
                   prefs.theme === id
@@ -177,7 +192,7 @@ export default function AccountPreferencesPage() {
         dirty={dirty}
         saving={savePrefs.isPending}
         onSave={() => savePrefs.mutate()}
-        onDiscard={() => setPrefs(baseline)}
+        onDiscard={handleDiscard}
       />
     </div>
   );

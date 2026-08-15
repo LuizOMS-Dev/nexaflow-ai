@@ -97,7 +97,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.classList.add("dark");
     document.documentElement.classList.add("nf-panel-lock");
     return () => {
       document.documentElement.classList.remove("nf-panel-lock");
