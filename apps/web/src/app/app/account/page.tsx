@@ -282,13 +282,13 @@ export default function AccountProfilePage() {
 
   return (
     <AccountPanel>
-      {/* 1. Header do Perfil: Avatar + Nome + E-mail + Cargo */}
+      {/* 1. Header do Perfil: Avatar (64px) + Nome + E-mail + Cargo + Ação */}
       <div className="relative p-6 sm:p-7 bg-gradient-to-r from-violet-500/[0.03] via-transparent to-transparent">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4.5 min-w-0">
             <div className="relative shrink-0">
               <div className="rounded-full ring-2 ring-violet-500/20 shadow-md">
-                <UserAvatar user={liveUser} size="xl" ring />
+                <UserAvatar user={liveUser} className="!h-16 !w-16 !text-lg" ring />
               </div>
               {busy ? (
                 <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-[1px]">
@@ -299,7 +299,7 @@ export default function AccountProfilePage() {
 
             {/* Identidade em ordem estrita: Nome -> E-mail -> Cargo */}
             <div className="min-w-0 flex flex-col justify-center">
-              <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink dark:text-white">
+              <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink dark:text-white sm:text-xl">
                 {liveUser.name}
               </h2>
               <p className="mt-0.5 truncate text-xs text-ink-muted dark:text-zinc-400">
@@ -318,7 +318,7 @@ export default function AccountProfilePage() {
           <div className="relative shrink-0" ref={photoMenuRef}>
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3.5 text-xs font-medium gap-2 shadow-xs"
+              className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5 shadow-xs"
               disabled={busy}
               aria-expanded={photoMenuOpen}
               aria-haspopup="menu"
@@ -328,7 +328,7 @@ export default function AccountProfilePage() {
               <span>Alterar foto</span>
               <ChevronDown
                 className={cn(
-                  "h-3.5 w-3.5 opacity-60 transition-transform duration-150",
+                  "h-3 w-3 opacity-60 transition-transform duration-150",
                   photoMenuOpen && "rotate-180"
                 )}
                 strokeWidth={1.75}
@@ -412,52 +412,54 @@ export default function AccountProfilePage() {
 
       {/* 2. Informações Pessoais Form */}
       <div className="p-6 sm:p-7">
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <h3 className="text-[13.5px] font-semibold tracking-tight text-ink dark:text-zinc-100">
-              Informações pessoais
-            </h3>
-            <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">
-              Seus dados de exibição nas conversas e painéis da plataforma.
-            </p>
-          </div>
+        <div className="mb-6">
+          <h3 className="text-[14px] font-semibold tracking-tight text-ink dark:text-zinc-100">
+            Informações pessoais
+          </h3>
+          <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">
+            Seus dados de exibição nas conversas e painéis da plataforma.
+          </p>
         </div>
 
-        <form onSubmit={onSubmitName} className="space-y-4.5 max-w-lg">
-          <div>
-            <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-name">
-              Nome completo
-            </label>
-            <input
-              id="account-name"
-              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Seu nome"
-              autoComplete="name"
-              maxLength={80}
-            />
+        <form onSubmit={onSubmitName} className="space-y-5">
+          {/* Grid de 2 Colunas: Nome Completo & Telefone */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6">
+            <div className="flex flex-col">
+              <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-name">
+                Nome completo
+              </label>
+              <input
+                id="account-name"
+                className="input mt-1.5 h-9.5 w-full text-xs focus:border-violet-500 focus:ring-violet-500/20"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Seu nome completo"
+                autoComplete="name"
+                maxLength={80}
+              />
+            </div>
+
+            <div className="flex flex-col">
+              <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-phone">
+                Telefone / WhatsApp
+              </label>
+              <input
+                id="account-phone"
+                className="input mt-1.5 h-9.5 w-full text-xs focus:border-violet-500 focus:ring-violet-500/20"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Opcional"
+                autoComplete="tel"
+              />
+            </div>
           </div>
 
-          <div>
-            <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-phone">
-              Telefone / WhatsApp
-            </label>
-            <input
-              id="account-phone"
-              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Opcional"
-              autoComplete="tel"
-            />
-          </div>
-
-          <div>
+          {/* Linha Inteira: E-mail de Acesso */}
+          <div className="flex flex-col pt-1">
             <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-email">
               E-mail de acesso
             </label>
-            <div className="mt-1 flex items-center justify-between rounded-xl border border-black/[0.07] bg-black/[0.02] px-3.5 py-2 dark:border-white/[0.07] dark:bg-white/[0.03]">
+            <div className="mt-1.5 flex h-9.5 w-full items-center justify-between rounded-xl border border-black/[0.07] bg-black/[0.02] px-3.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
               <span className="truncate text-xs font-medium text-ink dark:text-zinc-200">
                 {user.email}
               </span>
@@ -472,10 +474,10 @@ export default function AccountProfilePage() {
           </div>
 
           {dirty ? (
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-black/[0.05] dark:border-white/[0.06]">
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-black/[0.05] dark:border-white/[0.06]">
               <button
                 type="button"
-                className="btn-secondary h-8.5 px-3.5 text-xs"
+                className="btn-secondary h-8.5 px-4 text-xs font-medium"
                 onClick={discard}
                 disabled={saveName.isPending}
               >
