@@ -189,7 +189,7 @@ export function AccountField({
       </div>
       {children}
       {hint ? (
-        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint dark:text-zinc-500">{hint}</p>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-500 dark:text-zinc-400">{hint}</p>
       ) : null}
     </div>
   );

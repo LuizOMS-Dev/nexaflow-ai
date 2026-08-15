@@ -197,8 +197,8 @@ export function ProfileAvatarSection({
             ) : null}
             {roleLabel ? (
               <div className="pt-1">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/10 dark:bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/[0.08] dark:bg-violet-500/[0.12] border border-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:text-violet-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500/80" />
                   {roleLabel}
                 </span>
               </div>
@@ -209,7 +209,7 @@ export function ProfileAvatarSection({
         <div className="shrink-0 self-start sm:self-center">
           <Menu
             align="right"
-            minWidth={210}
+            minWidth={220}
             trigger={
               <button
                 type="button"
@@ -217,8 +217,8 @@ export function ProfileAvatarSection({
                 disabled={busy}
               >
                 <Camera className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Alterar foto
-                <ChevronDown className="h-3 w-3 opacity-60" strokeWidth={1.75} />
+                <span>Alterar foto</span>
+                <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" strokeWidth={1.75} />
               </button>
             }
           >

@@ -188,7 +188,8 @@ export default function AccountSessionsPage() {
                   <li
                     key={s.id}
                     className={cn(
-                      "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:px-6 transition-colors",
+                      "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors",
+                      list.length === 1 ? "p-4 sm:px-5 sm:py-4" : "p-5 sm:px-6",
                       s.isCurrent
                         ? "bg-violet-500/[0.02] dark:bg-violet-500/[0.03]"
                         : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"
@@ -205,7 +206,7 @@ export default function AccountSessionsPage() {
                             {displayTitle}
                           </p>
                           {s.isCurrent ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                               Este dispositivo
                             </span>
@@ -229,7 +230,7 @@ export default function AccountSessionsPage() {
                       <div className="shrink-0 self-start sm:self-center">
                         <button
                           type="button"
-                          className="btn-secondary h-8 px-3 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 gap-1.5"
+                          className="btn-secondary h-8 px-3 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 gap-1.5 border-rose-500/20"
                           disabled={revokeOne.isPending}
                           onClick={() => setSessionToRevoke(s)}
                         >

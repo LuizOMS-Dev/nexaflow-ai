@@ -4,17 +4,15 @@ import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle,
   Check,
   CheckCircle2,
   Copy,
   Download,
+  Eye,
+  EyeOff,
   KeyRound,
-  Lock,
-  QrCode,
   Shield,
   ShieldAlert,
-  ShieldCheck,
   Smartphone,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -22,9 +20,7 @@ import { cn } from "@/lib/utils";
 import { Modal, Spinner, useToast } from "@/components/ui";
 import { useAuth } from "@/store/auth";
 import {
-  AccountBody,
   AccountCard,
-  AccountCardHeader,
   AccountRow,
 } from "../account-ui";
 
@@ -44,6 +40,9 @@ export default function AccountSecurityPage() {
 
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwd, setPwd] = useState({ current: "", next: "", confirm: "" });
+  const [showPwd, setShowPwd] = useState({ current: false, next: false, confirm: false });
+  const [pwdError, setPwdError] = useState<string | null>(null);
+
   const [mfaSetup, setMfaSetup] = useState<{ secret: string; qrDataUrl: string } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
@@ -51,6 +50,7 @@ export default function AccountSecurityPage() {
   const [manageOpen, setManageOpen] = useState(false);
   const [disableOpen, setDisableOpen] = useState(false);
   const [mfaDisable, setMfaDisable] = useState({ password: "", code: "" });
+  const [showDisablePwd, setShowDisablePwd] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
 
   const isSuperadmin = authUser?.platformRole === "SUPERADMIN";
@@ -66,6 +66,7 @@ export default function AccountSecurityPage() {
       }),
     onSuccess: (data) => {
       setPwd({ current: "", next: "", confirm: "" });
+      setPwdError(null);
       setPwdOpen(false);
       toast({
         kind: "success",
@@ -74,6 +75,7 @@ export default function AccountSecurityPage() {
       });
     },
     onError: (e: Error) => {
+      setPwdError(e.message || "Senha atual incorreta ou inválida.");
       toast({ kind: "error", title: "Não foi possível alterar a senha", description: e.message });
     },
   });
@@ -108,7 +110,11 @@ export default function AccountSecurityPage() {
       });
       void qc.invalidateQueries({ queryKey: ["mfa-status"] });
     },
-    onError: (e: Error) => toast({ kind: "error", title: "Código de 6 dígitos inválido", description: e.message }),
+    onError: (e: Error) => toast({
+      kind: "error",
+      title: "Código inválido",
+      description: "Verifique o aplicativo autenticador e tente novamente.",
+    }),
   });
 
   const mfaDisableMutation = useMutation({
@@ -187,6 +193,10 @@ export default function AccountSecurityPage() {
   }
 
   const is2FAEnabled = mfaStatus.data?.enabled;
+  const isPwdValid =
+    pwd.current.trim().length > 0 &&
+    pwd.next.length >= 8 &&
+    pwd.next === pwd.confirm;
 
   return (
     <div className="space-y-6">
@@ -201,12 +211,16 @@ export default function AccountSecurityPage() {
           icon={KeyRound}
           title="Senha de acesso"
           description="Utilizada para autenticação principal em todos os seus navegadores e dispositivos."
-          className="py-5 sm:py-6"
+          className="py-5 sm:py-6 hover:bg-black/[0.01] dark:hover:bg-white/[0.015] transition-colors"
           control={
             <button
               type="button"
               className="btn-secondary h-8.5 px-3.5 text-xs font-medium"
-              onClick={() => setPwdOpen(true)}
+              onClick={() => {
+                setPwd({ current: "", next: "", confirm: "" });
+                setPwdError(null);
+                setPwdOpen(true);
+              }}
             >
               Alterar senha
             </button>
@@ -218,29 +232,30 @@ export default function AccountSecurityPage() {
           <AccountRow
             icon={Smartphone}
             title="Autenticação em duas etapas"
-            className="py-5 sm:py-6"
+            className="py-5 sm:py-6 hover:bg-black/[0.01] dark:hover:bg-white/[0.015] transition-colors"
             description={
               <div className="space-y-2.5">
-                <p>
+                <p className="text-[12.5px] leading-relaxed text-ink-muted dark:text-zinc-400">
                   Exige um código gerado por aplicativo autenticador ao entrar.
                 </p>
                 <div className="flex flex-wrap items-center gap-2 pt-0.5">
                   {mfaStatus.isLoading ? (
                     <Spinner className="h-4 w-4" />
                   ) : is2FAEnabled ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
                       <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
                       Ativada
                     </span>
                   ) : (
                     <>
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                        <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+                      {/* Desativada em badge neutro/cinza para não competir com o alerta de superadmin */}
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
+                        <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
                         Desativada
                       </span>
                       {isSuperadmin ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                          <ShieldAlert className="h-3 w-3" />
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                          <ShieldAlert className="h-3 w-3 shrink-0" />
                           Obrigatório para Superadministrador
                         </span>
                       ) : null}
@@ -251,13 +266,27 @@ export default function AccountSecurityPage() {
             }
             control={
               is2FAEnabled ? (
-                <button
-                  type="button"
-                  className="btn-secondary h-8.5 px-3.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                  onClick={() => setDisableOpen(true)}
-                >
-                  Desativar 2FA
-                </button>
+                isSuperadmin ? (
+                  <button
+                    type="button"
+                    className="btn-secondary h-8.5 px-3.5 text-xs font-medium opacity-50 cursor-not-allowed"
+                    title="O 2FA é obrigatório para contas com perfil Superadministrador"
+                    disabled
+                  >
+                    Desativar 2FA
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-secondary h-8.5 px-3.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                    onClick={() => {
+                      setMfaDisable({ password: "", code: "" });
+                      setDisableOpen(true);
+                    }}
+                  >
+                    Desativar 2FA
+                  </button>
+                )
               ) : (
                 <button
                   type="button"
@@ -278,16 +307,18 @@ export default function AccountSecurityPage() {
         open={pwdOpen}
         onClose={() => setPwdOpen(false)}
         title="Alterar senha de acesso"
+        size="md"
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={(e: FormEvent) => {
             e.preventDefault();
+            setPwdError(null);
             if (pwd.next !== pwd.confirm) {
-              toast({ kind: "error", title: "A confirmação de senha não confere." });
+              setPwdError("A confirmação de senha não confere.");
               return;
             }
             if (pwd.next.length < 8) {
-              toast({ kind: "error", title: "A nova senha deve ter no mínimo 8 caracteres." });
+              setPwdError("A nova senha deve ter no mínimo 8 caracteres.");
               return;
             }
             changePassword.mutate();
@@ -298,62 +329,112 @@ export default function AccountSecurityPage() {
             <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="pwd-current">
               Senha atual
             </label>
-            <input
-              id="pwd-current"
-              type="password"
-              required
-              value={pwd.current}
-              onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
-              className="input h-9 text-xs sm:text-[13px] mt-1.5 w-full"
-              placeholder="Digite sua senha atual"
-            />
+            <div className="relative mt-1.5">
+              <input
+                id="pwd-current"
+                type={showPwd.current ? "text" : "password"}
+                required
+                value={pwd.current}
+                onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
+                className="input h-9.5 pr-10 text-xs sm:text-[13px] w-full"
+                placeholder="Digite sua senha atual"
+              />
+              <button
+                type="button"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1"
+                onClick={() => setShowPwd((s) => ({ ...s, current: !s.current }))}
+                tabIndex={-1}
+                aria-label={showPwd.current ? "Ocultar senha atual" : "Mostrar senha atual"}
+              >
+                {showPwd.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <div>
             <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="pwd-next">
               Nova senha
             </label>
-            <input
-              id="pwd-next"
-              type="password"
-              required
-              minLength={8}
-              value={pwd.next}
-              onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
-              className="input h-9 text-xs sm:text-[13px] mt-1.5 w-full"
-              placeholder="Mínimo de 8 caracteres"
-            />
+            <div className="relative mt-1.5">
+              <input
+                id="pwd-next"
+                type={showPwd.next ? "text" : "password"}
+                required
+                minLength={8}
+                value={pwd.next}
+                onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
+                className="input h-9.5 pr-10 text-xs sm:text-[13px] w-full"
+                placeholder="Mínimo de 8 caracteres"
+              />
+              <button
+                type="button"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1"
+                onClick={() => setShowPwd((s) => ({ ...s, next: !s.next }))}
+                tabIndex={-1}
+                aria-label={showPwd.next ? "Ocultar nova senha" : "Mostrar nova senha"}
+              >
+                {showPwd.next ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="mt-1 text-[11.5px] text-zinc-500 dark:text-zinc-400">
+              Use pelo menos 8 caracteres.
+            </p>
           </div>
 
           <div>
             <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="pwd-confirm">
               Confirmar nova senha
             </label>
-            <input
-              id="pwd-confirm"
-              type="password"
-              required
-              value={pwd.confirm}
-              onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
-              className="input h-9 text-xs sm:text-[13px] mt-1.5 w-full"
-              placeholder="Repita a nova senha"
-            />
+            <div className="relative mt-1.5">
+              <input
+                id="pwd-confirm"
+                type={showPwd.confirm ? "text" : "password"}
+                required
+                value={pwd.confirm}
+                onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
+                className={cn(
+                  "input h-9.5 pr-10 text-xs sm:text-[13px] w-full",
+                  pwd.confirm && pwd.next !== pwd.confirm && "border-rose-500 focus:border-rose-500"
+                )}
+                placeholder="Repita a nova senha"
+              />
+              <button
+                type="button"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1"
+                onClick={() => setShowPwd((s) => ({ ...s, confirm: !s.confirm }))}
+                tabIndex={-1}
+                aria-label={showPwd.confirm ? "Ocultar confirmação" : "Mostrar confirmação"}
+              >
+                {showPwd.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {pwd.confirm && pwd.next !== pwd.confirm ? (
+              <p className="mt-1 text-[11.5px] text-rose-600 dark:text-rose-400">
+                As senhas não coincidem.
+              </p>
+            ) : null}
           </div>
+
+          {pwdError ? (
+            <div className="rounded-xl bg-rose-500/10 p-2.5 text-xs text-rose-700 dark:text-rose-300 border border-rose-500/20">
+              {pwdError}
+            </div>
+          ) : null}
 
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium"
               onClick={() => setPwdOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn-primary h-8.5 px-4 text-xs bg-violet-600 hover:bg-violet-700"
-              disabled={changePassword.isPending}
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
+              disabled={!isPwdValid || changePassword.isPending}
             >
-              {changePassword.isPending ? "Salvando…" : "Atualizar senha"}
+              {changePassword.isPending ? "Atualizando senha…" : "Atualizar senha"}
             </button>
           </div>
         </form>
@@ -364,19 +445,20 @@ export default function AccountSecurityPage() {
         open={manageOpen && Boolean(mfaSetup)}
         onClose={() => setManageOpen(false)}
         title="Ativar autenticação em duas etapas (2FA)"
+        size="md"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
-          <p>
+          <p className="leading-relaxed">
             1. Escaneie o QR Code abaixo com seu app autenticador (Google Authenticator, Microsoft Authenticator, 1Password):
           </p>
 
           {mfaSetup?.qrDataUrl ? (
-            <div className="flex justify-center p-3 rounded-2xl bg-white border border-black/[0.08] shadow-sm">
+            <div className="flex justify-center p-3 rounded-2xl bg-white border border-black/[0.08] shadow-xs max-w-fit mx-auto">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={mfaSetup.qrDataUrl}
                 alt="QR Code 2FA"
-                className="h-44 w-44 rounded-xl object-contain"
+                className="h-36 w-36 rounded-xl object-contain"
               />
             </div>
           ) : null}
@@ -386,16 +468,26 @@ export default function AccountSecurityPage() {
               Ou digite a chave manualmente:
             </p>
             <div className="flex items-center gap-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] p-2 border border-black/[0.06] dark:border-white/[0.06]">
-              <code className="flex-1 font-mono text-[11px] text-violet-700 dark:text-violet-300 select-all truncate">
+              <code className="flex-1 font-mono text-[11.5px] text-violet-700 dark:text-violet-300 select-all truncate px-1">
                 {mfaSetup?.secret}
               </code>
               <button
                 type="button"
-                className="btn-ghost h-7 px-2 text-xs"
+                className="btn-ghost h-7.5 px-2.5 text-xs font-medium gap-1 text-zinc-600 dark:text-zinc-300"
                 onClick={handleCopyKey}
                 title="Copiar chave"
               >
-                {copiedKey ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                {copiedKey ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    <span className="text-[11px]">Copiar</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -419,14 +511,14 @@ export default function AccountSecurityPage() {
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium"
               onClick={() => setManageOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
               disabled={mfaCode.length !== 6 || mfaEnableMutation.isPending}
               onClick={() => mfaEnableMutation.mutate()}
             >
@@ -441,9 +533,10 @@ export default function AccountSecurityPage() {
         open={Boolean(backupCodes && backupCodes.length > 0)}
         onClose={() => {}}
         title="Códigos de recuperação de emergência"
+        size="md"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
-          <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20 text-amber-700 dark:text-amber-300 leading-relaxed">
+          <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20 text-amber-800 dark:text-amber-300 leading-relaxed">
             <strong>Importante:</strong> Guarde estes códigos em local seguro. Cada código permite acessar a conta caso você perca o celular ou app autenticador.
           </div>
 
@@ -458,7 +551,7 @@ export default function AccountSecurityPage() {
           <div className="flex justify-center">
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs gap-1.5"
+              className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5"
               onClick={handleDownloadBackupCodes}
             >
               <Download className="h-3.5 w-3.5" />
@@ -481,7 +574,7 @@ export default function AccountSecurityPage() {
           <div className="flex justify-end pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
               disabled={!backupCodesAck}
               onClick={confirmBackupCodesAndContinue}
             >
@@ -496,9 +589,10 @@ export default function AccountSecurityPage() {
         open={disableOpen}
         onClose={() => setDisableOpen(false)}
         title="Desativar autenticação em duas etapas"
+        size="md"
       >
         <form
-          onSubmit={(e) => {
+          onSubmit={(e: FormEvent) => {
             e.preventDefault();
             mfaDisableMutation.mutate();
           }}
@@ -512,15 +606,26 @@ export default function AccountSecurityPage() {
             <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="dis-pwd">
               Sua senha
             </label>
-            <input
-              id="dis-pwd"
-              type="password"
-              required
-              value={mfaDisable.password}
-              onChange={(e) => setMfaDisable((p) => ({ ...p, password: e.target.value }))}
-              className="input h-9 text-xs sm:text-[13px] mt-1.5 w-full"
-              placeholder="Digite sua senha de acesso"
-            />
+            <div className="relative mt-1.5">
+              <input
+                id="dis-pwd"
+                type={showDisablePwd ? "text" : "password"}
+                required
+                value={mfaDisable.password}
+                onChange={(e) => setMfaDisable((p) => ({ ...p, password: e.target.value }))}
+                className="input h-9.5 pr-10 text-xs sm:text-[13px] w-full"
+                placeholder="Digite sua senha de acesso"
+              />
+              <button
+                type="button"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1"
+                onClick={() => setShowDisablePwd((s) => !s)}
+                tabIndex={-1}
+                aria-label={showDisablePwd ? "Ocultar senha" : "Mostrar senha"}
+              >
+                {showDisablePwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <div>
@@ -534,7 +639,7 @@ export default function AccountSecurityPage() {
               maxLength={6}
               value={mfaDisable.code}
               onChange={(e) => setMfaDisable((p) => ({ ...p, code: e.target.value.replace(/\D/g, "") }))}
-              className="input h-9 text-xs sm:text-[13px] mt-1.5 w-full font-mono"
+              className="input h-9.5 text-xs sm:text-[13px] mt-1.5 w-full font-mono tracking-widest text-center"
               placeholder="000000"
             />
           </div>
@@ -542,15 +647,15 @@ export default function AccountSecurityPage() {
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium"
               onClick={() => setDisableOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="btn-primary h-8.5 px-4 text-xs bg-red-600 hover:bg-red-700"
-              disabled={mfaDisableMutation.isPending}
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+              disabled={mfaDisable.code.length !== 6 || !mfaDisable.password || mfaDisableMutation.isPending}
             >
               {mfaDisableMutation.isPending ? "Desativando…" : "Confirmar desativação"}
             </button>
