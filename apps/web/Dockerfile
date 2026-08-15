@@ -3,6 +3,8 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json package-lock.json* ./
+COPY packages/db/package.json ./packages/db/
+COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 # workspaces hoists deps to root node_modules
 RUN npm install --workspace=@nexaflow/web
