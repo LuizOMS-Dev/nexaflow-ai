@@ -100,7 +100,8 @@ export function SidebarUserCard({
           <ChevronUp
             className={cn(
               "h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform duration-200",
-              !open && "rotate-180"
+              !open && "rotate-180 text-zinc-400",
+              open && "text-violet-400"
             )}
             strokeWidth={1.75}
             aria-hidden

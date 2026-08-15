@@ -1634,30 +1634,74 @@ export async function adminRoutes(app: FastifyInstance) {
    * Lista global de usuários (SUPERADMIN only via requireSuperadmin).
    * Membership (tenant) e platformRole (global) são conceitos independentes.
    */
-  app.get("/admin/users", async () => {
-    return prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        platformRole: true,
-        status: true,
-        isActive: true,
-        twoFactorEnabled: true,
-        lastLoginAt: true,
-        createdAt: true,
-        memberships: {
-          select: {
-            id: true,
-            role: true,
-            isActive: true,
-            tenant: { select: { id: true, name: true, slug: true } },
+  app.get("/admin/users", async (request) => {
+    const query = z
+      .object({
+        search: z.string().trim().max(200).optional(),
+        scope: z.enum(["all", "companies", "platform"]).default("all"),
+        status: z
+          .enum(["ACTIVE", "INVITED", "SUSPENDED", "DISABLED", "PENDING_VERIFICATION"])
+          .optional(),
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(500).default(30),
+      })
+      .parse(request.query || {});
+
+    const where = {
+      AND: [
+        query.search
+          ? {
+              OR: [
+                { name: { contains: query.search, mode: "insensitive" as const } },
+                { email: { contains: query.search, mode: "insensitive" as const } },
+              ],
+            }
+          : {},
+        query.scope === "platform"
+          ? { platformRole: "SUPERADMIN" as const }
+          : query.scope === "companies"
+            ? { memberships: { some: {} } }
+            : {},
+        query.status ? { status: query.status } : {},
+      ],
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          platformRole: true,
+          status: true,
+          isActive: true,
+          twoFactorEnabled: true,
+          lastLoginAt: true,
+          createdAt: true,
+          memberships: {
+            select: {
+              id: true,
+              role: true,
+              isActive: true,
+              tenant: { select: { id: true, name: true, slug: true } },
+            },
           },
         },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 500,
-    });
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: query.page,
+      limit: query.limit,
+      totalPages: Math.max(1, Math.ceil(total / query.limit)),
+    };
   });
 
   /**

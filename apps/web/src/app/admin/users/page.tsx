@@ -112,7 +112,8 @@ export default function AdminUsersPage() {
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["admin-users"],
-    queryFn: () => api<AdminUser[]>("/admin/users"),
+    queryFn: () =>
+      api<{ items: AdminUser[] }>("/admin/users?page=1&limit=500"),
     enabled: user?.platformRole === "SUPERADMIN",
     staleTime: 30_000,
   });
@@ -132,7 +133,7 @@ export default function AdminUsersPage() {
   });
 
   const allUsers = useMemo(() => {
-    return (data || []).filter(
+    return (data?.items || []).filter(
       (u) =>
         !u.email.endsWith("@test.local") &&
         !u.email.endsWith("@test.nexaflow.local")

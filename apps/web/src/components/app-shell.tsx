@@ -334,11 +334,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [userMenuPresent, setUserMenuPresent] = useState(false);
   /** Classe visual aberta (CSS transition) */
   const [userMenuAnim, setUserMenuAnim] = useState(false);
-  /** true = popover flutuante (sidebar recolhida); false = 100% dentro da sidebar */
-  const [userMenuFloating, setUserMenuFloating] = useState(false);
   const [userMenuPos, setUserMenuPos] = useState<{
     left: number;
-    bottom: number;
+    top?: number;
+    bottom?: number;
     width: number;
     maxHeight: number;
   } | null>(null);
@@ -431,7 +430,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setUserMenuOpen(false);
     setUserMenuAnim(false);
     setUserMenuPresent(false);
-    setUserMenuFloating(false);
     setUserMenuPos(null);
     if (userMenuCloseTimer.current) {
       window.clearTimeout(userMenuCloseTimer.current);
@@ -440,54 +438,60 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   /**
-   * Só para sidebar RECOLHIDA: popover à direita do avatar.
-   * Expandida usa menu inline (sem portal).
+   * Posicionamento inteligente do menu de usuário via PORTAL.
+   * Abre preferencialmente acima do botão gatilho, com flip/shift de colisão
+   * e largura independente (268px a 276px), sem nunca ser cortado pela sidebar.
    */
   const computeFloatingUserMenuPos = useCallback((btn: HTMLElement) => {
     const r = btn.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const gap = 8;
-    const width = Math.min(280, Math.max(270, Math.min(vw - 16, 280)));
-    const estHeight = 300;
-    let left = r.right + gap;
-    if (left + width > vw - 8) {
-      left = Math.max(8, r.left - width - gap);
+    const sideOffset = 8;
+    const padding = 12;
+    const width = Math.min(272, Math.max(260, vw - padding * 2));
+    const estHeight = 320;
+
+    let left = Math.max(padding, r.left);
+    if (left + width > vw - padding) {
+      left = Math.max(padding, vw - width - padding);
     }
-    let bottom = Math.max(8, vh - r.bottom);
-    let maxHeight = Math.max(200, vh - bottom - 8);
-    if (estHeight > maxHeight) {
-      bottom = Math.max(8, Math.min(bottom, vh - Math.min(estHeight, vh - 16) - 8));
-      maxHeight = Math.max(200, vh - bottom - 8);
+
+    const spaceAbove = r.top - sideOffset - padding;
+    const spaceBelow = vh - r.bottom - sideOffset - padding;
+
+    let top: number | undefined;
+    let bottom: number | undefined;
+    let maxHeight = 380;
+
+    if (spaceAbove >= Math.min(estHeight, 220) || spaceAbove >= spaceBelow) {
+      bottom = vh - r.top + sideOffset;
+      maxHeight = Math.max(180, Math.min(420, spaceAbove));
+    } else {
+      top = r.bottom + sideOffset;
+      maxHeight = Math.max(180, Math.min(420, spaceBelow));
     }
-    maxHeight = Math.min(maxHeight, Math.min(vh - 16, 480));
-    return { left, bottom, width, maxHeight };
+
+    return { left, top, bottom, width, maxHeight };
   }, []);
 
   const updateUserMenuPos = useCallback(() => {
-    if (!userMenuFloating) return;
+    if (!userMenuPresent) return;
     const btn = userMenuBtnRef.current;
     if (!btn || typeof btn.getBoundingClientRect !== "function") return;
     const r = btn.getBoundingClientRect();
     if (r.width < 1 && r.height < 1) return;
     setUserMenuPos(computeFloatingUserMenuPos(btn));
-  }, [computeFloatingUserMenuPos, userMenuFloating]);
+  }, [computeFloatingUserMenuPos, userMenuPresent]);
 
-  function openUserMenuFrom(btn: HTMLButtonElement, floating: boolean) {
+  function openUserMenuFrom(btn: HTMLButtonElement) {
     userMenuBtnRef.current = btn;
     if (userMenuCloseTimer.current) {
       window.clearTimeout(userMenuCloseTimer.current);
       userMenuCloseTimer.current = null;
     }
-    setUserMenuFloating(floating);
-    if (floating) {
-      setUserMenuPos(computeFloatingUserMenuPos(btn));
-    } else {
-      setUserMenuPos(null);
-    }
+    setUserMenuPos(computeFloatingUserMenuPos(btn));
     setUserMenuOpen(true);
     setUserMenuPresent(true);
-    // 2 rAF: pinta estado fechado e anima para aberto (fluido)
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => setUserMenuAnim(true));
     });
@@ -499,10 +503,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (userMenuCloseTimer.current) window.clearTimeout(userMenuCloseTimer.current);
     userMenuCloseTimer.current = window.setTimeout(() => {
       setUserMenuPresent(false);
-      setUserMenuFloating(false);
       setUserMenuPos(null);
       userMenuCloseTimer.current = null;
-    }, 300);
+    }, 180);
   }
 
   useEffect(() => {
@@ -515,8 +518,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (userMenuOpen) {
         const inBtn = userMenuBtnRef.current?.contains(t);
         const inPanel = userMenuPanelRef.current?.contains(t);
-        const inFooter = userMenuRef.current?.contains(t);
-        if (!inBtn && !inPanel && !inFooter) closeUserMenu();
+        if (!inBtn && !inPanel) closeUserMenu();
       }
     }
     function onKey(e: KeyboardEvent) {
@@ -535,7 +537,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [companyOpen, userMenuOpen]);
 
   useLayoutEffect(() => {
-    if (!userMenuPresent || !userMenuFloating) return;
+    if (!userMenuPresent) return;
     updateUserMenuPos();
     const onWin = () => updateUserMenuPos();
     window.addEventListener("resize", onWin);
@@ -548,7 +550,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("scroll", onWin, true);
       ro?.disconnect();
     };
-  }, [userMenuPresent, userMenuFloating, updateUserMenuPos, collapsed, mobileOpen]);
+  }, [userMenuPresent, updateUserMenuPos, collapsed, mobileOpen]);
 
   /**
    * Contexto GLOBAL da plataforma (antes de qualquer return — Rules of Hooks).
@@ -864,46 +866,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   /** Menu de conta premium: identidade + Minha conta + tema + sair */
   function UserMenuPanel({
-    floating,
     maxHeight,
   }: {
-    floating?: boolean;
     maxHeight?: number;
   }) {
-    // Admin: menu da plataforma
-    if (isPlatformContext) {
-      return (
-        <UserMenuDropdown
-          panelRef={userMenuPanelRef}
-          user={sidebarUserInfo}
-          dark={dark}
-          floating={floating}
-          maxHeight={maxHeight}
-          impersonating={impersonating}
-          theme={appTheme}
-          onSetTheme={handleSetTheme}
-          onAccount={() => goUserMenu("/app/account")}
-          onPreferences={() => goUserMenu("/app/account/preferences")}
-          onLogout={() => {
-            closeUserMenu();
-            setMobileOpen(false);
-            void logout().finally(() => router.push("/login"));
-          }}
-          onEndImpersonation={() => {
-            closeUserMenu();
-            void endImpersonation();
-          }}
-        />
-      );
-    }
-
-    // Empresa (tenant): menu compacto integrado à sidebar
     return (
       <TenantUserMenu
         panelRef={userMenuPanelRef}
         user={sidebarUserInfo}
         dark={dark}
-        floating={floating}
         maxHeight={maxHeight}
         impersonating={impersonating}
         theme={appTheme}
@@ -941,36 +912,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         closeUserMenu();
         return;
       }
-      // Expandida / mobile drawer: menu DENTRO da sidebar. Recolhida: popover flutuante.
-      openUserMenuFrom(btn, isCollapsed);
+      openUserMenuFrom(btn);
     }
-
-    const inlineMenu =
-      userMenuPresent && !userMenuFloating ? (
-        <div
-          className={cn(
-            "nf-user-menu-anchor nf-um-anchor w-full min-w-0 max-w-full",
-            isPlatformContext && "nf-asb-menu-anchor",
-            !isPlatformContext && "nf-tum-anchor",
-            userMenuAnim && "is-open"
-          )}
-          onTransitionEnd={(e) => {
-            if (e.target !== e.currentTarget) return;
-            if (e.propertyName !== "opacity" && e.propertyName !== "transform") return;
-            if (!userMenuAnim && !userMenuOpen) {
-              if (userMenuCloseTimer.current) {
-                window.clearTimeout(userMenuCloseTimer.current);
-                userMenuCloseTimer.current = null;
-              }
-              setUserMenuPresent(false);
-              setUserMenuFloating(false);
-              setUserMenuPos(null);
-            }
-          }}
-        >
-          <UserMenuPanel floating={false} />
-        </div>
-      ) : null;
 
     // Admin: card de usuário dedicado
     if (isPlatformContext) {
@@ -980,7 +923,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           collapsed={isCollapsed}
           open={userMenuOpen}
           onTriggerClick={onTriggerClick}
-          menuSlot={inlineMenu}
           triggerRef={userMenuBtnRef}
           rootRef={userMenuRef}
         />
@@ -996,7 +938,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             subtitle={showRoleBadge ? roleBadge || undefined : undefined}
             side="right"
             delay={280}
-            className={userMenuOpen && userMenuFloating ? "pointer-events-none opacity-0" : undefined}
+            className={userMenuOpen ? "pointer-events-none opacity-0" : undefined}
           >
             <button
               type="button"
@@ -1006,7 +948,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 "inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
                 "hover:bg-black/[0.04] dark:hover:bg-white/[0.06]",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/35",
-                userMenuOpen && "bg-white/[0.07]"
+                userMenuOpen && "bg-white/[0.07] ring-1 ring-violet-400/30"
               )}
               aria-label={`Conta de ${displayName}`}
               aria-haspopup="menu"
@@ -1021,7 +963,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     return (
       <div className="relative z-30 w-full min-w-0" ref={userMenuRef}>
-        {inlineMenu}
         <div className="flex w-full min-w-0 items-center gap-0.5">
           <button
             type="button"
@@ -1031,7 +972,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors",
               "hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/35",
-              userMenuOpen && !userMenuFloating && "bg-white/[0.06]"
+              userMenuOpen && "bg-black/[0.06] dark:bg-white/[0.08]"
             )}
             aria-label={`Conta de ${displayName}`}
             aria-haspopup="menu"
@@ -1052,7 +993,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <ChevronDown
               className={cn(
                 "h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform duration-200",
-                userMenuOpen && !userMenuFloating && "rotate-180 text-violet-300"
+                userMenuOpen && "rotate-180 text-violet-500 dark:text-violet-300"
               )}
               strokeWidth={1.75}
               aria-hidden
@@ -1073,32 +1014,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const userMenuPortal =
     userMenuPortalReady &&
     userMenuPresent &&
-    userMenuFloating &&
     userMenuPos &&
     createPortal(
       <div
-        className={cn("nf-user-menu-floating-wrap nf-um-float fixed", userMenuAnim && "is-open")}
+        className={cn(
+          "nf-user-menu-floating-wrap fixed transition-all duration-150 ease-out",
+          userMenuAnim
+            ? "opacity-100 scale-100 translate-y-0"
+            : "opacity-0 scale-95 translate-y-1 pointer-events-none"
+        )}
         style={{
           left: userMenuPos.left,
+          top: userMenuPos.top,
           bottom: userMenuPos.bottom,
           width: userMenuPos.width,
-          zIndex: "var(--z-popover)",
+          zIndex: 9999,
           maxHeight: userMenuPos.maxHeight,
         }}
-        onTransitionEnd={(e) => {
-          if (e.target !== e.currentTarget) return;
-          if (!userMenuAnim && !userMenuOpen) {
-            if (userMenuCloseTimer.current) {
-              window.clearTimeout(userMenuCloseTimer.current);
-              userMenuCloseTimer.current = null;
-            }
-            setUserMenuPresent(false);
-            setUserMenuFloating(false);
-            setUserMenuPos(null);
-          }
-        }}
       >
-        <UserMenuPanel floating maxHeight={userMenuPos.maxHeight} />
+        <UserMenuPanel maxHeight={userMenuPos.maxHeight} />
       </div>,
       document.body
     );
@@ -1120,7 +1054,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onToggleCollapsed={toggleCollapsed}
           navLocked={adminNavLocked}
           navLockReason={adminNavLockReason}
-          userMenuOpen={userMenuPresent && !userMenuFloating && !isCollapsed}
+          userMenuOpen={false}
           footer={<UserFooter isCollapsed={isCollapsed} />}
         />
       );
@@ -1156,7 +1090,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         data-collapsed={isCollapsed ? "true" : "false"}
         data-platform="false"
-        data-user-menu-open={userMenuPresent && !userMenuFloating && !isCollapsed ? "true" : "false"}
+        data-user-menu-open="false"
         onPointerMove={onSidebarAmbientMove}
         onPointerLeave={onSidebarAmbientLeave}
       >
