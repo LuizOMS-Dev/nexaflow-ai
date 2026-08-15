@@ -137,7 +137,7 @@ const roleLabel: Record<string, string> = {
   AGENT: "Atendente",
   SALES: "Vendas",
   READONLY: "Somente leitura",
-  SUPERADMIN: "Super Admin",
+  SUPERADMIN: "Superadministrador",
 };
 
 /** Nomes genéricos / cargo usado como identidade — não preferir como "nome da pessoa" */
@@ -295,7 +295,7 @@ function resolveRoleBadge(
 ): string | null {
   if (opts?.platformContext) return "Superadministrador";
   if (opts?.impersonating && platformRole === "SUPERADMIN") {
-    return "Super Admin · Impersonando";
+    return "Superadministrador · Impersonando";
   }
   if (platformRole === "SUPERADMIN" && !opts?.impersonating) return roleLabel.SUPERADMIN;
   const key = tenantRole || platformRole || "";
@@ -873,7 +873,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           maxHeight={maxHeight}
           impersonating={impersonating}
           onAccount={() => goUserMenu("/app/account")}
-          onToggleTheme={() => toggleTheme()}
+          onPreferences={() => goUserMenu("/app/account/preferences")}
           onLogout={() => {
             closeUserMenu();
             setMobileOpen(false);
@@ -1034,18 +1034,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 {displayName}
               </span>
-              {showRoleBadge && roleBadge ? (
-                <span className="nf-sidebar-label truncate text-[10.5px] leading-tight text-ink-faint dark:text-zinc-500">
-                  {roleBadge}
-                </span>
-              ) : currentUser.email ? (
-                <span
-                  className="nf-sidebar-label truncate text-[10.5px] leading-tight text-ink-faint dark:text-zinc-500"
-                  title={currentUser.email}
-                >
-                  {currentUser.email}
-                </span>
-              ) : null}
+              <span className="nf-sidebar-label truncate text-[10.5px] leading-tight text-ink-faint dark:text-zinc-500">
+                {roleBadge || (currentUser.platformRole === "SUPERADMIN" ? "Superadministrador" : "Membro")}
+              </span>
             </span>
             <ChevronDown
               className={cn(

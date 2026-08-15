@@ -93,15 +93,9 @@ export function SidebarUserCard({
             <span className="truncate text-[12.5px] font-medium leading-tight tracking-[-0.01em] text-zinc-100">
               {user.name}
             </span>
-            {user.showRoleBadge && user.roleBadge ? (
-              <span className="truncate text-[10.5px] leading-tight text-zinc-500">
-                {user.roleBadge}
-              </span>
-            ) : user.email ? (
-              <span className="truncate text-[10.5px] leading-tight text-zinc-500" title={user.email}>
-                {user.email}
-              </span>
-            ) : null}
+            <span className="truncate text-[10.5px] leading-tight text-zinc-400">
+              {user.roleBadge || "Superadministrador"}
+            </span>
           </span>
           <ChevronUp
             className={cn(
