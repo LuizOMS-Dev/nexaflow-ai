@@ -50,7 +50,7 @@ export default function AccountCompaniesPage() {
   return (
     <AccountPanel>
       <AccountPanelHead
-        title="Empresas e Workspaces Vinculados"
+        title="Empresas e workspaces vinculados"
         subtitle="Organizações às quais sua conta de usuário tem permissão de acesso"
         icon={Building2}
       />
@@ -80,7 +80,7 @@ export default function AccountCompaniesPage() {
                 <li
                   key={m.tenantId}
                   className={cn(
-                    "flex items-center justify-between gap-4 px-6 py-4.5 transition-colors",
+                    "flex items-center justify-between gap-4 px-6 py-5 sm:py-5.5 transition-colors",
                     active && multi
                       ? "bg-violet-500/[0.03] dark:bg-violet-500/[0.05]"
                       : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"

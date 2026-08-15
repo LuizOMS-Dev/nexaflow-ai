@@ -413,7 +413,7 @@ export default function AccountProfilePage() {
         <div className="mb-5 flex items-center justify-between">
           <div>
             <h3 className="text-[13.5px] font-semibold tracking-tight text-ink dark:text-zinc-100">
-              Informações Pessoais
+              Informações pessoais
             </h3>
             <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">
               Seus dados de exibição nas conversas e painéis da plataforma.

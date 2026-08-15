@@ -31,7 +31,30 @@ type SessionsResponse = {
   sessions: SessionRow[];
 };
 
-function formatWhen(iso: string) {
+function formatHumanActivity(iso: string) {
+  try {
+    const date = new Date(iso);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    const time = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    if (isToday) return `Hoje, ${time}`;
+    if (isYesterday) return `Ontem, ${time}`;
+    return date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function formatFullDate(iso: string) {
   try {
     return new Date(iso).toLocaleString("pt-BR", {
       day: "2-digit",
@@ -48,9 +71,9 @@ function formatWhen(iso: string) {
 function parseDeviceInfo(label: string | null, ua: string | null) {
   const text = `${label || ""} ${ua || ""}`.toLowerCase();
   let icon = Laptop;
-  let typeLabel = "Desktop / Notebook";
-  let browser = "Navegador Web";
-  let os = "Sistema Operacional";
+  let typeLabel = "Desktop";
+  let browser: string | null = null;
+  let os: string | null = null;
 
   if (/ipad|tablet/i.test(text)) {
     icon = Tablet;
@@ -60,26 +83,36 @@ function parseDeviceInfo(label: string | null, ua: string | null) {
     typeLabel = "Smartphone";
   }
 
-  // Detect OS
+  // Detect OS real
   if (/windows/i.test(text)) os = "Windows";
   else if (/macintosh|mac os x/i.test(text)) os = "macOS";
   else if (/linux/i.test(text)) os = "Linux";
   else if (/android/i.test(text)) os = "Android";
   else if (/iphone|ipad|ios/i.test(text)) os = "iOS";
 
-  // Detect Browser
+  // Detect Browser real
   if (/edg\//i.test(text)) browser = "Microsoft Edge";
   else if (/chrome/i.test(text)) browser = "Google Chrome";
   else if (/firefox/i.test(text)) browser = "Mozilla Firefox";
   else if (/safari/i.test(text) && !/chrome/i.test(text)) browser = "Apple Safari";
   else if (/opera|opr\//i.test(text)) browser = "Opera";
+  else if (/brave/i.test(text)) browser = "Brave";
+
+  // Build clean display title
+  let displayTitle = label;
+  if (!displayTitle) {
+    if (browser && os) displayTitle = `${browser} no ${os}`;
+    else if (browser) displayTitle = browser;
+    else if (os) displayTitle = `${typeLabel} (${os})`;
+    else displayTitle = "Dispositivo conectado";
+  }
 
   return {
     Icon: icon,
     typeLabel,
     browser,
     os,
-    displayTitle: label || `${browser} no ${os}`,
+    displayTitle,
   };
 }
 
@@ -123,7 +156,7 @@ export default function AccountSessionsPage() {
   return (
     <AccountPanel>
       <AccountPanelHead
-        title="Dispositivos e Sessões Conectadas"
+        title="Dispositivos e sessões conectadas"
         subtitle="Monitore e revogue os aparelhos e navegadores atualmente autenticados na sua conta"
         icon={MonitorSmartphone}
         action={
@@ -177,23 +210,27 @@ export default function AccountSessionsPage() {
                 s.deviceLabel,
                 s.userAgent
               );
+              const metaTags = [browser, os].filter(Boolean) as string[];
+
               return (
                 <li
                   key={s.id}
                   className={cn(
-                    "flex flex-col gap-3 px-6 py-4.5 sm:flex-row sm:items-center sm:justify-between transition-colors",
+                    "flex flex-col gap-3.5 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:py-6 transition-colors",
                     s.isCurrent
                       ? "bg-violet-500/[0.03] dark:bg-violet-500/[0.05]"
                       : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"
                   )}
                 >
                   <div className="flex min-w-0 items-start gap-4">
-                    <div className={cn(
-                      "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
-                      s.isCurrent
-                        ? "bg-violet-500/15 text-violet-700 dark:bg-violet-400/20 dark:text-violet-300 shadow-xs"
-                        : "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300"
-                    )}>
+                    <div
+                      className={cn(
+                        "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+                        s.isCurrent
+                          ? "bg-violet-500/15 text-violet-700 dark:bg-violet-400/20 dark:text-violet-300 shadow-xs"
+                          : "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300"
+                      )}
+                    >
                       <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
                     </div>
 
@@ -203,27 +240,34 @@ export default function AccountSessionsPage() {
                           {displayTitle}
                         </p>
                         {s.isCurrent ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-400/15 dark:text-violet-300">
+                          <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-400/15 dark:text-violet-300">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                             Este dispositivo
                           </span>
                         ) : null}
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-ink-muted dark:text-zinc-400">
-                        <span>{browser}</span>
-                        <span>·</span>
-                        <span>{os}</span>
-                        {s.ip ? (
-                          <>
-                            <span>·</span>
-                            <span className="font-mono text-[11px] opacity-85">IP {s.ip}</span>
-                          </>
-                        ) : null}
-                      </div>
+                      {metaTags.length > 0 || s.ip ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted dark:text-zinc-400">
+                          {metaTags.map((tag, idx) => (
+                            <span key={tag} className="flex items-center gap-2">
+                              {idx > 0 && <span className="opacity-40">·</span>}
+                              <span>{tag}</span>
+                            </span>
+                          ))}
+                          {s.ip ? (
+                            <span className="flex items-center gap-2">
+                              {metaTags.length > 0 && <span className="opacity-40">·</span>}
+                              <span className="font-mono text-[11px] opacity-80">IP {s.ip}</span>
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
 
-                      <p className="mt-1 text-[11px] text-ink-faint dark:text-zinc-500">
-                        Última atividade: <span className="font-medium text-ink-muted dark:text-zinc-400">{formatWhen(s.lastActivityAt)}</span> · Criada em {formatWhen(s.createdAt)}
+                      <p className="mt-1.5 text-[11.5px] text-ink-faint dark:text-zinc-500">
+                        Atividade: <strong className="font-medium text-ink-muted dark:text-zinc-300">{formatHumanActivity(s.lastActivityAt)}</strong>
+                        <span className="opacity-40 mx-1.5">·</span>
+                        Início em {formatFullDate(s.createdAt)}
                       </p>
                     </div>
                   </div>

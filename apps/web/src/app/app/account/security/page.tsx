@@ -190,7 +190,7 @@ export default function AccountSecurityPage() {
   return (
     <AccountPanel id="mfa-section" className="scroll-mt-6">
       <AccountPanelHead
-        title="Credenciais e Autenticação"
+        title="Credenciais e autenticação"
         subtitle="Gerencie suas senhas e fatores de segurança para proteção da conta"
         icon={Lock}
       />
@@ -198,7 +198,7 @@ export default function AccountSecurityPage() {
       {/* Linha 1: Senha */}
       <AccountActionRow
         icon={KeyRound}
-        title="Senha de Acesso"
+        title="Senha de acesso"
         meta={
           <p className="text-xs text-ink-muted dark:text-zinc-400">
             Altere periodicamente para garantir que apenas você tenha acesso à sua conta.
@@ -218,10 +218,10 @@ export default function AccountSecurityPage() {
         }
       />
 
-      {/* Linha 2: Autenticação em Duas Etapas (2FA) */}
+      {/* Linha 2: Autenticação em duas etapas */}
       <AccountActionRow
         icon={enabled ? ShieldCheck : ShieldAlert}
-        title="Autenticação em Duas Etapas (2FA)"
+        title="Autenticação em duas etapas"
         meta={
           <div className="space-y-1.5 mt-0.5">
             <div className="flex flex-wrap items-center gap-2">
