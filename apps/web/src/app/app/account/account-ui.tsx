@@ -34,16 +34,19 @@ export function AccountCard({
 export function AccountCardHeader({
   title,
   description,
+  subtitle,
   icon: Icon,
   action,
   className,
 }: {
   title: string;
   description?: string;
+  subtitle?: string;
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   action?: ReactNode;
   className?: string;
 }) {
+  const desc = description || subtitle;
   return (
     <div
       className={cn(
@@ -62,9 +65,9 @@ export function AccountCardHeader({
           <h2 className="text-[14px] font-semibold tracking-tight text-ink dark:text-zinc-100">
             {title}
           </h2>
-          {description ? (
+          {desc ? (
             <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400 leading-relaxed">
-              {description}
+              {desc}
             </p>
           ) : null}
         </div>
