@@ -80,26 +80,26 @@ export default function AccountCompaniesPage() {
                 <li
                   key={m.tenantId}
                   className={cn(
-                    "flex items-center justify-between gap-3 px-3 py-2.5",
-                    active && multi && "bg-violet-500/[0.04]"
+                    "flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-colors",
+                    active && multi && "bg-indigo-500/[0.06] dark:bg-white/[0.04]"
                   )}
                 >
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-bold text-white">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-600 text-[11px] font-bold text-white shadow-xs">
                       {initials}
                     </span>
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <p className="truncate text-[13.5px] font-medium text-ink dark:text-white">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-[13.5px] font-semibold text-ink dark:text-white">
                           {m.tenant.name}
                         </p>
                         {active ? (
-                          <span className="rounded-full bg-violet-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:text-violet-300">
+                          <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-indigo-700 dark:text-indigo-300">
                             Atual
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-0.5 text-[12px] text-ink-faint dark:text-zinc-500">
+                      <p className="mt-0.5 text-[12px] text-ink-muted dark:text-zinc-400">
                         {rolePt[m.role] || m.role}
                       </p>
                     </div>

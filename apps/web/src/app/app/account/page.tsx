@@ -377,7 +377,7 @@ export default function AccountProfilePage() {
                         "h-6 w-6 rounded-full transition-transform duration-150",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
                         active
-                          ? "scale-110 ring-2 ring-violet-400/55 ring-offset-2 ring-offset-white dark:ring-offset-[#12141a]"
+                          ? "scale-110 ring-2 ring-indigo-500/70 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900"
                           : "opacity-90 hover:scale-105"
                       )}
                       style={{ backgroundColor: c.hex }}
@@ -539,8 +539,8 @@ export default function AccountProfilePage() {
                     "group relative flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all duration-150",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
                     selected
-                      ? "border-violet-400/50 bg-violet-500/5 shadow-[0_0_0_1px_rgba(139,92,246,0.25)]"
-                      : "border-line hover:border-violet-400/30 hover:bg-black/[0.02] dark:border-white/[0.08] dark:hover:bg-white/[0.03]"
+                      ? "border-indigo-500/50 bg-indigo-500/10 shadow-[0_0_0_1px_rgba(99,102,241,0.25)]"
+                      : "border-line hover:border-indigo-400/30 hover:bg-black/[0.02] dark:border-white/[0.08] dark:hover:bg-white/[0.03]"
                   )}
                   aria-pressed={selected}
                   aria-label={p.label}
@@ -555,7 +555,7 @@ export default function AccountProfilePage() {
                     {p.label}
                   </span>
                   {selected ? (
-                    <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-violet-500 text-white">
+                    <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-white">
                       <Check className="h-3 w-3" strokeWidth={2.5} />
                     </span>
                   ) : null}
