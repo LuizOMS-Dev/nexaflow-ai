@@ -22,7 +22,7 @@ import {
   type AvatarType,
 } from "@/lib/avatar";
 import { cn } from "@/lib/utils";
-import { Modal, Spinner, useToast } from "@/components/ui";
+import { Menu, MenuItem, MenuSeparator, Modal, Spinner, useToast } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
 import { useAuth, type UserInfo } from "@/store/auth";
 import { AccountPanel } from "./account-ui";
