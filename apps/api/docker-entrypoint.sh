@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+if [ -n "$DATABASE_URL" ]; then DBSET=set; else DBSET=MISSING; fi
+if [ -n "$REDIS_URL" ]; then RDSET=set; else RDSET=MISSING; fi
+if [ -n "$JWT_SECRET" ]; then JWSET=set; else JWSET=MISSING; fi
+echo "[nexaflow-api] NODE_ENV=${NODE_ENV:-?} DATABASE_URL=$DBSET REDIS_URL=$RDSET JWT=$JWSET"
+
 echo "[nexaflow-api] Aguardando banco..."
 sleep 2
 

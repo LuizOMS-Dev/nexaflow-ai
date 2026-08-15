@@ -65,11 +65,11 @@ services:
       - waha_sessions:/app/.sessions
       - waha_media:/tmp/whatsapp-files
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/ping"]
-      interval: 15s
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/server/status"]
+      interval: 20s
       timeout: 5s
-      retries: 12
-      start_period: 40s
+      retries: 8
+      start_period: 90s
     logging:
       driver: json-file
       options:
@@ -87,8 +87,8 @@ services:
       - "4000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       API_HOST: 0.0.0.0
       API_PORT: 4000
       API_URL: ${API_URL}
@@ -133,11 +133,11 @@ services:
       waha:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health/ready"]
-      interval: 15s
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 10s
       timeout: 5s
-      retries: 20
-      start_period: 120s
+      retries: 30
+      start_period: 180s
     logging:
       driver: json-file
       options:
@@ -162,7 +162,7 @@ services:
       API_PROXY_TARGET: http://api:4000
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
       interval: 15s

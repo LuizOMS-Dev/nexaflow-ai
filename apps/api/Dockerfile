@@ -35,6 +35,6 @@ RUN sed -i 's/\r$//' ./apps/api/docker-entrypoint.sh \
   && mkdir -p /app/uploads /app/data/wa-sessions
 
 EXPOSE 4000
-HEALTHCHECK --interval=15s --timeout=5s --retries=20 --start-period=120s \
-  CMD wget -qO- http://127.0.0.1:4000/health/ready >/dev/null || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --retries=30 --start-period=180s \
+  CMD wget -qO- http://127.0.0.1:4000/health >/dev/null || exit 1
 ENTRYPOINT ["sh", "./apps/api/docker-entrypoint.sh"]
