@@ -471,7 +471,7 @@ export default function AccountProfilePage() {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         title="Escolher avatar ilustrado"
-        className="max-w-lg"
+        size="md"
       >
         <p className="text-xs text-ink-muted dark:text-zinc-400 mb-4">
           Selecione um dos avatares ilustrados oficiais do NexaFlow para sua identidade.
@@ -542,7 +542,6 @@ export default function AccountProfilePage() {
         open={colorPickerOpen}
         onClose={() => setColorPickerOpen(false)}
         title="Cor de fundo das iniciais"
-        className="max-w-md"
       >
         <p className="text-xs text-ink-muted dark:text-zinc-400 mb-4">
           Escolha o tom de destaque para exibir ao redor das letras iniciais do seu nome.

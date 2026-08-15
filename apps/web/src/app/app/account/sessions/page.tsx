@@ -246,7 +246,6 @@ export default function AccountSessionsPage() {
         open={confirmRevokeOthersOpen}
         onClose={() => setConfirmRevokeOthersOpen(false)}
         title="Encerrar todas as outras sessões?"
-        className="max-w-md"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
           <p className="leading-relaxed">

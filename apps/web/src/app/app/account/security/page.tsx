@@ -278,7 +278,6 @@ export default function AccountSecurityPage() {
         open={pwdOpen}
         onClose={() => setPwdOpen(false)}
         title="Alterar senha de acesso"
-        className="max-w-md"
       >
         <form
           onSubmit={(e) => {
@@ -365,7 +364,6 @@ export default function AccountSecurityPage() {
         open={manageOpen && Boolean(mfaSetup)}
         onClose={() => setManageOpen(false)}
         title="Ativar autenticação em duas etapas (2FA)"
-        className="max-w-md"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
           <p>
@@ -443,7 +441,6 @@ export default function AccountSecurityPage() {
         open={Boolean(backupCodes && backupCodes.length > 0)}
         onClose={() => {}}
         title="Códigos de recuperação de emergência"
-        className="max-w-md"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
           <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20 text-amber-700 dark:text-amber-300 leading-relaxed">
@@ -499,7 +496,6 @@ export default function AccountSecurityPage() {
         open={disableOpen}
         onClose={() => setDisableOpen(false)}
         title="Desativar autenticação em duas etapas"
-        className="max-w-md"
       >
         <form
           onSubmit={(e) => {
