@@ -1,76 +1,163 @@
 # NexaFlow AI
 
-Plataforma de atendimento, CRM e agentes de IA para WhatsApp.
+Plataforma de atendimento, CRM e agentes de IA para WhatsApp.  
+Feita para pequenas e médias empresas brasileiras: conversas, contatos, vendas e automação no mesmo lugar.
 
-Monorepo atual — sem histórico antigo.
+- **Web:** http://localhost:3000
+- **API:** http://localhost:4000/health
 
-## Estrutura
+Não existe login padrão. O primeiro usuário nasce no seed.
+
+---
+
+## O que a plataforma faz
+
+| Área | Função |
+|------|--------|
+| Inbox | Fila de WhatsApp, histórico e distribuição para a equipe |
+| Agentes de IA | Copiloto, aprovação ou automático, com base de conhecimento da empresa |
+| CRM | Contatos, funil e oportunidades ligados à conversa |
+| Automações | Tarefas e respostas padronizadas sem perder contexto |
+| Admin | Tenants isolados, papéis, MFA, auditoria e planos |
+
+---
+
+## Stack
+
+| Camada | Tecnologia |
+|--------|------------|
+| Frontend | Next.js 15 · React 19 · Tailwind · TanStack Query |
+| Backend | Fastify 5 · Zod · WebSocket |
+| Banco | PostgreSQL 16 · Prisma 6 |
+| Cache | Redis 7 |
+| WhatsApp | Baileys (embutido). Evolution ou WAHA opcionais |
+| IA | Groq → xAI → OpenAI (nessa ordem, se a chave existir) |
+
+Requisito: **Node.js 22+**.
+
+---
+
+## Monorepo
 
 ```
 nexaflow-ai/
 ├── apps/
-│   ├── api/             Fastify 5 · rotas, serviços, WhatsApp, IA
-│   └── web/             Next.js 15 · app do tenant + admin da plataforma
+│   ├── api/                 Backend Fastify
+│   └── web/                 App do tenant + admin da plataforma
 ├── packages/
-│   └── db/              Prisma 6 · schema, migrations, seed
-├── e2e/                 Playwright
+│   └── db/                  Schema Prisma, migrations e seed
+├── e2e/                     Playwright
 ├── scripts/
-│   ├── setup.js         Bootstrap local
-│   ├── docker/          Subir stack no Windows
-│   ├── db/              Manutenção de planos / tour
-│   ├── ops/             EasyPanel e one-offs
-│   └── qa/              Checagens de UI
+│   ├── setup.js             Bootstrap local
+│   ├── docker/              Stack no Windows
+│   ├── db/                  Planos e tour
+│   ├── ops/                 EasyPanel e one-offs
+│   └── qa/                  Checagens de UI
 ├── docker-compose.yml
 └── package.json
 ```
 
-## Requisitos
+| Pacote | Nome npm | Papel |
+|--------|----------|--------|
+| `apps/web` | `@nexaflow/web` | Interface |
+| `apps/api` | `@nexaflow/api` | API, WhatsApp, IA |
+| `packages/db` | `@nexaflow/db` | Banco |
 
-- Node.js 22+
-- PostgreSQL 16 e Redis 7 (ou Docker Desktop)
+Scripts avulsos da API ficam em `apps/api/src/scripts/`. Os da raiz estão em `scripts/` — detalhes em [`scripts/README.md`](scripts/README.md).
 
-## Setup local
+---
+
+## Começar
+
+### 1. Setup
 
 ```bash
 npm run setup
+```
+
+Cria o `.env` a partir de `.env.example` e instala as dependências.
+
+### 2. Banco e cache
+
+```bash
 docker compose up -d postgres redis
 npm run db:migrate:deploy
 ```
 
-Defina no `.env` um superadmin e rode o seed:
+### 3. Superadmin
+
+No `.env`, defina:
+
+```env
+SEED_SUPERADMIN_EMAIL=voce@empresa.com
+SEED_SUPERADMIN_PASSWORD=uma-senha-forte-16+
+```
+
+A senha precisa de **pelo menos 16 caracteres** e 3 classes (maiúscula, minúscula, número ou símbolo).
 
 ```bash
-# SEED_SUPERADMIN_EMAIL e SEED_SUPERADMIN_PASSWORD (16+ caracteres)
 npm run db:seed
 npm run dev
 ```
 
-- Web: http://localhost:3000
-- API: http://localhost:4000/health
+Abra http://localhost:3000 e entre com o e-mail e a senha do seed.
 
-Não existe login padrão. O primeiro usuário sai do seed.
+---
 
 ## Docker completo
 
+Sobe API, web, Postgres e Redis de uma vez:
+
 ```bash
 copy .env.docker.example .env.docker
+```
+
+Preencha `SEED_SUPERADMIN_*` (e a chave de IA, se quiser) no `.env.docker`, depois:
+
+```bash
 npm run docker:up
 ```
 
-## Workspaces
+WhatsApp local usa **Baileys** dentro da API. Conecte pelo QR em **Canais**.
 
-| Pacote | Papel |
-|--------|--------|
-| `@nexaflow/web` | Frontend |
-| `@nexaflow/api` | Backend |
-| `@nexaflow/db` | Banco |
+---
 
-## Scripts
+## Variáveis importantes
 
-| Comando | Uso |
-|---------|-----|
-| `npm run dev` | API + Web juntos |
+Tudo está documentado em [`.env.example`](.env.example). O mínimo para desenvolver:
+
+| Variável | Uso |
+|----------|-----|
+| `DATABASE_URL` | Postgres |
+| `REDIS_URL` | Redis |
+| `JWT_SECRET` / `COOKIE_SECRET` / `ENCRYPTION_KEY` | Auth e dados em repouso |
+| `SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD` | Primeiro admin |
+| `GROQ_API_KEY` | IA (opcional no começo) |
+| `WA_GATEWAY_PROVIDER` | `baileys` (padrão), `evolution`, `waha` ou `simulated` |
+
+Em produção, troque todos os secrets. Os valores de desenvolvimento **não** servem para VPS.
+
+---
+
+## Comandos
+
+| Comando | O que faz |
+|---------|-----------|
+| `npm run setup` | Instala e gera o `.env` |
+| `npm run dev` | API + web juntos |
+| `npm run dev:api` | Só a API |
+| `npm run dev:web` | Só o front |
 | `npm run build` | Build dos três workspaces |
+| `npm run db:migrate:deploy` | Aplica migrations |
+| `npm run db:seed` | Cria o superadmin |
+| `npm run db:studio` | Prisma Studio |
 | `npm test` | Vitest da API |
 | `npm run test:e2e` | Playwright |
 | `npm run security:check` | Checagem de segurança |
+| `npm run docker:up` | Stack Docker no Windows |
+
+---
+
+## Licença
+
+Repositório privado. Todos os direitos reservados.
