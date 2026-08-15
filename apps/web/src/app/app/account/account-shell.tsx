@@ -60,10 +60,6 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/**
- * Shell refinado da Minha Conta — estilo Linear / Stripe / Vercel.
- * Clean, moderno, com personalidade e superfície de alto contraste.
- */
 export function AccountShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/app/account";
   const user = useAuth((s) => s.user);
@@ -76,47 +72,38 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="relative mx-auto w-full min-w-0 max-w-[1160px] px-3 py-4 pb-20 sm:px-6">
-      {/* ── Ambientação de fundo discreta (Glows + Radial Gradient) ── */}
-      {/* 1. Glow roxo amplo e muito difuso no canto superior direito */}
+    <div className="relative mx-auto w-full min-w-0 max-w-[1180px] px-4 py-5 pb-20 sm:px-6">
+      {/* ── Ambientação de Fundo (Glow Violeta Difuso + Radial Gradient) ── */}
       <div
         className="pointer-events-none absolute -right-20 -top-20 h-[560px] w-[560px] rounded-full bg-violet-600/[0.06] blur-[150px] dark:bg-violet-500/[0.08]"
         aria-hidden
       />
-
-      {/* 2. Segundo glow azul/roxo suave no canto inferior esquerdo */}
       <div
         className="pointer-events-none absolute -left-20 bottom-10 h-[500px] w-[500px] rounded-full bg-indigo-600/[0.04] blur-[140px] dark:bg-indigo-500/[0.05]"
         aria-hidden
       />
-
-      {/* 3. Radial gradient extremamente sutil cobrindo a área principal */}
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(139,92,246,0.05),transparent_75%)] dark:bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(139,92,246,0.07),transparent_75%)]"
         aria-hidden
       />
 
-      {/* ── Topo Refinado: Título + Descrição + Divisor ── */}
-      <header className="relative z-10 mb-6 pb-5 border-b border-black/[0.06] dark:border-white/[0.07]">
+      {/* ── Topo: Título + Descrição + Divisor ── */}
+      <header className="relative z-10 mb-6 border-b border-black/[0.06] pb-5 dark:border-white/[0.07]">
         <div className="flex flex-col gap-1.5">
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink dark:text-white sm:text-3xl">
             Minha Conta
           </h1>
-
-          <p className="max-w-2xl text-xs sm:text-sm text-ink-muted dark:text-zinc-400">
+          <p className="max-w-2xl text-xs text-ink-muted dark:text-zinc-400 sm:text-sm">
             Gerencie suas informações pessoais, credenciais de acesso, dispositivos e preferências do sistema.
           </p>
         </div>
       </header>
 
-      {/* ── Layout Principal: Menu Lateral (216px) + Superfície (Restante) ── */}
+      {/* ── Layout: Navegação Lateral (220px) + Conteúdo (Restante) ── */}
       <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-8">
         {/* Menu Lateral */}
-        <nav
-          className="lg:w-52 lg:shrink-0"
-          aria-label="Navegação da conta"
-        >
-          {/* Mobile: Tabs horizontais fluidas */}
+        <nav className="lg:w-56 lg:shrink-0" aria-label="Navegação da conta">
+          {/* Mobile: Tabs Horizontais */}
           <div className="flex gap-1.5 overflow-x-auto pb-1.5 lg:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {items.map((item) => {
               const Icon = item.icon;
@@ -129,7 +116,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
                   className={cn(
                     "inline-flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-medium transition-all duration-150",
                     active
-                      ? "bg-violet-600 text-white shadow-sm shadow-violet-500/25 dark:bg-violet-600 dark:text-white"
+                      ? "bg-violet-600 text-white shadow-sm shadow-violet-500/25"
                       : "text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-zinc-100"
                   )}
                 >
@@ -140,7 +127,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
             })}
           </div>
 
-          {/* Desktop: Lista vertical com barra de acento e fundo sutil */}
+          {/* Desktop: Lista Vertical com Indicador Roxo */}
           <ul className="hidden space-y-1 lg:block">
             {items.map((item) => {
               const Icon = item.icon;
@@ -157,7 +144,6 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
                         : "text-ink-secondary hover:bg-black/[0.035] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100"
                     )}
                   >
-                    {/* Barra lateral esquerda indicadora do item ativo */}
                     {active ? (
                       <span
                         className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-violet-600 dark:bg-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.5)]"
@@ -182,7 +168,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
           </ul>
         </nav>
 
-        {/* Superfície Principal de Conteúdo */}
+        {/* Superfície Principal */}
         <main className="min-w-0 flex-1">
           {children}
         </main>

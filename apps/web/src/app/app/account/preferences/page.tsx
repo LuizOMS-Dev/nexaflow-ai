@@ -17,8 +17,9 @@ import { api, getAccessToken } from "@/lib/api";
 import { Spinner, Switch, useToast } from "@/components/ui";
 import { useAuth, type UserInfo } from "@/store/auth";
 import {
-  AccountPanel,
-  AccountPanelHead,
+  AccountBody,
+  AccountCard,
+  AccountCardHeader,
   AccountRow,
 } from "../account-ui";
 import { cn } from "@/lib/utils";
@@ -85,10 +86,10 @@ export default function AccountPreferencesPage() {
         const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.classList.toggle("dark", prefersDark);
       }
-      toast({ kind: "success", title: "Preferências atualizadas com sucesso." });
+      toast({ kind: "success", title: "Preferências salvas com sucesso." });
     },
     onError: (e: Error) =>
-      toast({ kind: "error", title: "Erro ao salvar", description: e.message }),
+      toast({ kind: "error", title: "Erro ao salvar preferências", description: e.message }),
   });
 
   if (!user) {
@@ -100,26 +101,19 @@ export default function AccountPreferencesPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <AccountPanel>
-        {/* Cabeçalho Geral da Página */}
-        <AccountPanelHead
+    <div className="space-y-6">
+      <AccountCard>
+        <AccountCardHeader
           title="Preferências do sistema"
           subtitle="Configure a interface visual e os canais de notificação da sua conta"
           icon={SlidersHorizontal}
         />
 
-        {/* ── SEÇÃO 1: APARÊNCIA ── */}
-        <div className="bg-black/[0.015] dark:bg-white/[0.015] px-6 py-2.5 border-b border-black/[0.05] dark:border-white/[0.06]">
-          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-violet-700 dark:text-violet-300">
-            Aparência da interface
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-4 px-6 py-5.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:py-6 hover:bg-black/[0.01] dark:hover:bg-white/[0.015] transition-colors">
-          <div className="flex items-start gap-4 min-w-0 flex-1">
-            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.035] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300 shadow-xs">
-              <Palette className="h-4.5 w-4.5" strokeWidth={1.75} />
+        {/* ── 1. Aparência / Tema ── */}
+        <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:px-7 sm:py-5.5 hover:bg-black/[0.01] dark:hover:bg-white/[0.015] transition-colors">
+          <div className="flex items-start gap-3.5 min-w-0 flex-1">
+            <div className="mt-0.5 flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-xl bg-black/[0.035] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300 shadow-xs">
+              <Palette className="h-4 w-4" strokeWidth={1.75} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[13.5px] font-medium text-ink dark:text-zinc-200">Tema do aplicativo</p>
@@ -163,7 +157,7 @@ export default function AccountPreferencesPage() {
               className={cn(
                 "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150",
                 prefs.theme === "dark"
-                  ? "bg-white text-ink shadow-sm font-semibold dark:bg-[#1f222e] dark:text-white"
+                  ? "bg-violet-600/20 text-violet-700 dark:bg-violet-600/30 dark:text-violet-200 shadow-sm font-semibold ring-1 ring-violet-500/30"
                   : "text-ink-secondary hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
               )}
             >
@@ -173,17 +167,11 @@ export default function AccountPreferencesPage() {
           </div>
         </div>
 
-        {/* ── SEÇÃO 2: NOTIFICAÇÕES ── */}
-        <div className="bg-black/[0.015] dark:bg-white/[0.015] px-6 py-2.5 border-b border-black/[0.05] dark:border-white/[0.06]">
-          <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-violet-700 dark:text-violet-300">
-            Alertas e notificações
-          </span>
-        </div>
-
+        {/* ── 2. Alertas e Notificações ── */}
         <AccountRow
           icon={MessagesSquare}
           title="Conversas e chamados atribuídos"
-          description="Receba avisos instantâneos quando um novo atendimento for direcionado a você"
+          description="Receba avisos instantâneos quando um novo atendimento for direcionado a você."
           control={
             <Switch
               id="pref-assigned"
@@ -198,7 +186,7 @@ export default function AccountPreferencesPage() {
         <AccountRow
           icon={AtSign}
           title="Menções e notas internas"
-          description="Seja notificado quando outro membro da equipe citar seu nome em notas ou mensagens"
+          description="Seja notificado quando outro membro da equipe citar seu nome em conversas ou notas."
           control={
             <Switch
               id="pref-mentions"
@@ -213,7 +201,7 @@ export default function AccountPreferencesPage() {
         <AccountRow
           icon={ShieldAlert}
           title="Alertas de segurança e novos logins"
-          description="Notificações imediatas sobre novos acessos a partir de dispositivos não reconhecidos"
+          description="Notificações imediatas sobre novos acessos a partir de dispositivos ou localidades diferentes."
           control={
             <Switch
               id="pref-security"
@@ -224,7 +212,7 @@ export default function AccountPreferencesPage() {
             />
           }
         />
-      </AccountPanel>
+      </AccountCard>
 
       {dirty ? (
         <div className="flex justify-end gap-2.5 pt-2">
