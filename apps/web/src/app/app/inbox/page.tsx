@@ -671,10 +671,18 @@ function InboxInner() {
   const [mobileContext, setMobileContext] = useState(false);
   const [scoreOpen, setScoreOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(true);
+  const [currentTimestamp, setCurrentTimestamp] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesCountRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const filtersRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const updateTimestamp = () => setCurrentTimestamp(Date.now());
+    updateTimestamp();
+    const intervalId = window.setInterval(updateTimestamp, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const s = (searchParams.get("status") || "").toUpperCase();
@@ -2114,9 +2122,9 @@ function InboxInner() {
                   const lastSug = [...conversation.messages]
                     .reverse()
                     .find((m) => messageMeta(m).eventKind === "close_suggestion");
-                  if (!lastSug) return null;
+                  if (!lastSug || currentTimestamp === null) return null;
                   const age =
-                    Date.now() - new Date(lastSug.createdAt).getTime() < 12 * 3600_000;
+                    currentTimestamp - new Date(lastSug.createdAt).getTime() < 12 * 3600_000;
                   if (!age) return null;
                   return (
                     <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 dark:bg-amber-500/[0.08] sm:px-4">

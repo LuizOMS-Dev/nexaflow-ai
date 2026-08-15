@@ -13,7 +13,6 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 90_000,
     fileParallelism: false,
-    globalSetup: [path.resolve(__dirname, "src/test/global-setup.ts")],
     // Isolamento: setup força NODE_ENV=test + banco separado
     setupFiles: [path.resolve(__dirname, "src/test/setup.ts")],
     env: {
