@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2 } from "lucide-react";
+import { Building2, Check, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui";
 import { useAuth } from "@/store/auth";
@@ -50,8 +50,9 @@ export default function AccountCompaniesPage() {
   return (
     <AccountPanel>
       <AccountPanelHead
-        title="Empresas Vinculadas"
-        subtitle="Organizações e workspaces associados à sua conta de usuário"
+        title="Empresas e Workspaces Vinculados"
+        subtitle="Organizações às quais sua conta de usuário tem permissão de acesso"
+        icon={Building2}
       />
 
       <div>
@@ -61,7 +62,7 @@ export default function AccountCompaniesPage() {
               <Building2 className="h-5 w-5" strokeWidth={1.5} />
             </span>
             <p className="text-xs text-ink-muted dark:text-zinc-400">
-              Nenhuma empresa vinculada.
+              Nenhuma empresa vinculada no momento.
             </p>
           </div>
         ) : (
@@ -79,12 +80,14 @@ export default function AccountCompaniesPage() {
                 <li
                   key={m.tenantId}
                   className={cn(
-                    "flex items-center justify-between gap-4 px-6 py-4 transition-colors",
-                    active && multi && "bg-violet-500/[0.03] dark:bg-violet-500/[0.05]"
+                    "flex items-center justify-between gap-4 px-6 py-4.5 transition-colors",
+                    active && multi
+                      ? "bg-violet-500/[0.03] dark:bg-violet-500/[0.05]"
+                      : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"
                   )}
                 >
                   <div className="flex min-w-0 items-center gap-3.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-700 text-xs font-bold text-white shadow-xs">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-700 text-xs font-bold text-white shadow-xs">
                       {initials}
                     </span>
                     <div className="min-w-0">
@@ -93,8 +96,9 @@ export default function AccountCompaniesPage() {
                           {m.tenant.name}
                         </p>
                         {active ? (
-                          <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
-                            Atual
+                          <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-400/15 dark:text-violet-300">
+                            <Check className="h-3 w-3" strokeWidth={2.5} />
+                            Empresa ativa
                           </span>
                         ) : null}
                       </div>
@@ -107,14 +111,15 @@ export default function AccountCompaniesPage() {
                   {!active && multi ? (
                     <button
                       type="button"
-                      className="btn-secondary h-8 shrink-0 px-3 text-xs"
+                      className="btn-secondary h-8.5 shrink-0 px-3.5 text-xs font-medium gap-1.5"
                       onClick={() => {
                         void switchTenant(m.tenantId).then(() => {
                           window.location.href = "/app";
                         });
                       }}
                     >
-                      Alternar
+                      <span>Acessar</span>
+                      <ExternalLink className="h-3 w-3 opacity-60" />
                     </button>
                   ) : null}
                 </li>

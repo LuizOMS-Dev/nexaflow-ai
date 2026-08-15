@@ -3,16 +3,18 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, ShieldAlert, KeyRound, Lock, AlertCircle } from "lucide-react";
+import {
+  AlertCircle,
+  KeyRound,
+  Lock,
+  QrCode,
+  ShieldAlert,
+  ShieldCheck,
+  Smartphone,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import {
-  FormField,
-  Modal,
-  Spinner,
-  Switch,
-  useToast,
-} from "@/components/ui";
+import { FormField, Modal, Spinner, useToast } from "@/components/ui";
 import { useAuth } from "@/store/auth";
 import {
   AccountActionRow,
@@ -58,8 +60,8 @@ export default function AccountSecurityPage() {
       setPwdOpen(false);
       toast({
         kind: "success",
-        title: "Senha alterada",
-        description: data.message || "Outras sessões foram encerradas.",
+        title: "Senha alterada com sucesso",
+        description: data.message || "Outras sessões ativas foram encerradas por segurança.",
       });
     },
     onError: (e: Error) => {
@@ -93,7 +95,7 @@ export default function AccountSecurityPage() {
       toast({
         kind: "success",
         title: "Autenticação em duas etapas ativada",
-        description: "Guarde os códigos de recuperação e confirme abaixo.",
+        description: "Guarde seus códigos de recuperação em local seguro.",
       });
       void qc.invalidateQueries({ queryKey: ["mfa-status"] });
       void qc.invalidateQueries({ queryKey: ["admin-overview"] });
@@ -124,7 +126,7 @@ export default function AccountSecurityPage() {
       toast({
         kind: "warning",
         title: "Confirme que guardou os códigos",
-        description: "Marque a opção abaixo antes de continuar.",
+        description: "Marque a opção de confirmação antes de prosseguir.",
       });
       return;
     }
@@ -188,18 +190,24 @@ export default function AccountSecurityPage() {
   return (
     <AccountPanel id="mfa-section" className="scroll-mt-6">
       <AccountPanelHead
-        title="Credenciais e Segurança"
-        subtitle="Gerencie sua senha de acesso e camadas de autenticação"
+        title="Credenciais e Autenticação"
+        subtitle="Gerencie suas senhas e fatores de segurança para proteção da conta"
+        icon={Lock}
       />
 
       {/* Linha 1: Senha */}
       <AccountActionRow
+        icon={KeyRound}
         title="Senha de Acesso"
-        meta="Altere sua senha periodicamente para manter a conta segura"
+        meta={
+          <p className="text-xs text-ink-muted dark:text-zinc-400">
+            Altere periodicamente para garantir que apenas você tenha acesso à sua conta.
+          </p>
+        }
         action={
           <button
             type="button"
-            className="btn-secondary h-8 px-3 text-xs"
+            className="btn-secondary h-8.5 px-3.5 text-xs font-medium"
             onClick={() => {
               setPwd({ current: "", next: "", confirm: "" });
               setPwdOpen(true);
@@ -210,15 +218,16 @@ export default function AccountSecurityPage() {
         }
       />
 
-      {/* Linha 2: Autenticação em Duas Etapas (2FA/MFA) com status integrado */}
+      {/* Linha 2: Autenticação em Duas Etapas (2FA) */}
       <AccountActionRow
+        icon={enabled ? ShieldCheck : ShieldAlert}
         title="Autenticação em Duas Etapas (2FA)"
         meta={
-          <div className="space-y-1 mt-0.5">
+          <div className="space-y-1.5 mt-0.5">
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium",
+                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold",
                   enabled
                     ? "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                     : "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-400"
@@ -238,9 +247,9 @@ export default function AccountSecurityPage() {
               </span>
 
               {isSuperadmin && !enabled && (
-                <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-amber-600 dark:text-amber-400">
+                <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400">
                   <AlertCircle className="h-3 w-3" />
-                  Obrigatório para Super Admin
+                  Obrigatório para Superadministrador
                 </span>
               )}
 
@@ -250,8 +259,8 @@ export default function AccountSecurityPage() {
                 </span>
               )}
             </div>
-            <p className="text-xs text-ink-muted dark:text-zinc-400">
-              Exige código do aplicativo autenticador (Google Authenticator, Authy) a cada login.
+            <p className="text-xs text-ink-muted dark:text-zinc-400 leading-relaxed">
+              Exige código do aplicativo autenticador (Google Authenticator, Authy, 1Password) para autorizar novos logins.
             </p>
           </div>
         }
@@ -259,7 +268,7 @@ export default function AccountSecurityPage() {
           !enabled && !backupCodes ? (
             <button
               type="button"
-              className="btn-primary h-8 px-3.5 text-xs bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 shadow-xs shadow-violet-500/25"
               onClick={() => {
                 setMfaCode("");
                 mfaSetupMutation.mutate();
@@ -271,7 +280,7 @@ export default function AccountSecurityPage() {
           ) : enabled && !backupCodes ? (
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3.5 text-xs font-medium"
               onClick={() => setManageOpen(true)}
             >
               Gerenciar 2FA
@@ -296,7 +305,7 @@ export default function AccountSecurityPage() {
           <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3.5 text-xs"
               disabled={changePassword.isPending}
               onClick={() => {
                 setPwdOpen(false);
@@ -308,7 +317,7 @@ export default function AccountSecurityPage() {
             <button
               type="submit"
               form="nf-change-password-form"
-              className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 shadow-xs"
               disabled={
                 changePassword.isPending ||
                 !pwd.current ||
@@ -321,12 +330,12 @@ export default function AccountSecurityPage() {
           </div>
         }
       >
-        <form id="nf-change-password-form" onSubmit={onChangePassword} className="space-y-3">
+        <form id="nf-change-password-form" onSubmit={onChangePassword} className="space-y-3.5">
           <FormField label="Senha atual" htmlFor="pwd-current" required>
             <input
               id="pwd-current"
               type="password"
-              className="input mt-1 h-9 text-xs"
+              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
               autoComplete="current-password"
               value={pwd.current}
               onChange={(e) => setPwd((s) => ({ ...s, current: e.target.value }))}
@@ -337,7 +346,7 @@ export default function AccountSecurityPage() {
             <input
               id="pwd-new"
               type="password"
-              className="input mt-1 h-9 text-xs"
+              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
               autoComplete="new-password"
               value={pwd.next}
               onChange={(e) => setPwd((s) => ({ ...s, next: e.target.value }))}
@@ -350,7 +359,7 @@ export default function AccountSecurityPage() {
             <input
               id="pwd-confirm"
               type="password"
-              className="input mt-1 h-9 text-xs"
+              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
               autoComplete="new-password"
               value={pwd.confirm}
               onChange={(e) => setPwd((s) => ({ ...s, confirm: e.target.value }))}
@@ -383,7 +392,7 @@ export default function AccountSecurityPage() {
 
           {mfaSetup?.qrDataUrl ? (
             <div className="flex flex-col items-center gap-3 py-2">
-              <div className="rounded-xl border border-black/[0.08] bg-white p-3 dark:border-white/[0.1]">
+              <div className="rounded-xl border border-black/[0.08] bg-white p-3 dark:border-white/[0.1] shadow-xs">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={mfaSetup.qrDataUrl}
@@ -403,7 +412,7 @@ export default function AccountSecurityPage() {
             </label>
             <input
               id="mfa-verify-code"
-              className="input mt-1 h-9 text-xs text-center font-mono text-base tracking-widest"
+              className="input mt-1 h-9 text-xs text-center font-mono text-base tracking-widest focus:border-violet-500 focus:ring-violet-500/20"
               placeholder="000000"
               maxLength={6}
               value={mfaCode}
@@ -414,7 +423,7 @@ export default function AccountSecurityPage() {
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3.5 text-xs"
               onClick={() => {
                 setManageOpen(false);
                 setMfaSetup(null);
@@ -424,7 +433,7 @@ export default function AccountSecurityPage() {
             </button>
             <button
               type="button"
-              className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 shadow-xs"
               disabled={mfaCode.length !== 6 || mfaEnableMutation.isPending}
               onClick={() => mfaEnableMutation.mutate()}
             >
@@ -450,7 +459,7 @@ export default function AccountSecurityPage() {
           <div className="flex flex-col gap-2 pt-2">
             <button
               type="button"
-              className="btn-secondary h-8 justify-center text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+              className="btn-secondary h-8.5 justify-center text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
               onClick={() => {
                 setManageOpen(false);
                 setDisableOpen(true);
@@ -474,7 +483,7 @@ export default function AccountSecurityPage() {
         size="sm"
         variant="contextual"
       >
-        <div className="space-y-3">
+        <div className="space-y-3.5">
           <p className="text-xs text-ink-muted dark:text-zinc-400">
             Informe sua senha atual e o código de 6 dígitos do autenticador para confirmar a desativação:
           </p>
@@ -483,7 +492,7 @@ export default function AccountSecurityPage() {
             <input
               id="mfa-dis-pwd"
               type="password"
-              className="input mt-1 h-9 text-xs"
+              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
               value={mfaDisable.password}
               onChange={(e) => setMfaDisable((s) => ({ ...s, password: e.target.value }))}
             />
@@ -492,7 +501,7 @@ export default function AccountSecurityPage() {
           <FormField label="Código de 6 dígitos" htmlFor="mfa-dis-code" required>
             <input
               id="mfa-dis-code"
-              className="input mt-1 h-9 text-xs font-mono text-center tracking-wider"
+              className="input mt-1 h-9 text-xs font-mono text-center tracking-wider focus:border-violet-500 focus:ring-violet-500/20"
               placeholder="000000"
               maxLength={6}
               value={mfaDisable.code}
@@ -503,14 +512,14 @@ export default function AccountSecurityPage() {
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3.5 text-xs"
               onClick={() => setDisableOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8 px-4 text-xs bg-red-600 hover:bg-red-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 shadow-xs"
               disabled={!mfaDisable.password || mfaDisable.code.length !== 6 || mfaDisableMutation.isPending}
               onClick={() => mfaDisableMutation.mutate()}
             >
@@ -533,7 +542,7 @@ export default function AccountSecurityPage() {
         footer={
           <button
             type="button"
-            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+            className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 shadow-xs"
             disabled={!backupCodesAck}
             onClick={confirmBackupCodesAndContinue}
           >

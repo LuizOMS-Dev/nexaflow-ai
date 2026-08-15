@@ -8,8 +8,10 @@ import {
   ChevronDown,
   ImageIcon,
   Palette,
+  ShieldCheck,
   Trash2,
   Type,
+  UserCheck,
 } from "lucide-react";
 import { api, getAccessToken } from "@/lib/api";
 import {
@@ -108,7 +110,7 @@ export default function AccountProfilePage() {
       }),
     onSuccess: (data) => {
       if (data.user) applyUser(data.user);
-      toast({ kind: "success", title: "Alterações salvas." });
+      toast({ kind: "success", title: "Alterações salvas com sucesso." });
     },
     onError: (e: Error) =>
       toast({ kind: "error", title: "Não foi possível salvar", description: e.message }),
@@ -270,7 +272,7 @@ export default function AccountProfilePage() {
 
   const roleLabel =
     user.platformRole === "SUPERADMIN"
-      ? "Super Administrador"
+      ? "Superadministrador"
       : memberships[0]?.role === "ADMIN"
         ? "Administrador"
         : memberships[0]?.role === "SUPERVISOR"
@@ -279,142 +281,154 @@ export default function AccountProfilePage() {
 
   return (
     <AccountPanel>
-      {/* 1. Header do Perfil: Avatar + Nome + E-mail + Cargo (Apenas uma vez) */}
-      <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="relative shrink-0">
-            <UserAvatar user={liveUser} size="xl" ring />
-            {busy ? (
-              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40">
-                <Spinner className="h-5 w-5 text-white" />
-              </span>
-            ) : null}
-          </div>
-
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold tracking-tight text-ink dark:text-white">
-              {liveUser.name}
-            </h2>
-            <p className="truncate text-xs text-ink-muted dark:text-zinc-400">
-              {user.email}
-            </p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="inline-flex items-center rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
-                {roleLabel}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Ação Alterar Foto / Avatar (dropdown com opções organizadas) */}
-        <div className="relative shrink-0" ref={photoMenuRef}>
-          <button
-            type="button"
-            className="btn-secondary h-8 px-3 text-xs"
-            disabled={busy}
-            aria-expanded={photoMenuOpen}
-            aria-haspopup="menu"
-            onClick={() => setPhotoMenuOpen((v) => !v)}
-          >
-            <Camera className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Alterar foto
-            <ChevronDown
-              className={cn(
-                "h-3.5 w-3.5 opacity-60 transition-transform",
-                photoMenuOpen && "rotate-180"
-              )}
-              strokeWidth={1.75}
-            />
-          </button>
-
-          {photoMenuOpen ? (
-            <div
-              role="menu"
-              className="absolute right-0 z-20 mt-1.5 w-48 overflow-hidden rounded-xl border border-black/[0.06] bg-white py-1 shadow-lg dark:border-white/[0.08] dark:bg-zinc-800"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.03] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
-                onClick={() => {
-                  setPhotoMenuOpen(false);
-                  fileRef.current?.click();
-                }}
-              >
-                <Camera className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                Enviar foto
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.03] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
-                onClick={openPicker}
-              >
-                <ImageIcon className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                Escolher avatar
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.03] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
-                onClick={openColorPicker}
-              >
-                <Palette className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                Cor das iniciais
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.03] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
-                onClick={() => useInitials()}
-              >
-                <Type className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                Restaurar padrão
-              </button>
-              {showRemove ? (
-                <>
-                  <div className="my-1 h-px bg-black/[0.05] dark:bg-white/[0.06]" />
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
-                    onClick={() => {
-                      setPhotoMenuOpen(false);
-                      removeMut.mutate();
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                    Remover foto
-                  </button>
-                </>
+      {/* 1. Header do Perfil: Avatar + Nome + E-mail + Cargo */}
+      <div className="relative p-6 sm:p-7 bg-gradient-to-r from-violet-500/[0.03] via-transparent to-transparent">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="relative shrink-0">
+              <div className="rounded-full ring-2 ring-violet-500/20 shadow-md">
+                <UserAvatar user={liveUser} size="xl" ring />
+              </div>
+              {busy ? (
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-[1px]">
+                  <Spinner className="h-5 w-5 text-white" />
+                </span>
               ) : null}
             </div>
-          ) : null}
 
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="sr-only"
-            onChange={(e) => void onPickFile(e.target.files?.[0] || null)}
-          />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate font-display text-lg font-bold tracking-tight text-ink dark:text-white">
+                  {liveUser.name}
+                </h2>
+                <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-400/15 dark:text-violet-300">
+                  <ShieldCheck className="h-3 w-3" />
+                  {roleLabel}
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-xs text-ink-muted dark:text-zinc-400">
+                {user.email}
+              </p>
+            </div>
+          </div>
+
+          {/* Ação Alterar Foto / Avatar */}
+          <div className="relative shrink-0" ref={photoMenuRef}>
+            <button
+              type="button"
+              className="btn-secondary h-8.5 px-3.5 text-xs font-medium gap-2 shadow-xs"
+              disabled={busy}
+              aria-expanded={photoMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setPhotoMenuOpen((v) => !v)}
+            >
+              <Camera className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" strokeWidth={1.75} />
+              <span>Alterar foto</span>
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 opacity-60 transition-transform duration-150",
+                  photoMenuOpen && "rotate-180"
+                )}
+                strokeWidth={1.75}
+              />
+            </button>
+
+            {photoMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-xl border border-black/[0.08] bg-white py-1 shadow-xl dark:border-white/[0.1] dark:bg-[#151821]"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
+                  onClick={() => {
+                    setPhotoMenuOpen(false);
+                    fileRef.current?.click();
+                  }}
+                >
+                  <Camera className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
+                  Enviar imagem do dispositivo
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
+                  onClick={openPicker}
+                >
+                  <ImageIcon className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
+                  Escolher avatar ilustrado
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
+                  onClick={openColorPicker}
+                >
+                  <Palette className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
+                  Cor de fundo das iniciais
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
+                  onClick={() => useInitials()}
+                >
+                  <Type className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
+                  Restaurar padrão
+                </button>
+                {showRemove ? (
+                  <>
+                    <div className="my-1 h-px bg-black/[0.06] dark:bg-white/[0.06]" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 transition-colors"
+                      onClick={() => {
+                        setPhotoMenuOpen(false);
+                        removeMut.mutate();
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                      Remover foto
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(e) => void onPickFile(e.target.files?.[0] || null)}
+            />
+          </div>
         </div>
       </div>
 
       {/* 2. Informações Pessoais Form */}
-      <div className="p-6">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-ink-faint dark:text-zinc-500 mb-4">
-          Informações Pessoais
-        </h3>
-
-        <form onSubmit={onSubmitName} className="space-y-4 max-w-lg">
+      <div className="p-6 sm:p-7">
+        <div className="mb-5 flex items-center justify-between">
           <div>
-            <label className="label text-xs font-medium" htmlFor="account-name">
+            <h3 className="text-[13.5px] font-semibold tracking-tight text-ink dark:text-zinc-100">
+              Informações Pessoais
+            </h3>
+            <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400">
+              Seus dados de exibição nas conversas e painéis da plataforma.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={onSubmitName} className="space-y-4.5 max-w-lg">
+          <div>
+            <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-name">
               Nome completo
             </label>
             <input
               id="account-name"
-              className="input mt-1 h-9 text-xs"
+              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Seu nome"
@@ -424,12 +438,12 @@ export default function AccountProfilePage() {
           </div>
 
           <div>
-            <label className="label text-xs font-medium" htmlFor="account-phone">
-              Telefone
+            <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-phone">
+              Telefone / WhatsApp
             </label>
             <input
               id="account-phone"
-              className="input mt-1 h-9 text-xs"
+              className="input mt-1 h-9 text-xs focus:border-violet-500 focus:ring-violet-500/20"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Opcional"
@@ -438,29 +452,29 @@ export default function AccountProfilePage() {
           </div>
 
           <div>
-            <label className="label text-xs font-medium" htmlFor="account-email">
+            <label className="label text-xs font-medium text-ink-secondary dark:text-zinc-300" htmlFor="account-email">
               E-mail de acesso
             </label>
             <div className="relative mt-1">
               <input
                 id="account-email"
-                className="input h-9 pr-24 text-xs opacity-80"
+                className="input h-9 pr-24 text-xs opacity-75 cursor-not-allowed bg-black/[0.02] dark:bg-white/[0.03]"
                 value={user.email}
                 disabled
                 readOnly
                 title="E-mail de login — não editável"
               />
-              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-black/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-ink-muted dark:bg-white/[0.06] dark:text-zinc-400">
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-black/[0.05] px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted dark:bg-white/[0.08] dark:text-zinc-400">
                 Não editável
               </span>
             </div>
           </div>
 
           {dirty ? (
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-black/[0.05] dark:border-white/[0.06]">
               <button
                 type="button"
-                className="btn-secondary h-8 px-3 text-xs"
+                className="btn-secondary h-8.5 px-3.5 text-xs"
                 onClick={discard}
                 disabled={saveName.isPending}
               >
@@ -468,7 +482,7 @@ export default function AccountProfilePage() {
               </button>
               <button
                 type="submit"
-                className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500"
+                className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 shadow-xs shadow-violet-500/25"
                 disabled={saveName.isPending}
               >
                 {saveName.isPending ? "Salvando…" : "Salvar alterações"}
@@ -493,7 +507,7 @@ export default function AccountProfilePage() {
           <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3.5 text-xs"
               onClick={() => {
                 setPickerOpen(false);
                 setPickedPreset(null);
@@ -504,7 +518,7 @@ export default function AccountProfilePage() {
             </button>
             <button
               type="button"
-              className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 shadow-xs"
               disabled={!pickedPreset || presetMut.isPending}
               onClick={confirmPreset}
             >
@@ -536,7 +550,7 @@ export default function AccountProfilePage() {
                     });
                   }}
                   className={cn(
-                    "group relative flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all duration-150",
+                    "group relative flex flex-col items-center gap-2.5 rounded-xl border p-3 text-center transition-all duration-150",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500",
                     selected
                       ? "border-violet-500/60 bg-violet-500/10 shadow-[0_0_0_1px_rgba(139,92,246,0.3)]"
@@ -551,11 +565,11 @@ export default function AccountProfilePage() {
                     alt=""
                     className="h-14 w-14 rounded-xl object-cover shadow-xs"
                   />
-                  <span className="line-clamp-1 text-[11px] text-ink-muted dark:text-zinc-400">
+                  <span className="line-clamp-1 text-[11px] font-medium text-ink-muted dark:text-zinc-400">
                     {p.label}
                   </span>
                   {selected ? (
-                    <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-violet-600 text-white">
+                    <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-violet-600 text-white shadow-xs">
                       <Check className="h-3 w-3" strokeWidth={2.5} />
                     </span>
                   ) : null}
@@ -581,7 +595,7 @@ export default function AccountProfilePage() {
           <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3.5 text-xs"
               onClick={() => {
                 setColorPickerOpen(false);
                 setPickedColor(null);
@@ -591,7 +605,7 @@ export default function AccountProfilePage() {
             </button>
             <button
               type="button"
-              className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 shadow-xs"
               disabled={!pickedColor || initialsMut.isPending}
               onClick={confirmColor}
             >
@@ -616,7 +630,7 @@ export default function AccountProfilePage() {
                 aria-pressed={selected}
                 onClick={() => setPickedColor(c.hex)}
                 className={cn(
-                  "h-8 w-8 rounded-full transition-transform duration-150",
+                  "h-8 w-8 rounded-full transition-transform duration-150 shadow-xs",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500",
                   selected
                     ? "scale-110 ring-2 ring-violet-500 ring-offset-2 ring-offset-white dark:ring-offset-zinc-900"
