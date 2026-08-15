@@ -280,8 +280,9 @@ export function NotificationBell({ collapsed }: { collapsed?: boolean }) {
             ref={panelRef}
             className={cn(
               "nf-notif-panel flex flex-col overflow-hidden",
-              "rounded-[11px] border border-white/[0.08] bg-[#12141a]",
-              "shadow-[0_12px_32px_-10px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.03)_inset]"
+              "rounded-2xl border border-black/[0.08] bg-white p-1.5 dark:border-white/[0.09] dark:bg-[#12141c]",
+              "shadow-2xl shadow-black/15 dark:shadow-black/70 backdrop-blur-md",
+              "animate-in fade-in-0 zoom-in-95 duration-150"
             )}
             style={{
               position: "fixed",

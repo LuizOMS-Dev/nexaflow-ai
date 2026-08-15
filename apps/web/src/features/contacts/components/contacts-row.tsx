@@ -1,8 +1,8 @@
 "use client";
 
 import type { ChangeEvent } from "react";
-import { MoreHorizontal } from "lucide-react";
-import { Dropdown, DropdownItem } from "@/components/ui";
+import { Archive, ExternalLink, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui";
 import {
   cn,
   commercialStatusLabel,
@@ -206,29 +206,42 @@ function RowMenu({
   onDelete: () => void;
 }) {
   return (
-    <Dropdown
+    <Menu
+      minWidth={190}
       trigger={
         <button
           type="button"
-          className="btn-ghost h-8 w-8 px-0"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-black/[0.04] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.06] dark:hover:text-zinc-100"
           aria-label="Ações do contato"
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
         </button>
       }
     >
-      <DropdownItem onClick={onOpen}>Abrir</DropdownItem>
+      <MenuItem icon={ExternalLink} onClick={onOpen}>
+        Abrir detalhes
+      </MenuItem>
+
       {canUpdate && !archived ? (
-        <DropdownItem onClick={onArchive}>Arquivar</DropdownItem>
+        <MenuItem icon={Archive} onClick={onArchive}>
+          Arquivar
+        </MenuItem>
       ) : null}
+
       {canUpdate && archived ? (
-        <DropdownItem onClick={onRestore}>Restaurar</DropdownItem>
+        <MenuItem icon={RotateCcw} onClick={onRestore}>
+          Restaurar
+        </MenuItem>
       ) : null}
+
       {canDelete ? (
-        <DropdownItem danger onClick={onDelete}>
-          Excluir
-        </DropdownItem>
+        <>
+          <MenuSeparator />
+          <MenuItem icon={Trash2} danger onClick={onDelete}>
+            Excluir
+          </MenuItem>
+        </>
       ) : null}
-    </Dropdown>
+    </Menu>
   );
 }

@@ -3,9 +3,10 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, MoreHorizontal, PauseCircle, ShieldX } from "lucide-react";
 import { isSuperadminMfaRequiredError } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import { useToast } from "@/components/ui";
+import { Menu, MenuItem, MenuSeparator, useToast } from "@/components/ui";
 import { useAuth } from "@/store/auth";
 import { platformAdminApi } from "../api";
 import { ROLE_LABEL, STATUS_LABEL } from "../labels";
@@ -175,32 +176,43 @@ function UsersInner() {
                   {u.lastLoginAt ? formatDate(u.lastLoginAt) : "Nunca"}
                 </Td>
                 <Td>
-                  <div className="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      className="admin-btn-ghost h-8 text-[12px]"
-                      disabled={mut.isPending}
+                  <Menu
+                    align="right"
+                    minWidth={170}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label="Ações do usuário"
+                        className="inline-flex h-7.5 w-7.5 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
+                      >
+                        <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
+                      </button>
+                    }
+                  >
+                    <MenuItem
+                      icon={CheckCircle2}
+                      disabled={mut.isPending || u.status === "ACTIVE"}
                       onClick={() => mut.mutate({ id: u.id, status: "ACTIVE" })}
                     >
-                      Ativar
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn-ghost h-8 text-[12px]"
-                      disabled={mut.isPending}
+                      Ativar conta
+                    </MenuItem>
+                    <MenuItem
+                      icon={PauseCircle}
+                      disabled={mut.isPending || u.status === "SUSPENDED"}
                       onClick={() => mut.mutate({ id: u.id, status: "SUSPENDED" })}
                     >
                       Suspender
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn-ghost h-8 text-[12px] text-red-200"
-                      disabled={mut.isPending}
+                    </MenuItem>
+                    <MenuSeparator />
+                    <MenuItem
+                      icon={ShieldX}
+                      danger
+                      disabled={mut.isPending || u.status === "DISABLED"}
                       onClick={() => mut.mutate({ id: u.id, status: "DISABLED" })}
                     >
-                      Bloquear
-                    </button>
-                  </div>
+                      Bloquear acesso
+                    </MenuItem>
+                  </Menu>
                 </Td>
               </tr>
             ))}

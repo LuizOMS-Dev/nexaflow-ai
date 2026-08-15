@@ -45,26 +45,26 @@ export function TenantCompanyMenu({
       role="listbox"
       aria-label="Empresas"
       className={cn(
-        "nf-tcm flex w-full min-w-0 max-w-full flex-col overflow-hidden",
-        "rounded-[11px] border border-white/[0.08] bg-[#12141a]",
-        "shadow-[0_12px_32px_-10px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.03)_inset]",
+        "nf-tcm flex w-full min-w-[240px] max-w-[280px] flex-col overflow-hidden",
+        "rounded-2xl border border-black/[0.08] bg-white p-1.5 dark:border-white/[0.09] dark:bg-[#12141c]",
+        "shadow-2xl shadow-black/15 dark:shadow-black/70 backdrop-blur-md",
         className
       )}
     >
-      <div className="flex items-baseline justify-between gap-2 px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+      <div className="flex items-baseline justify-between gap-2 px-2.5 py-1.5">
+        <p className="text-[10.5px] font-semibold uppercase tracking-wider text-ink-muted dark:text-zinc-400">
           Empresas
         </p>
-        <p className="text-[11px] tabular-nums text-zinc-600">
+        <p className="text-[10.5px] tabular-nums text-ink-faint dark:text-zinc-500">
           {items.length} {items.length === 1 ? "conta" : "contas"}
         </p>
       </div>
 
-      <div className="mx-2.5 h-px bg-white/[0.06]" aria-hidden />
+      <div className="my-1 h-px bg-black/[0.06] dark:bg-white/[0.06]" aria-hidden />
 
-      <div className="max-h-48 overflow-y-auto overscroll-contain p-1">
+      <div className="max-h-48 space-y-0.5 overflow-y-auto overscroll-contain py-0.5">
         {items.length === 0 ? (
-          <p className="px-2.5 py-4 text-center text-[12px] text-zinc-500">
+          <p className="px-2.5 py-4 text-center text-xs text-ink-muted dark:text-zinc-500">
             Nenhuma empresa
           </p>
         ) : (
@@ -77,13 +77,15 @@ export function TenantCompanyMenu({
               title={item.name}
               onClick={() => onSelect(item.tenantId)}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-lg px-2 py-[7px] text-left transition-colors duration-100",
-                "hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/35",
-                item.active && "bg-white/[0.04]"
+                "flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left transition-all duration-150",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40",
+                item.active
+                  ? "bg-violet-500/[0.08] text-violet-700 dark:bg-violet-500/15 dark:text-violet-200 font-semibold"
+                  : "text-ink-secondary hover:bg-violet-500/[0.06] hover:text-ink dark:text-zinc-300 dark:hover:bg-violet-500/[0.12] dark:hover:text-white"
               )}
             >
               <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-bold text-white"
+                className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold text-white shadow-xs"
                 style={{
                   background:
                     item.color ||
@@ -93,16 +95,16 @@ export function TenantCompanyMenu({
                 {initials(item.name)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium leading-tight text-zinc-100">
+                <span className="block truncate text-xs font-medium leading-tight">
                   {item.name}
                 </span>
                 {item.active ? (
-                  <span className="mt-0.5 block text-[10.5px] text-zinc-500">Atual</span>
+                  <span className="mt-0.5 block text-[10px] opacity-75">Atual</span>
                 ) : null}
               </span>
               {item.active ? (
                 <Check
-                  className="h-3.5 w-3.5 shrink-0 text-violet-400"
+                  className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400"
                   strokeWidth={2.25}
                   aria-hidden
                 />
@@ -112,16 +114,16 @@ export function TenantCompanyMenu({
         )}
       </div>
 
-      <div className="mx-2.5 h-px bg-white/[0.06]" aria-hidden />
+      <div className="my-1 h-px bg-black/[0.06] dark:bg-white/[0.06]" aria-hidden />
 
-      <div className="p-1">
+      <div className="space-y-0.5 pt-0.5">
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium text-zinc-200 transition-colors duration-100 hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/35"
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-ink-secondary transition-colors hover:bg-violet-500/[0.06] hover:text-ink dark:text-zinc-300 dark:hover:bg-violet-500/[0.12] dark:hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
           onClick={onManage}
         >
-          <Building2 className="h-4 w-4 shrink-0 text-zinc-500" strokeWidth={1.7} aria-hidden />
+          <Building2 className="h-4 w-4 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
           <span>Gerenciar empresas</span>
         </button>
 
@@ -129,10 +131,10 @@ export function TenantCompanyMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium text-violet-200/90 transition-colors duration-100 hover:bg-violet-500/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-400/35"
+            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-violet-700 transition-colors hover:bg-violet-500/[0.1] dark:text-violet-300 dark:hover:bg-violet-500/[0.15] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
             onClick={onBackToAdmin}
           >
-            <Shield className="h-4 w-4 shrink-0 text-violet-400/80" strokeWidth={1.7} aria-hidden />
+            <Shield className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" strokeWidth={1.75} aria-hidden />
             <span>Voltar à Administração</span>
           </button>
         ) : null}

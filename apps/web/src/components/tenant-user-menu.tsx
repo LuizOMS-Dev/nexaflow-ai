@@ -113,20 +113,20 @@ export function TenantUserMenu({
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-200 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-ink-secondary hover:bg-violet-500/[0.06] hover:text-ink dark:text-zinc-300 dark:hover:bg-violet-500/[0.12] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
           onClick={onAccount}
         >
-          <User className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
+          <User className="h-4 w-4 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
           <span className="min-w-0 flex-1 truncate">Minha conta</span>
         </button>
 
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-200 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-ink-secondary hover:bg-violet-500/[0.06] hover:text-ink dark:text-zinc-300 dark:hover:bg-violet-500/[0.12] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
           onClick={onPreferences}
         >
-          <Settings className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
+          <Settings className="h-4 w-4 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
           <span className="min-w-0 flex-1 truncate">Preferências</span>
         </button>
 
@@ -134,10 +134,10 @@ export function TenantUserMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-400/10 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/30"
+            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-400/10 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/30"
             onClick={onEndImpersonation}
           >
-            <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-amber-500 dark:text-amber-400" strokeWidth={1.75} aria-hidden />
+            <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" strokeWidth={1.75} aria-hidden />
             <span className="min-w-0 flex-1 truncate">Encerrar impersonação</span>
           </button>
         ) : null}
@@ -209,10 +209,10 @@ export function TenantUserMenu({
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/10 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/30"
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/10 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/30"
           onClick={onLogout}
         >
-          <LogOut className="h-3.5 w-3.5 shrink-0 text-red-500 dark:text-red-400" strokeWidth={1.75} aria-hidden />
+          <LogOut className="h-4 w-4 shrink-0 text-red-500 dark:text-red-400" strokeWidth={1.75} aria-hidden />
           <span>Sair</span>
         </button>
       </div>

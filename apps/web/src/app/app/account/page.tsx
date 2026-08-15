@@ -44,7 +44,6 @@ export default function AccountProfilePage() {
   const memberships = useAuth((s) => s.memberships) || [];
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  const photoMenuRef = useRef<HTMLDivElement>(null);
 
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
@@ -60,7 +59,6 @@ export default function AccountProfilePage() {
   const [pickedPreset, setPickedPreset] = useState<string | null>(null);
   const [pickedColor, setPickedColor] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
 
   useEffect(() => {
     setName(user?.name || "");
@@ -74,17 +72,6 @@ export default function AccountProfilePage() {
     user?.avatarPresetId,
     user?.avatarColor,
   ]);
-
-  useEffect(() => {
-    if (!photoMenuOpen) return;
-    function onDoc(e: MouseEvent) {
-      if (!photoMenuRef.current?.contains(e.target as Node)) {
-        setPhotoMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [photoMenuOpen]);
 
   const liveUser: UserInfo | null = user
     ? {
@@ -177,7 +164,6 @@ export default function AccountProfilePage() {
   async function onPickFile(file: File | null) {
     if (!file) return;
     setUploading(true);
-    setPhotoMenuOpen(false);
     try {
       const dataUrl = await processAvatarFile(file, 512);
       setPreview({
@@ -314,90 +300,64 @@ export default function AccountProfilePage() {
             </div>
           </div>
 
-          {/* Ação Alterar Foto / Avatar */}
-          <div className="relative shrink-0" ref={photoMenuRef}>
-            <button
-              type="button"
-              className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5 shadow-xs"
-              disabled={busy}
-              aria-expanded={photoMenuOpen}
-              aria-haspopup="menu"
-              onClick={() => setPhotoMenuOpen((v) => !v)}
+          {/* Ação Alterar Foto / Avatar (Design System Menu) */}
+          <div className="relative shrink-0">
+            <Menu
+              align="right"
+              minWidth={200}
+              trigger={
+                <button
+                  type="button"
+                  className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5 shadow-xs"
+                  disabled={busy}
+                >
+                  <Camera className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" strokeWidth={1.75} />
+                  <span>Alterar foto</span>
+                  <ChevronDown className="h-3 w-3 opacity-60" strokeWidth={1.75} />
+                </button>
+              }
             >
-              <Camera className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" strokeWidth={1.75} />
-              <span>Alterar foto</span>
-              <ChevronDown
-                className={cn(
-                  "h-3 w-3 opacity-60 transition-transform duration-150",
-                  photoMenuOpen && "rotate-180"
-                )}
-                strokeWidth={1.75}
-              />
-            </button>
-
-            {photoMenuOpen ? (
-              <div
-                role="menu"
-                className="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-xl border border-black/[0.08] bg-white py-1 shadow-xl dark:border-white/[0.1] dark:bg-[#151821]"
+              <MenuItem
+                icon={Camera}
+                onClick={() => fileRef.current?.click()}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
-                  onClick={() => {
-                    setPhotoMenuOpen(false);
-                    fileRef.current?.click();
-                  }}
-                >
-                  <Camera className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                  Enviar imagem do dispositivo
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
-                  onClick={openPicker}
-                >
-                  <ImageIcon className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                  Escolher avatar ilustrado
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
-                  onClick={openColorPicker}
-                >
-                  <Palette className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                  Cor de fundo das iniciais
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-ink-secondary hover:bg-black/[0.04] hover:text-ink dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
-                  onClick={() => useInitials()}
-                >
-                  <Type className="h-3.5 w-3.5 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} />
-                  Restaurar padrão
-                </button>
-                {showRemove ? (
-                  <>
-                    <div className="my-1 h-px bg-black/[0.06] dark:bg-white/[0.06]" />
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 transition-colors"
-                      onClick={() => {
-                        setPhotoMenuOpen(false);
-                        removeMut.mutate();
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                      Remover foto
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
+                Enviar imagem
+              </MenuItem>
+              <MenuItem
+                icon={ImageIcon}
+                onClick={openPicker}
+              >
+                Escolher avatar
+              </MenuItem>
+              <MenuItem
+                icon={Palette}
+                onClick={openColorPicker}
+              >
+                Cor das iniciais
+              </MenuItem>
+
+              <MenuSeparator />
+
+              <MenuItem
+                icon={Type}
+                onClick={() => useInitials()}
+              >
+                Restaurar padrão
+              </MenuItem>
+
+              {showRemove ? (
+                <>
+                  <MenuSeparator />
+                  <MenuItem
+                    icon={Trash2}
+                    danger
+                    onClick={() => removeMut.mutate()}
+                  >
+                    Remover foto
+                  </MenuItem>
+                </>
+              ) : null}
+            </Menu>
 
             <input
               ref={fileRef}

@@ -1801,198 +1801,27 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/* ─── Dropdown (portal — não é cortado por overflow de cards/listas) ─── */
-
-type DropdownPos = {
-  top: number;
-  left: number;
-  minWidth: number;
-  maxHeight: number;
-  placement: "bottom" | "top";
-};
-
-const DROPDOWN_GAP = 6;
-const DROPDOWN_MIN_W = 176;
-const DROPDOWN_VIEW_PAD = 8;
-
-export function Dropdown({
-  trigger,
-  children,
-  align = "right",
-}: {
-  trigger: ReactNode;
-  children: ReactNode;
-  align?: "left" | "right";
-}) {
-  const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [pos, setPos] = useState<DropdownPos | null>(null);
-  const triggerWrapRef = useRef<HTMLDivElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => setMounted(true), []);
-
-  const updatePosition = useCallback(() => {
-    const triggerEl = triggerWrapRef.current;
-    if (!triggerEl) return;
-    const r = triggerEl.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const panel = panelRef.current;
-    const panelH = panel?.offsetHeight || 220;
-    const panelW = Math.max(DROPDOWN_MIN_W, panel?.offsetWidth || DROPDOWN_MIN_W);
-
-    const spaceBelow = vh - r.bottom - DROPDOWN_GAP - DROPDOWN_VIEW_PAD;
-    const spaceAbove = r.top - DROPDOWN_GAP - DROPDOWN_VIEW_PAD;
-    const preferBottom = spaceBelow >= Math.min(panelH, 140) || spaceBelow >= spaceAbove;
-    const maxHeight = Math.max(
-      120,
-      Math.min(320, preferBottom ? spaceBelow : spaceAbove)
-    );
-
-    let left =
-      align === "right" ? r.right - panelW : r.left;
-    if (left + panelW > vw - DROPDOWN_VIEW_PAD) {
-      left = Math.max(DROPDOWN_VIEW_PAD, vw - panelW - DROPDOWN_VIEW_PAD);
-    }
-    if (left < DROPDOWN_VIEW_PAD) left = DROPDOWN_VIEW_PAD;
-
-    if (preferBottom) {
-      setPos({
-        top: r.bottom + DROPDOWN_GAP,
-        left,
-        minWidth: panelW,
-        maxHeight,
-        placement: "bottom",
-      });
-    } else {
-      const top = Math.max(
-        DROPDOWN_VIEW_PAD,
-        r.top - DROPDOWN_GAP - Math.min(panelH, maxHeight)
-      );
-      setPos({
-        top,
-        left,
-        minWidth: panelW,
-        maxHeight,
-        placement: "top",
-      });
-    }
-  }, [align]);
-
-  useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
-    updatePosition();
-    // segunda passagem após medir o painel real
-    const t = window.requestAnimationFrame(() => updatePosition());
-    const onWin = () => updatePosition();
-    window.addEventListener("resize", onWin);
-    window.addEventListener("scroll", onWin, true);
-    return () => {
-      window.cancelAnimationFrame(t);
-      window.removeEventListener("resize", onWin);
-      window.removeEventListener("scroll", onWin, true);
-    };
-  }, [open, updatePosition, children]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      const t = e.target as Node;
-      if (triggerWrapRef.current?.contains(t)) return;
-      if (panelRef.current?.contains(t)) return;
-      setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const menu =
-    open && mounted
-      ? createPortal(
-          <div
-            ref={panelRef}
-            role="menu"
-            className={cn(
-              "nf-dropdown-panel fixed min-w-[11rem] overflow-y-auto rounded-xl border border-line bg-white py-1 shadow-panel",
-              "dark:border-[#262b36] dark:bg-[#14171e]"
-            )}
-            style={{
-              top: pos?.top ?? -9999,
-              left: pos?.left ?? -9999,
-              maxHeight: pos?.maxHeight ?? 320,
-              zIndex: "var(--z-dropdown)",
-              visibility: pos ? "visible" : "hidden",
-            }}
-          >
-            <div onClick={() => setOpen(false)}>{children}</div>
-          </div>,
-          document.body
-        )
-      : null;
-
-  return (
-    <div className="relative inline-flex">
-      <div
-        ref={triggerWrapRef}
-        onClick={() => setOpen((v) => !v)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setOpen((v) => !v);
-          }
-        }}
-      >
-        {trigger}
-      </div>
-      {menu}
-    </div>
-  );
-}
-
-export function DropdownItem({
-  children,
-  onClick,
-  danger,
-  disabled,
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors",
-        danger
-          ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
-          : "text-ink-secondary hover:bg-black/[0.03] dark:text-gray-300 dark:hover:bg-white/[0.04]",
-        disabled && "pointer-events-none opacity-45"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+/* ─── Menu, Dropdown, ActionMenu, Popover (Design System — reexport) ─── */
+export {
+  Menu,
+  DropdownMenu,
+  MenuItem,
+  MenuSeparator,
+  MenuGroup,
+  MenuLabel,
+  ActionMenu,
+  Popover,
+  Dropdown,
+  DropdownItem,
+} from "./ui-menu";
+export type {
+  MenuProps,
+  MenuItemProps,
+  ActionMenuItem,
+  PopoverProps,
+} from "./ui-menu";
 
 /* ─── Select (Design System — reexport) ─── */
 export { Select } from "./ui-select";
 export type { SelectOption, SelectProps } from "./ui-select";
+

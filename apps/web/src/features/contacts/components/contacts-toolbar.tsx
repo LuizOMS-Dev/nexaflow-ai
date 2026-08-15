@@ -1,9 +1,10 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Archive, ChevronDown, RotateCcw, Search, SlidersHorizontal, Trash2, X } from "lucide-react";
 import {
-  Dropdown,
-  DropdownItem,
+  Menu,
+  MenuItem,
+  MenuSeparator,
   Select,
   SelectAvatar,
 } from "@/components/ui";
@@ -149,25 +150,38 @@ export function ContactsToolbar({
               onChange={(v) => v && onBulkPriority(v)}
               options={[{ value: "", label: "Prioridade…" }, ...priOpts]}
             />
-            <Dropdown
+            <Menu
+              minWidth={190}
               trigger={
-                <button type="button" className="btn-secondary h-9 px-3 text-[13px]" disabled={busy}>
-                  Mais
+                <button
+                  type="button"
+                  className="btn-secondary h-9 px-3 text-[13px] gap-1.5"
+                  disabled={busy}
+                >
+                  <span>Mais</span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                 </button>
               }
             >
               {archived !== "1" ? (
-                <DropdownItem onClick={onArchive}>Arquivar</DropdownItem>
+                <MenuItem icon={Archive} onClick={onArchive}>
+                  Arquivar
+                </MenuItem>
               ) : null}
               {archived !== "0" ? (
-                <DropdownItem onClick={onRestore}>Restaurar</DropdownItem>
+                <MenuItem icon={RotateCcw} onClick={onRestore}>
+                  Restaurar
+                </MenuItem>
               ) : null}
               {canDelete ? (
-                <DropdownItem danger onClick={onDelete}>
-                  Excluir
-                </DropdownItem>
+                <>
+                  <MenuSeparator />
+                  <MenuItem icon={Trash2} danger onClick={onDelete}>
+                    Excluir
+                  </MenuItem>
+                </>
               ) : null}
-            </Dropdown>
+            </Menu>
           </>
         ) : null}
 
