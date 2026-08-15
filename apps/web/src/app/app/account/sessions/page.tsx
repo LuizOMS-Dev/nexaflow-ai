@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Globe,
   Laptop,
   LogOut,
   Smartphone,
@@ -214,12 +213,7 @@ export default function AccountSessionsPage() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-ink-muted dark:text-zinc-400">
-                          {s.ip ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Globe className="h-3 w-3 opacity-60" />
-                              IP {s.ip}
-                            </span>
-                          ) : null}
+                          {s.ip ? <span>IP {s.ip}</span> : null}
                           {s.ip ? <span>·</span> : null}
                           <span>Atividade: {formatHumanActivity(s.lastActivityAt)}</span>
                         </div>

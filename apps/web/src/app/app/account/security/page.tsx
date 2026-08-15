@@ -45,6 +45,7 @@ export default function AccountSecurityPage() {
 
   const [mfaSetup, setMfaSetup] = useState<{ secret: string; qrDataUrl: string } | null>(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [mfaError, setMfaError] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [backupCodesAck, setBackupCodesAck] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -86,6 +87,8 @@ export default function AccountSecurityPage() {
     onSuccess: (data) => {
       setMfaSetup({ secret: data.secret, qrDataUrl: data.qrDataUrl });
       setBackupCodes(null);
+      setMfaError(null);
+      setMfaCode("");
       setManageOpen(true);
     },
     onError: (e: Error) => toast({ kind: "error", title: "Erro ao iniciar 2FA", description: e.message }),
@@ -102,6 +105,7 @@ export default function AccountSecurityPage() {
       setBackupCodesAck(false);
       setMfaSetup(null);
       setMfaCode("");
+      setMfaError(null);
       setManageOpen(false);
       toast({
         kind: "success",
@@ -110,11 +114,15 @@ export default function AccountSecurityPage() {
       });
       void qc.invalidateQueries({ queryKey: ["mfa-status"] });
     },
-    onError: (e: Error) => toast({
-      kind: "error",
-      title: "Código inválido",
-      description: "Verifique o aplicativo autenticador e tente novamente.",
-    }),
+    onError: (e: Error) => {
+      const msg = "Código inválido. Verifique o aplicativo autenticador e tente novamente.";
+      setMfaError(msg);
+      toast({
+        kind: "error",
+        title: "Código inválido",
+        description: msg,
+      });
+    },
   });
 
   const mfaDisableMutation = useMutation({
@@ -196,6 +204,7 @@ export default function AccountSecurityPage() {
   const isPwdValid =
     pwd.current.trim().length > 0 &&
     pwd.next.length >= 8 &&
+    pwd.confirm.length > 0 &&
     pwd.next === pwd.confirm;
 
   return (
@@ -314,14 +323,7 @@ export default function AccountSecurityPage() {
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
             setPwdError(null);
-            if (pwd.next !== pwd.confirm) {
-              setPwdError("A confirmação de senha não confere.");
-              return;
-            }
-            if (pwd.next.length < 8) {
-              setPwdError("A nova senha deve ter no mínimo 8 caracteres.");
-              return;
-            }
+            if (!isPwdValid || changePassword.isPending) return;
             changePassword.mutate();
           }}
           className="space-y-4 pt-1"
@@ -336,7 +338,10 @@ export default function AccountSecurityPage() {
                 type={showPwd.current ? "text" : "password"}
                 required
                 value={pwd.current}
-                onChange={(e) => setPwd((p) => ({ ...p, current: e.target.value }))}
+                onChange={(e) => {
+                  setPwd((p) => ({ ...p, current: e.target.value }));
+                  setPwdError(null);
+                }}
                 className="input h-9.5 pr-10 text-xs sm:text-[13px] w-full"
                 placeholder="Digite sua senha atual"
               />
@@ -363,7 +368,10 @@ export default function AccountSecurityPage() {
                 required
                 minLength={8}
                 value={pwd.next}
-                onChange={(e) => setPwd((p) => ({ ...p, next: e.target.value }))}
+                onChange={(e) => {
+                  setPwd((p) => ({ ...p, next: e.target.value }));
+                  setPwdError(null);
+                }}
                 className="input h-9.5 pr-10 text-xs sm:text-[13px] w-full"
                 placeholder="Mínimo de 8 caracteres"
               />
@@ -392,7 +400,10 @@ export default function AccountSecurityPage() {
                 type={showPwd.confirm ? "text" : "password"}
                 required
                 value={pwd.confirm}
-                onChange={(e) => setPwd((p) => ({ ...p, confirm: e.target.value }))}
+                onChange={(e) => {
+                  setPwd((p) => ({ ...p, confirm: e.target.value }));
+                  setPwdError(null);
+                }}
                 className={cn(
                   "input h-9.5 pr-10 text-xs sm:text-[13px] w-full",
                   pwd.confirm && pwd.next !== pwd.confirm && "border-rose-500 focus:border-rose-500"
@@ -432,7 +443,7 @@ export default function AccountSecurityPage() {
             </button>
             <button
               type="submit"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!isPwdValid || changePassword.isPending}
             >
               {changePassword.isPending ? "Atualizando senha…" : "Atualizar senha"}
@@ -444,7 +455,10 @@ export default function AccountSecurityPage() {
       {/* ── Modal de Configuração de 2FA (QR Code & Chave Manual) ── */}
       <Modal
         open={manageOpen && Boolean(mfaSetup)}
-        onClose={() => setManageOpen(false)}
+        onClose={() => {
+          setManageOpen(false);
+          setMfaError(null);
+        }}
         title="Ativar autenticação em duas etapas (2FA)"
         size="md"
         preventBackdropClose
@@ -504,27 +518,41 @@ export default function AccountSecurityPage() {
               inputMode="numeric"
               maxLength={6}
               value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) => {
+                setMfaCode(e.target.value.replace(/\D/g, ""));
+                setMfaError(null);
+              }}
               placeholder="000000"
-              className="input h-10 tracking-[0.25em] text-center text-base font-mono font-bold mt-1.5 w-full"
+              className={cn(
+                "input h-10 tracking-[0.25em] text-center text-base font-mono font-bold mt-1.5 w-full",
+                mfaError && "border-rose-500 focus:border-rose-500"
+              )}
             />
+            {mfaError ? (
+              <p className="mt-1.5 text-[11.5px] text-rose-600 dark:text-rose-400">
+                {mfaError}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
               className="btn-secondary h-8.5 px-3 text-xs font-medium"
-              onClick={() => setManageOpen(false)}
+              onClick={() => {
+                setManageOpen(false);
+                setMfaError(null);
+              }}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={mfaCode.length !== 6 || mfaEnableMutation.isPending}
               onClick={() => mfaEnableMutation.mutate()}
             >
-              {mfaEnableMutation.isPending ? "Validando…" : "Ativar 2FA"}
+              {mfaEnableMutation.isPending ? "Verificando…" : "Verificar e ativar"}
             </button>
           </div>
         </div>

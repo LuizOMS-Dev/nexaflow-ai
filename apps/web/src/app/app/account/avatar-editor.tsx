@@ -8,8 +8,8 @@ import {
   ChevronDown,
   ImageIcon,
   Palette,
+  RotateCcw,
   Trash2,
-  Type,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import {
@@ -197,8 +197,8 @@ export function ProfileAvatarSection({
             ) : null}
             {roleLabel ? (
               <div className="pt-1">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/[0.08] dark:bg-violet-500/[0.12] border border-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:text-violet-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500/80" />
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/[0.06] dark:bg-violet-500/[0.1] border border-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-700/90 dark:text-violet-300/90">
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500/60 dark:bg-violet-400/70" />
                   {roleLabel}
                 </span>
               </div>
@@ -244,7 +244,7 @@ export function ProfileAvatarSection({
               Cor das iniciais
             </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={Type} onClick={() => useInitials()}>
+            <MenuItem icon={RotateCcw} onClick={() => useInitials()}>
               Restaurar padrão
             </MenuItem>
             {showRemove ? (
