@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   Camera,
   Check,
@@ -25,10 +25,13 @@ import { UserAvatar } from "@/components/user-avatar";
 import { useAuth, type UserInfo } from "@/store/auth";
 import { applyUser } from "./account-utils";
 
-type Preset = { id: string; label: string; category: string; url: string };
-
-export function AvatarEditor({ compact }: { compact?: boolean }) {
-  const user = useAuth((s) => s.user);
+export function ProfileAvatarSection({
+  user,
+  roleLabel,
+}: {
+  user: UserInfo;
+  roleLabel?: string;
+}) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -44,8 +47,6 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
   const [pickedPreset, setPickedPreset] = useState<string | null>(null);
   const [pickedColor, setPickedColor] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-
-  if (!user) return null;
 
   const liveUser: UserInfo = {
     ...user,
@@ -135,9 +136,9 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
       avatarType: "INITIALS",
       avatarUrl: null,
       avatarPresetId: null,
-      avatarColor: color || user?.avatarColor || "#6366F1",
+      avatarColor: color || user.avatarColor || "#6366F1",
     });
-    initialsMut.mutate(color || user?.avatarColor || undefined);
+    initialsMut.mutate(color || user.avatarColor || undefined);
   }
 
   function confirmPreset() {
@@ -170,37 +171,49 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
 
   return (
     <>
-      <div className={cn("flex items-center gap-4", compact ? "flex-row" : "flex-col sm:flex-row")}>
-        <div className="relative shrink-0">
-          <UserAvatar
-            user={liveUser}
-            size="xl"
-            className={cn(
-              "!rounded-2xl ring-2 ring-violet-500/15",
-              compact ? "!h-14 !w-14 !text-base" : "!h-20 !w-20 !text-xl"
-            )}
-          />
-          {busy ? (
-            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-xs">
-              <Spinner className="h-5 w-5 text-white" />
-            </div>
-          ) : null}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between p-5 sm:p-6">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="relative shrink-0">
+            <UserAvatar
+              user={liveUser}
+              size="lg"
+              className="!h-16 !w-16 !text-xl !rounded-2xl ring-2 ring-black/[0.04] dark:ring-white/[0.08]"
+            />
+            {busy ? (
+              <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-xs">
+                <Spinner className="h-5 w-5 text-white" />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <h2 className="truncate text-base sm:text-[17px] font-bold tracking-tight text-ink dark:text-white">
+              {user.name}
+            </h2>
+            {user.email ? (
+              <p className="truncate text-[13px] text-ink-muted dark:text-zinc-400">
+                {user.email}
+              </p>
+            ) : null}
+            {roleLabel ? (
+              <div className="pt-1">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/10 dark:bg-violet-500/15 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                  {roleLabel}
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        <div className="min-w-0 flex-1 space-y-2">
-          {!compact ? (
-            <p className="text-[12px] leading-relaxed text-ink-muted dark:text-zinc-400">
-              Sua foto aparece no inbox, equipe e menções. JPG, PNG ou WebP até 512 px.
-            </p>
-          ) : null}
-
+        <div className="shrink-0 self-start sm:self-center">
           <Menu
-            align="left"
+            align="right"
             minWidth={210}
             trigger={
               <button
                 type="button"
-                className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5"
+                className="btn-secondary h-8.5 px-3 text-xs font-medium gap-1.5"
                 disabled={busy}
               >
                 <Camera className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -215,7 +228,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
             <MenuItem
               icon={ImageIcon}
               onClick={() => {
-                setPickedPreset(user?.avatarPresetId || null);
+                setPickedPreset(user.avatarPresetId || null);
                 setPickerOpen(true);
               }}
             >
@@ -224,7 +237,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
             <MenuItem
               icon={Palette}
               onClick={() => {
-                setPickedColor(user?.avatarColor || "#6366F1");
+                setPickedColor(user.avatarColor || "#6366F1");
                 setColorPickerOpen(true);
               }}
             >
@@ -254,6 +267,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
         </div>
       </div>
 
+      {/* Modal: Escolher avatar pré-definido */}
       <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} title="Escolher avatar" size="md">
         <div className="grid max-h-72 grid-cols-4 gap-2 overflow-y-auto p-1">
           {NEXA_AVATAR_PRESETS.map((preset) => {
@@ -289,7 +303,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
           </button>
           <button
             type="button"
-            className="btn-primary h-8 px-4 text-xs"
+            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
             disabled={!pickedPreset || presetMut.isPending}
             onClick={confirmPreset}
           >
@@ -298,6 +312,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
         </div>
       </Modal>
 
+      {/* Modal: Cor das iniciais */}
       <Modal open={colorPickerOpen} onClose={() => setColorPickerOpen(false)} title="Cor das iniciais">
         <div className="grid grid-cols-3 gap-2 py-1 sm:grid-cols-5">
           {AVATAR_COLOR_OPTIONS.map((c) => {
@@ -326,7 +341,7 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
           </button>
           <button
             type="button"
-            className="btn-primary h-8 px-4 text-xs"
+            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
             disabled={!pickedColor || initialsMut.isPending}
             onClick={confirmColor}
           >
@@ -337,3 +352,6 @@ export function AvatarEditor({ compact }: { compact?: boolean }) {
     </>
   );
 }
+
+export const AvatarEditor = ProfileAvatarSection;
+

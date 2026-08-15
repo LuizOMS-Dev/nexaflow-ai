@@ -4865,14 +4865,14 @@ html.dark .nf-date-input,
 /* Configurações: scroll natural do documento (sem scroll interno) */
 .settings-page {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1240px;
   min-width: 0;
 }
 
 .settings-page--split {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
   /* espaço para sticky save bar */
   padding-bottom: 5rem;
 }
@@ -4880,14 +4880,14 @@ html.dark .nf-date-input,
 @media (min-width: 1024px) {
   .settings-page--split .settings-layout {
     display: grid;
-    grid-template-columns: 188px minmax(0, 1fr);
-    gap: 1.75rem 2rem;
+    grid-template-columns: 205px minmax(0, 1fr);
+    gap: 2rem;
     align-items: start;
   }
 
   .settings-page--split .settings-subnav {
     position: sticky;
-    top: 0.75rem;
+    top: 1rem;
     align-self: start;
     max-height: none;
     overflow: visible;
@@ -4895,7 +4895,8 @@ html.dark .nf-date-input,
 
   .settings-page--split .settings-main {
     min-width: 0;
-    max-width: 760px;
+    max-width: 940px;
+    width: 100%;
     overflow: visible;
     height: auto;
   }
@@ -4907,7 +4908,7 @@ html.dark .nf-date-input,
   flex: none !important;
   min-height: 0 !important;
   overflow: visible !important;
-  gap: 0.85rem;
+  gap: 1rem;
 }
 
 /* ==========================================================================

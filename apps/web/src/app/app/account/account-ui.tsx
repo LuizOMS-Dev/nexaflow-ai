@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Título de seção dentro de uma aba da conta. */
+/** Título de seção dentro de uma aba da conta (opcional). */
 export function AccountSectionTitle({
   title,
   description,
@@ -12,8 +13,8 @@ export function AccountSectionTitle({
   description?: string;
 }) {
   return (
-    <header className="min-w-0">
-      <h2 className="text-[15px] font-semibold tracking-[-0.02em] text-ink dark:text-zinc-100">
+    <header className="min-w-0 mb-1">
+      <h2 className="text-[15px] font-semibold tracking-tight text-ink dark:text-zinc-100">
         {title}
       </h2>
       {description ? (
@@ -25,7 +26,7 @@ export function AccountSectionTitle({
   );
 }
 
-/** Painel agrupado — alinhado ao Surface de Configurações. */
+/** Painel agrupado — superfície refinada alinhada ao design system NexaFlow. */
 export function AccountSurface({
   title,
   description,
@@ -47,21 +48,21 @@ export function AccountSurface({
     <section
       id={id}
       className={cn(
-        "nf-form-section-surface overflow-hidden rounded-2xl border border-black/[0.06] bg-[var(--surface-raised)]",
-        "dark:border-white/[0.07] dark:shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]",
+        "relative overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-xs transition-all duration-150",
+        "dark:border-white/[0.07] dark:bg-[#11131a]/85 dark:shadow-[0_1px_0_rgba(255,255,255,0.03)_inset]",
         className
       )}
     >
       {(title || description || action) && (
-        <div className="flex items-start justify-between gap-3 border-b border-black/[0.05] px-4 py-3 dark:border-white/[0.06]">
+        <div className="flex flex-col gap-2 border-b border-black/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.06]">
           <div className="min-w-0 space-y-0.5">
             {title ? (
-              <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-ink dark:text-zinc-100">
+              <h2 className="text-[14px] font-semibold tracking-tight text-ink dark:text-zinc-100">
                 {title}
-              </h3>
+              </h2>
             ) : null}
             {description ? (
-              <p className="text-[12px] leading-relaxed text-ink-muted dark:text-zinc-400">
+              <p className="text-[12.5px] leading-relaxed text-ink-muted dark:text-zinc-400">
                 {description}
               </p>
             ) : null}
@@ -69,7 +70,7 @@ export function AccountSurface({
           {action ? <div className="shrink-0">{action}</div> : null}
         </div>
       )}
-      <div className={cn(!flush && "p-4")}>{children}</div>
+      <div className={cn(!flush && "p-5 sm:p-6")}>{children}</div>
     </section>
   );
 }
@@ -91,21 +92,20 @@ export function AccountRow({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-t border-black/[0.05] px-4 py-3.5 first:border-t-0 dark:border-white/[0.06]",
-        "sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+        "flex flex-col gap-4 border-t border-black/[0.05] p-5 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6 dark:border-white/[0.06]",
         className
       )}
     >
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      <div className="flex min-w-0 flex-1 items-start gap-3.5">
         {Icon ? (
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/[0.04] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300">
-            <Icon className="h-4 w-4" strokeWidth={1.75} />
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.03] text-zinc-600 dark:bg-white/[0.05] dark:text-zinc-300 shadow-xs">
+            <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
           </div>
         ) : null}
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-ink dark:text-zinc-200">{title}</p>
+          <p className="text-[13.5px] font-semibold tracking-tight text-ink dark:text-zinc-100">{title}</p>
           {description ? (
-            <div className="mt-0.5 text-[12px] leading-relaxed text-ink-muted dark:text-zinc-400">
+            <div className="mt-1 text-[12.5px] leading-relaxed text-ink-muted dark:text-zinc-400">
               {description}
             </div>
           ) : null}
@@ -129,12 +129,12 @@ export function AccountStatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-        tone === "ok" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-        tone === "warn" && "bg-amber-500/[0.12] text-amber-800 dark:text-amber-300",
-        tone === "bad" && "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-        tone === "muted" && "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06]",
-        tone === "brand" && "bg-violet-500/10 text-violet-700 dark:text-violet-300"
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-tight",
+        tone === "ok" && "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+        tone === "warn" && "bg-amber-500/10 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+        tone === "bad" && "bg-rose-500/10 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+        tone === "muted" && "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-400",
+        tone === "brand" && "bg-violet-500/10 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
       )}
     >
       <span
@@ -143,7 +143,7 @@ export function AccountStatusBadge({
           tone === "ok" && "bg-emerald-500",
           tone === "warn" && "bg-amber-500",
           tone === "bad" && "bg-rose-500",
-          tone === "muted" && "bg-ink-faint",
+          tone === "muted" && "bg-zinc-400 dark:bg-zinc-500",
           tone === "brand" && "bg-violet-500",
           pulse && "animate-pulse"
         )}
@@ -158,12 +158,14 @@ export function AccountField({
   label,
   htmlFor,
   hint,
+  locked,
   badge,
   children,
 }: {
   label: string;
   htmlFor?: string;
   hint?: string;
+  locked?: boolean;
   badge?: ReactNode;
   children: ReactNode;
 }) {
@@ -176,11 +178,18 @@ export function AccountField({
         >
           {label}
         </label>
-        {badge}
+        {locked ? (
+          <span className="inline-flex items-center gap-1 rounded-md bg-black/[0.04] px-1.5 py-0.5 text-[10.5px] font-medium text-zinc-500 dark:bg-white/[0.06] dark:text-zinc-400">
+            <Lock className="h-3 w-3 opacity-70" />
+            Bloqueado
+          </span>
+        ) : (
+          badge
+        )}
       </div>
       {children}
       {hint ? (
-        <p className="mt-1 text-[11px] leading-relaxed text-ink-faint dark:text-zinc-500">{hint}</p>
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint dark:text-zinc-500">{hint}</p>
       ) : null}
     </div>
   );
@@ -200,13 +209,15 @@ export function AccountSaveBar({
 }) {
   if (!dirty) return null;
   return (
-    <div className="account-save-bar">
-      <div className="account-save-bar__inner">
-        <p className="text-[12px] text-ink-muted dark:text-zinc-400">Alterações não salvas</p>
+    <div className="fixed bottom-6 inset-x-0 z-40 flex justify-center px-4 pointer-events-none animate-in fade-in slide-in-from-bottom-3 duration-200">
+      <div className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl border border-black/10 bg-white/95 px-5 py-3 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-[#181a24]/95 max-w-md w-full">
+        <p className="text-[12.5px] font-medium text-ink-muted dark:text-zinc-300">
+          Alterações não salvas
+        </p>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="btn-secondary h-8.5 px-3 text-xs"
+            className="btn-secondary h-8 px-3 text-xs font-medium"
             disabled={saving}
             onClick={onDiscard}
           >
@@ -214,7 +225,7 @@ export function AccountSaveBar({
           </button>
           <button
             type="button"
-            className="btn-primary h-8.5 px-4 text-xs"
+            className="btn-primary h-8 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
             disabled={saving}
             onClick={onSave}
           >
@@ -248,23 +259,22 @@ export function AccountCardHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4",
-        "bg-black/[0.015] border-b border-black/[0.05] dark:bg-white/[0.015] dark:border-white/[0.06]",
+        "flex flex-col gap-3 border-b border-black/[0.05] p-5 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.06]",
         className
       )}
     >
       <div className="flex items-center gap-3 min-w-0">
         {Icon ? (
-          <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400 shadow-xs">
-            <Icon className="h-4 w-4" strokeWidth={1.75} />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400 shadow-xs">
+            <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
           </div>
         ) : null}
         <div className="min-w-0">
-          <h2 className="text-[13.5px] font-semibold tracking-tight text-ink dark:text-zinc-100">
+          <h2 className="text-[14px] font-semibold tracking-tight text-ink dark:text-zinc-100">
             {title}
           </h2>
           {desc ? (
-            <p className="mt-0.5 text-xs text-ink-muted dark:text-zinc-400 leading-relaxed">
+            <p className="mt-0.5 text-[12.5px] text-ink-muted dark:text-zinc-400 leading-relaxed">
               {desc}
             </p>
           ) : null}
@@ -288,3 +298,4 @@ export function AccountBody({
 export const AccountPanelHead = AccountCardHeader;
 export const AccountActionRow = AccountRow;
 export const AccountSection = AccountBody;
+

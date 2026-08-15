@@ -6,20 +6,13 @@ import {
   Globe,
   Laptop,
   LogOut,
-  Monitor,
-  Shield,
   Smartphone,
   Tablet,
-  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { EmptyState, Modal, Spinner, useToast } from "@/components/ui";
-import {
-  AccountBody,
-  AccountCard,
-  AccountCardHeader,
-} from "../account-ui";
+import { Modal, Spinner, useToast } from "@/components/ui";
+import { AccountCard } from "../account-ui";
 
 type SessionRow = {
   id: string;
@@ -76,33 +69,45 @@ function parseDeviceInfo(label: string | null, ua: string | null) {
   }
 
   // Detect OS
-  if (/windows/i.test(text)) os = "Windows";
+  if (/windows nt 10\.0/i.test(text) || /windows 11/i.test(text)) os = "Windows 11";
+  else if (/windows/i.test(text)) os = "Windows";
   else if (/macintosh|mac os x/i.test(text)) os = "macOS";
   else if (/linux/i.test(text)) os = "Linux";
   else if (/android/i.test(text)) os = "Android";
   else if (/iphone|ipad|ios/i.test(text)) os = "iOS";
 
   // Detect Browser
-  if (/edg\//i.test(text)) browser = "Microsoft Edge";
-  else if (/chrome/i.test(text)) browser = "Google Chrome";
-  else if (/firefox/i.test(text)) browser = "Mozilla Firefox";
-  else if (/safari/i.test(text) && !/chrome/i.test(text)) browser = "Apple Safari";
+  const edgeMatch = ua?.match(/Edg\/(\d+)/i);
+  const chromeMatch = ua?.match(/Chrome\/(\d+)/i);
+  const firefoxMatch = ua?.match(/Firefox\/(\d+)/i);
+  const safariMatch = !chromeMatch && ua?.match(/Version\/(\d+).*Safari/i);
+
+  if (edgeMatch) browser = `Edge ${edgeMatch[1]}`;
+  else if (chromeMatch) browser = `Chrome ${chromeMatch[1]}`;
+  else if (firefoxMatch) browser = `Firefox ${firefoxMatch[1]}`;
+  else if (safariMatch) browser = `Safari ${safariMatch[1]}`;
+  else if (/edg\//i.test(text)) browser = "Edge";
+  else if (/chrome/i.test(text)) browser = "Chrome";
+  else if (/firefox/i.test(text)) browser = "Firefox";
+  else if (/safari/i.test(text)) browser = "Safari";
   else if (/opera|opr\//i.test(text)) browser = "Opera";
   else if (/brave/i.test(text)) browser = "Brave";
 
-  let displayTitle = label;
-  if (!displayTitle) {
-    if (browser && os) displayTitle = `${browser} no ${os}`;
-    else if (browser) displayTitle = browser;
-    else if (os) displayTitle = `${typeLabel} (${os})`;
-    else displayTitle = "Dispositivo conectado";
+  let displayTitle = "";
+  if (label && !/^(unknown|desconhecido|generic|navegador web|sistema operacional)$/i.test(label.trim())) {
+    displayTitle = label;
+  } else if (browser && os) {
+    displayTitle = `${browser} · ${os}`;
+  } else if (browser) {
+    displayTitle = browser;
+  } else if (os) {
+    displayTitle = `${typeLabel} · ${os}`;
+  } else {
+    displayTitle = typeLabel;
   }
 
   return {
     Icon: icon,
-    typeLabel,
-    browser,
-    os,
     displayTitle,
   };
 }
@@ -111,6 +116,7 @@ export default function AccountSessionsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [confirmRevokeOthersOpen, setConfirmRevokeOthersOpen] = useState(false);
+  const [sessionToRevoke, setSessionToRevoke] = useState<SessionRow | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: ["auth-sessions"],
@@ -120,6 +126,7 @@ export default function AccountSessionsPage() {
   const revokeOne = useMutation({
     mutationFn: (id: string) => api(`/auth/sessions/${id}`, { method: "DELETE" }),
     onSuccess: () => {
+      setSessionToRevoke(null);
       toast({ kind: "success", title: "Sessão encerrada com sucesso." });
       void qc.invalidateQueries({ queryKey: ["auth-sessions"] });
     },
@@ -148,31 +155,29 @@ export default function AccountSessionsPage() {
 
   return (
     <div className="space-y-6">
-      <AccountCard>
-        <AccountCardHeader
-          title="Dispositivos e sessões conectadas"
-          subtitle="Gerencie os aparelhos e navegadores com acesso ativo à sua conta"
-          icon={Laptop}
-          action={
-            otherCount > 0 ? (
-              <button
-                type="button"
-                className="btn-secondary h-8.5 px-3 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                onClick={() => setConfirmRevokeOthersOpen(true)}
-              >
-                Encerrar outras sessões ({otherCount})
-              </button>
-            ) : null
-          }
-        />
-
+      <AccountCard
+        title="Dispositivos e sessões conectadas"
+        description="Gerencie os dispositivos com acesso ativo à sua conta."
+        flush
+        action={
+          otherCount > 0 ? (
+            <button
+              type="button"
+              className="btn-secondary h-8 px-3 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+              onClick={() => setConfirmRevokeOthersOpen(true)}
+            >
+              Encerrar outras sessões ({otherCount})
+            </button>
+          ) : null
+        }
+      >
         <div>
           {sessionsQuery.isLoading ? (
-            <div className="flex justify-center py-16">
+            <div className="flex justify-center py-12">
               <Spinner />
             </div>
           ) : list.length === 0 ? (
-            <div className="py-12 text-center text-xs text-ink-muted dark:text-zinc-400">
+            <div className="py-10 text-center text-xs text-ink-muted dark:text-zinc-400">
               Nenhuma sessão ativa encontrada.
             </div>
           ) : (
@@ -183,53 +188,53 @@ export default function AccountSessionsPage() {
                   <li
                     key={s.id}
                     className={cn(
-                      "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 sm:px-7 sm:py-5.5 transition-colors",
+                      "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:px-6 transition-colors",
                       s.isCurrent
-                        ? "bg-violet-500/[0.02] dark:bg-violet-500/[0.04]"
+                        ? "bg-violet-500/[0.02] dark:bg-violet-500/[0.03]"
                         : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"
                     )}
                   >
-                    <div className="flex items-start gap-4 min-w-0 flex-1">
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.035] text-ink-muted dark:bg-white/[0.06] dark:text-zinc-300 shadow-xs">
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.03] text-zinc-600 dark:bg-white/[0.05] dark:text-zinc-300 shadow-xs">
                         <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
                       </div>
 
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-[13.5px] font-semibold text-ink dark:text-white truncate">
                             {displayTitle}
                           </p>
                           {s.isCurrent ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-400">
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              Esta sessão (dispositivo atual)
+                              Este dispositivo
                             </span>
                           ) : null}
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted dark:text-zinc-400">
+                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[12px] text-ink-muted dark:text-zinc-400">
                           {s.ip ? (
                             <span className="inline-flex items-center gap-1">
                               <Globe className="h-3 w-3 opacity-60" />
-                              {s.ip}
+                              IP {s.ip}
                             </span>
                           ) : null}
-                          <span>•</span>
+                          {s.ip ? <span>·</span> : null}
                           <span>Atividade: {formatHumanActivity(s.lastActivityAt)}</span>
                         </div>
                       </div>
                     </div>
 
                     {!s.isCurrent ? (
-                      <div className="shrink-0 self-end sm:self-center">
+                      <div className="shrink-0 self-start sm:self-center">
                         <button
                           type="button"
                           className="btn-secondary h-8 px-3 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 gap-1.5"
                           disabled={revokeOne.isPending}
-                          onClick={() => revokeOne.mutate(s.id)}
+                          onClick={() => setSessionToRevoke(s)}
                         >
                           <LogOut className="h-3.5 w-3.5" />
-                          <span>Encerrar sessão</span>
+                          <span>Encerrar</span>
                         </button>
                       </div>
                     ) : null}
@@ -241,29 +246,60 @@ export default function AccountSessionsPage() {
         </div>
       </AccountCard>
 
+      {/* ── Modal de Confirmação para Encerrar Sessão Única ── */}
+      <Modal
+        open={Boolean(sessionToRevoke)}
+        onClose={() => setSessionToRevoke(null)}
+        title="Encerrar sessão?"
+      >
+        <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
+          <p className="leading-relaxed">
+            Isso desconectará o dispositivo selecionado ({sessionToRevoke ? parseDeviceInfo(sessionToRevoke.deviceLabel, sessionToRevoke.userAgent).displayTitle : ""}). O usuário precisará fazer login novamente.
+          </p>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
+            <button
+              type="button"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium"
+              onClick={() => setSessionToRevoke(null)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+              disabled={revokeOne.isPending}
+              onClick={() => sessionToRevoke && revokeOne.mutate(sessionToRevoke.id)}
+            >
+              {revokeOne.isPending ? "Encerrando…" : "Encerrar sessão"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* ── Modal de Confirmação para Encerrar Outras Sessões ── */}
       <Modal
         open={confirmRevokeOthersOpen}
         onClose={() => setConfirmRevokeOthersOpen(false)}
-        title="Encerrar todas as outras sessões?"
+        title="Encerrar outras sessões?"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
           <p className="leading-relaxed">
-            Isso desconectará sua conta de todos os outros navegadores, computadores e celulares conectados.
+            Isso desconectará sua conta de todos os outros navegadores e dispositivos conectados.
             Apenas este dispositivo atual permanecerá conectado.
           </p>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium"
               onClick={() => setConfirmRevokeOthersOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs bg-red-600 hover:bg-red-700"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
               disabled={revokeOthers.isPending}
               onClick={() => revokeOthers.mutate()}
             >

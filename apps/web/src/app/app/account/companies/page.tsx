@@ -4,7 +4,7 @@ import { Building2, Check, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui";
 import { useAuth } from "@/store/auth";
-import { AccountBody, AccountCard, AccountCardHeader } from "../account-ui";
+import { AccountCard } from "../account-ui";
 
 const rolePt: Record<string, string> = {
   ADMIN: "Administrador",
@@ -49,17 +49,15 @@ export default function AccountCompaniesPage() {
 
   return (
     <div className="space-y-6">
-      <AccountCard>
-        <AccountCardHeader
-          title="Empresas e workspaces vinculados"
-          subtitle="Organizações e ambientes de trabalho aos quais sua conta tem permissão de acesso"
-          icon={Building2}
-        />
-
+      <AccountCard
+        title="Empresas e workspaces vinculados"
+        description="Organizações e ambientes de trabalho aos quais sua conta tem permissão de acesso."
+        flush
+      >
         <div>
           {list.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/[0.03] text-ink-muted dark:bg-white/[0.05]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/[0.03] text-zinc-500 dark:bg-white/[0.05]">
                 <Building2 className="h-5 w-5" strokeWidth={1.5} />
               </span>
               <p className="text-xs text-ink-muted dark:text-zinc-400">
@@ -82,9 +80,9 @@ export default function AccountCompaniesPage() {
                   <li
                     key={m.tenantId}
                     className={cn(
-                      "flex items-center justify-between gap-4 p-6 sm:px-7 sm:py-5.5 transition-colors",
+                      "flex items-center justify-between gap-4 p-5 sm:px-6 transition-colors",
                       active && multi
-                        ? "bg-violet-500/[0.02] dark:bg-violet-500/[0.04]"
+                        ? "bg-violet-500/[0.02] dark:bg-violet-500/[0.03]"
                         : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"
                     )}
                   >
@@ -98,7 +96,7 @@ export default function AccountCompaniesPage() {
                             {m.tenant.name}
                           </p>
                           {active ? (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-400">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
                               <Check className="h-3 w-3" strokeWidth={2.5} />
                               Empresa ativa
                             </span>

@@ -191,18 +191,17 @@ export default function AccountSecurityPage() {
   return (
     <div className="space-y-6">
       {/* ── 1. Resumo de Segurança da Conta ── */}
-      <AccountCard>
-        <AccountCardHeader
-          title="Credenciais e autenticação"
-          subtitle="Controle suas chaves de acesso, senhas e métodos de verificação de identidade"
-          icon={Shield}
-        />
-
+      <AccountCard
+        title="Credenciais e autenticação"
+        description="Gerencie sua senha e os métodos de proteção da conta."
+        flush
+      >
         {/* Linha 1: Senha de Acesso */}
         <AccountRow
           icon={KeyRound}
           title="Senha de acesso"
           description="Utilizada para autenticação principal em todos os seus navegadores e dispositivos."
+          className="py-5 sm:py-6"
           control={
             <button
               type="button"
@@ -219,28 +218,29 @@ export default function AccountSecurityPage() {
           <AccountRow
             icon={Smartphone}
             title="Autenticação em duas etapas"
+            className="py-5 sm:py-6"
             description={
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <p>
-                  Exige um código gerado por aplicativo autenticador (Google Authenticator, 1Password, etc.) ao entrar.
+                  Exige um código gerado por aplicativo autenticador ao entrar.
                 </p>
                 <div className="flex flex-wrap items-center gap-2 pt-0.5">
                   {mfaStatus.isLoading ? (
                     <Spinner className="h-4 w-4" />
                   ) : is2FAEnabled ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
                       <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
                       Ativada
                     </span>
                   ) : (
                     <>
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                         <AlertTriangle className="h-3 w-3" strokeWidth={2} />
                         Desativada
                       </span>
                       {isSuperadmin ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
-                          <ShieldAlert className="h-3.5 w-3.5" />
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                          <ShieldAlert className="h-3 w-3" />
                           Obrigatório para Superadministrador
                         </span>
                       ) : null}
@@ -261,7 +261,7 @@ export default function AccountSecurityPage() {
               ) : (
                 <button
                   type="button"
-                  className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 shadow-xs shadow-violet-500/25"
+                  className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
                   disabled={mfaSetupMutation.isPending}
                   onClick={() => mfaSetupMutation.mutate()}
                 >

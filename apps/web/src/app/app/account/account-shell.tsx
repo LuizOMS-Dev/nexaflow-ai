@@ -10,11 +10,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { UserAvatar } from "@/components/user-avatar";
 import { TenantModule } from "@/components/tenant/tenant-module";
 import { useAuth } from "@/store/auth";
-import { getRoleLabel } from "./account-utils";
-import { AccountStatusBadge } from "./account-ui";
 
 type NavItem = {
   id: string;
@@ -87,13 +84,16 @@ function renderNavLink(item: NavItem, pathname: string, mobile?: boolean) {
         href={item.href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors",
+          "inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition-colors",
           active
-            ? "bg-violet-500/12 text-violet-700 dark:bg-violet-500/18 dark:text-violet-200"
-            : "text-ink-muted hover:bg-black/[0.04] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.05]"
+            ? "bg-violet-500/12 text-violet-700 font-semibold dark:bg-violet-500/20 dark:text-violet-200"
+            : "text-zinc-600 hover:bg-black/[0.04] hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-zinc-200"
         )}
       >
-        <Icon className="h-3.5 w-3.5 opacity-70" strokeWidth={1.75} />
+        <Icon
+          className={cn("h-3.5 w-3.5", active ? "text-violet-600 dark:text-violet-300 opacity-100" : "opacity-70")}
+          strokeWidth={active ? 2 : 1.75}
+        />
         {item.label}
       </Link>
     );
@@ -105,27 +105,29 @@ function renderNavLink(item: NavItem, pathname: string, mobile?: boolean) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group relative flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+        "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-150",
         active
-          ? "bg-violet-500/[0.09] text-ink dark:bg-violet-500/[0.12] dark:text-white"
-          : "text-ink-muted hover:bg-black/[0.03] hover:text-ink dark:hover:bg-white/[0.04] dark:hover:text-gray-200"
+          ? "bg-violet-500/[0.08] text-violet-950 font-semibold dark:bg-violet-500/[0.12] dark:text-violet-100"
+          : "text-zinc-600 hover:bg-black/[0.03] hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-200"
       )}
     >
       <span
         className={cn(
-          "absolute left-0 top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-violet-500 transition-opacity",
-          active ? "opacity-100" : "opacity-0"
+          "absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-violet-600 dark:bg-violet-400 transition-all",
+          active ? "opacity-100 scale-y-100" : "opacity-0 scale-y-50"
         )}
         aria-hidden
       />
       <Icon
         className={cn(
-          "h-3.5 w-3.5 shrink-0",
-          active ? "text-violet-600 opacity-100 dark:text-violet-300" : "opacity-45"
+          "h-4 w-4 shrink-0 transition-colors",
+          active
+            ? "text-violet-600 dark:text-violet-400 opacity-100"
+            : "text-zinc-500 dark:text-zinc-400 opacity-70 group-hover:opacity-100"
         )}
-        strokeWidth={1.75}
+        strokeWidth={active ? 2 : 1.75}
       />
-      <span className={cn("text-[13px] leading-none", active ? "font-semibold" : "font-medium")}>
+      <span className={cn("text-[13px] leading-none tracking-tight", active ? "font-semibold" : "font-medium")}>
         {item.label}
       </span>
     </Link>
@@ -136,7 +138,6 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/app/account";
   const user = useAuth((s) => s.user);
   const memberships = useAuth((s) => s.memberships) || [];
-  const tenant = useAuth((s) => s.tenant);
 
   const isPlatformAdmin =
     user?.platformRole === "SUPERADMIN" && memberships.length === 0;
@@ -151,55 +152,39 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
     items: items.filter((i) => i.group === group),
   })).filter((g) => g.items.length > 0);
 
-  const roleLabel = user ? getRoleLabel(user, memberships) : "";
-  const kicker = tenant?.name || user?.email || "Conta pessoal";
-
   return (
     <TenantModule
       kind="settings"
       title="Minha conta"
-      kicker={kicker}
+      hideHeader
       className="account-page settings-page settings-page--split"
     >
-      {/* Hero — identidade do usuário */}
-      {user ? (
-        <div className="account-hero">
-          <div className="account-hero__glow" aria-hidden />
-          <div className="account-hero__body">
-            <UserAvatar user={user} size="xl" className="account-hero__avatar" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-[17px] font-bold tracking-tight text-ink dark:text-white">
-                {user.name}
-              </p>
-              {user.email ? (
-                <p className="mt-0.5 truncate text-[12px] text-ink-muted dark:text-zinc-400">
-                  {user.email}
-                </p>
-              ) : null}
-              <div className="mt-2">
-                <AccountStatusBadge tone="brand" label={roleLabel} />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* 1. Cabeçalho limpo e direto da página */}
+      <header className="border-b border-black/[0.06] pb-4.5 dark:border-white/[0.07]">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-ink dark:text-white">
+          Minha conta
+        </h1>
+        <p className="mt-1 text-[13px] text-ink-muted dark:text-zinc-400">
+          Gerencie seu perfil, segurança, sessões e preferências.
+        </p>
+      </header>
 
-      {/* Mobile: chips */}
+      {/* Mobile: chips de navegação */}
       <div className="-mx-1 overflow-x-auto px-1 pb-0.5 lg:hidden" aria-label="Seções da conta">
-        <div className="flex w-max min-w-full gap-1">
+        <div className="flex w-max min-w-full gap-1.5 border-b border-black/[0.05] pb-2 dark:border-white/[0.06]">
           {items.map((item) => renderNavLink(item, pathname, true))}
         </div>
       </div>
 
-      {/* Desktop: nav + conteúdo */}
-      <div className="settings-layout flex flex-col gap-5 lg:gap-0">
+      {/* Desktop: navegação lateral compacta + conteúdo principal */}
+      <div className="settings-layout flex flex-col gap-6 lg:gap-0">
         <nav
           className="settings-subnav hidden lg:block"
           aria-label="Navegação da conta"
         >
           {groups.map(({ group, label, items: groupItems }, idx) => (
-            <div key={group} className={cn(idx > 0 && "mt-4")}>
-              <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-faint">
+            <div key={group} className={cn(idx > 0 && "mt-5")}>
+              <p className="mb-1.5 px-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-faint dark:text-zinc-500">
                 {label}
               </p>
               <div className="flex flex-col gap-0.5">
@@ -209,9 +194,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="settings-main relative min-w-0 w-full">
-          <div className="account-panel nf-settings-fade space-y-4">{children}</div>
-        </div>
+        <main className="settings-main relative min-w-0 w-full">
+          <div className="account-panel nf-settings-fade space-y-5">{children}</div>
+        </main>
       </div>
     </TenantModule>
   );
