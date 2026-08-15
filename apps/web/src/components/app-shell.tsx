@@ -575,19 +575,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const adminNavLocked = false;
   const adminNavLockReason = undefined;
 
-  if (!hydrated || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7] dark:bg-[#0B0C10]">
-        <Spinner className="h-7 w-7" />
-      </div>
-    );
-  }
 
-  const currentUser = user;
-
-  if (isOnboardingRoute) {
-    return <div className="min-h-screen bg-[#F4F5F7] dark:bg-[#0B0C10]">{children}</div>;
-  }
 
   function handleSetTheme(t: "light" | "dark" | "system") {
     setAppThemeState(t);
@@ -675,8 +663,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     .toUpperCase()
     .slice(0, 2);
 
-  const displayName = resolveDisplayName(currentUser.name, currentUser.email);
-  const roleBadge = resolveRoleBadge(currentUser.platformRole, tenant?.role, {
+  const displayName = resolveDisplayName(user?.name, user?.email);
+  const roleBadge = resolveRoleBadge(user?.platformRole, tenant?.role, {
     platformContext: isPlatformContext,
     impersonating,
   });
@@ -687,7 +675,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Em impersonação: nav da empresa; senão superadmin = só plataforma
   const homeHref = isPlatformContext ? "/admin" : "/app";
   const activeNavGroups =
-    isPlatformContext || (currentUser.platformRole === "SUPERADMIN" && !impersonating)
+    isPlatformContext || (user?.platformRole === "SUPERADMIN" && !impersonating)
       ? platformNavGroups
       : tenantNavGroups;
 
@@ -863,13 +851,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const sidebarUserInfo = {
     name: displayName,
-    email: currentUser.email,
+    email: user?.email,
     roleBadge,
     showRoleBadge,
-    avatarUrl: currentUser.avatarUrl,
-    avatarType: currentUser.avatarType,
-    avatarPresetId: currentUser.avatarPresetId,
-    avatarColor: currentUser.avatarColor,
+    avatarUrl: user?.avatarUrl,
+    avatarType: user?.avatarType,
+    avatarPresetId: user?.avatarPresetId,
+    avatarColor: user?.avatarColor,
   };
 
   /** Menu de conta premium: identidade + Minha conta + tema + sair */
@@ -936,11 +924,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function UserFooter({ isCollapsed }: { isCollapsed: boolean }) {
     const avatarUser = {
       name: displayName,
-      email: currentUser.email,
-      avatarUrl: currentUser.avatarUrl,
-      avatarType: currentUser.avatarType,
-      avatarPresetId: currentUser.avatarPresetId,
-      avatarColor: currentUser.avatarColor,
+      email: user?.email,
+      avatarUrl: user?.avatarUrl,
+      avatarType: user?.avatarType,
+      avatarPresetId: user?.avatarPresetId,
+      avatarColor: user?.avatarColor,
     };
 
     function onTriggerClick(e: ReactMouseEvent<HTMLButtonElement>) {
@@ -1056,7 +1044,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {displayName}
               </span>
               <span className="nf-sidebar-label truncate text-[10.5px] leading-tight text-ink-faint dark:text-zinc-500">
-                {roleBadge || (currentUser.platformRole === "SUPERADMIN" ? "Superadministrador" : "Membro")}
+                {roleBadge || (user?.platformRole === "SUPERADMIN" ? "Superadministrador" : "Membro")}
               </span>
             </span>
             <ChevronDown
@@ -1353,6 +1341,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   function onShellAmbientLeave(e: ReactPointerEvent<HTMLDivElement>) {
     e.currentTarget.style.setProperty("--nf-shell-px", "0px");
     e.currentTarget.style.setProperty("--nf-shell-py", "0px");
+  }
+
+  if (!hydrated || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7] dark:bg-[#0B0C10]">
+        <Spinner className="h-7 w-7" />
+      </div>
+    );
+  }
+
+  if (isOnboardingRoute) {
+    return <div className="min-h-screen bg-[#F4F5F7] dark:bg-[#0B0C10]">{children}</div>;
   }
 
   const shellTree = (
