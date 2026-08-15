@@ -76,16 +76,29 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-[1020px] px-2 py-4 pb-20 sm:px-4">
-      {/* ── Topo Refinado: Título + Descrição + Divisor ── */}
-      <header className="relative mb-8 pb-6 border-b border-black/[0.06] dark:border-white/[0.07]">
-        {/* Glow sutil no topo esquerdo */}
-        <div
-          className="pointer-events-none absolute -left-6 -top-6 h-32 w-64 rounded-full bg-violet-500/10 blur-3xl dark:bg-violet-600/[0.12]"
-          aria-hidden
-        />
+    <div className="relative mx-auto w-full min-w-0 max-w-[1160px] px-3 py-4 pb-20 sm:px-6">
+      {/* ── Ambientação de fundo discreta (Glows + Radial Gradient) ── */}
+      {/* 1. Glow roxo amplo e muito difuso no canto superior direito */}
+      <div
+        className="pointer-events-none absolute -right-20 -top-20 h-[560px] w-[560px] rounded-full bg-violet-600/[0.06] blur-[150px] dark:bg-violet-500/[0.08]"
+        aria-hidden
+      />
 
-        <div className="relative z-10 flex flex-col gap-1.5">
+      {/* 2. Segundo glow azul/roxo suave no canto inferior esquerdo */}
+      <div
+        className="pointer-events-none absolute -left-20 bottom-10 h-[500px] w-[500px] rounded-full bg-indigo-600/[0.04] blur-[140px] dark:bg-indigo-500/[0.05]"
+        aria-hidden
+      />
+
+      {/* 3. Radial gradient extremamente sutil cobrindo a área principal */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(139,92,246,0.05),transparent_75%)] dark:bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(139,92,246,0.07),transparent_75%)]"
+        aria-hidden
+      />
+
+      {/* ── Topo Refinado: Título + Descrição + Divisor ── */}
+      <header className="relative z-10 mb-6 pb-5 border-b border-black/[0.06] dark:border-white/[0.07]">
+        <div className="flex flex-col gap-1.5">
           <h1 className="font-display text-2xl font-bold tracking-tight text-ink dark:text-white sm:text-3xl">
             Minha Conta
           </h1>
@@ -96,11 +109,11 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* ── Layout Principal: Menu Lateral + Superfície ── */}
-      <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+      {/* ── Layout Principal: Menu Lateral (216px) + Superfície (Restante) ── */}
+      <div className="relative z-10 flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-8">
         {/* Menu Lateral */}
         <nav
-          className="lg:w-48 lg:shrink-0"
+          className="lg:w-52 lg:shrink-0"
           aria-label="Navegação da conta"
         >
           {/* Mobile: Tabs horizontais fluidas */}
@@ -138,7 +151,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-150",
+                      "group relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[13px] font-medium transition-all duration-150",
                       active
                         ? "bg-violet-500/[0.08] text-violet-900 dark:bg-violet-500/[0.14] dark:text-violet-200 font-semibold"
                         : "text-ink-secondary hover:bg-black/[0.035] hover:text-ink dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-100"
