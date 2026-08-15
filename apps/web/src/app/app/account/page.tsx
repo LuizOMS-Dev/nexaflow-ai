@@ -547,14 +547,14 @@ export default function AccountProfilePage() {
           Escolha o tom de destaque para exibir ao redor das letras iniciais do seu nome.
         </p>
 
-        <div className="grid grid-cols-4 gap-3 py-2">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 py-2">
           {AVATAR_COLOR_OPTIONS.map((c) => {
-            const isSelected = pickedColor === c.value;
+            const isSelected = pickedColor === c.hex || pickedColor === c.id;
             return (
               <button
-                key={c.value}
+                key={c.id}
                 type="button"
-                onClick={() => setPickedColor(c.value)}
+                onClick={() => setPickedColor(c.hex)}
                 className={cn(
                   "flex items-center gap-2 rounded-xl p-2 transition-all border border-black/[0.06] dark:border-white/[0.08]",
                   isSelected
@@ -564,7 +564,7 @@ export default function AccountProfilePage() {
               >
                 <span
                   className="h-6 w-6 rounded-lg shrink-0 shadow-xs"
-                  style={{ backgroundColor: c.value }}
+                  style={{ backgroundColor: c.hex }}
                 />
                 <span className="text-[11px] font-medium text-ink dark:text-zinc-200 truncate">
                   {c.label}
