@@ -308,6 +308,7 @@ export default function AccountSecurityPage() {
         onClose={() => setPwdOpen(false)}
         title="Alterar senha de acesso"
         size="md"
+        preventBackdropClose
       >
         <form
           onSubmit={(e: FormEvent) => {
@@ -446,6 +447,7 @@ export default function AccountSecurityPage() {
         onClose={() => setManageOpen(false)}
         title="Ativar autenticação em duas etapas (2FA)"
         size="md"
+        preventBackdropClose
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
           <p className="leading-relaxed">
@@ -590,6 +592,7 @@ export default function AccountSecurityPage() {
         onClose={() => setDisableOpen(false)}
         title="Desativar autenticação em duas etapas"
         size="md"
+        preventBackdropClose
       >
         <form
           onSubmit={(e: FormEvent) => {

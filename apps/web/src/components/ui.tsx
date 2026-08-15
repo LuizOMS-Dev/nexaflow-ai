@@ -202,6 +202,7 @@ export function Modal({
   wide,
   description,
   preventClose,
+  preventBackdropClose,
   icon,
   footer,
   size,
@@ -224,6 +225,8 @@ export function Modal({
   wide?: boolean;
   description?: string;
   preventClose?: boolean;
+  /** Impede fechar ao clicar no backdrop (fora da caixa), mantendo o botão X ativo */
+  preventBackdropClose?: boolean;
   icon?: ReactNode;
   footer?: ReactNode;
   size?: ModalSize;
@@ -243,6 +246,7 @@ export function Modal({
   const wasOpenRef = useRef(false);
   const onCloseRef = useRef(onClose);
   const preventCloseRef = useRef(preventClose);
+  const preventBackdropCloseRef = useRef(preventBackdropClose);
   const initialFocusRef = useRef(initialFocus);
   const [mounted, setMounted] = useState(false);
   initialFocusRef.current = initialFocus;
@@ -306,6 +310,7 @@ export function Modal({
   useEffect(() => {
     onCloseRef.current = onClose;
     preventCloseRef.current = preventClose;
+    preventBackdropCloseRef.current = preventBackdropClose;
   });
 
   useEffect(() => {
@@ -398,7 +403,7 @@ export function Modal({
   if (!open || !mounted) return null;
 
   const handleBackdrop = () => {
-    if (!preventClose) onClose();
+    if (!preventClose && !preventBackdropClose) onClose();
   };
 
   const compact = isQuick || isConfirm;
