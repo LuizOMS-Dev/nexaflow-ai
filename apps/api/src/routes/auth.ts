@@ -46,6 +46,7 @@ import { markStrongAuth, getSecurityFlags } from "../services/security/step-up";
 import { sendMail, appPublicUrl } from "../services/security/mail";
 import QRCode from "qrcode";
 import { isTrueSuperadmin } from "../services/security/rbac";
+import { asInputJson } from "../lib/json";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -1432,7 +1433,7 @@ export async function authRoutes(app: FastifyInstance) {
         userPrefsToSave.adminLandingPage = body.preferences.adminLandingPage;
       }
 
-      data.preferences = userPrefsToSave;
+      data.preferences = asInputJson(userPrefsToSave);
 
       // Preferência de empresa isolada por membership (workspaceLandingPage)
       if (body.preferences.workspaceLandingPage !== undefined) {
@@ -1458,10 +1459,10 @@ export async function authRoutes(app: FastifyInstance) {
           await prisma.membership.update({
             where: { id: membership.id },
             data: {
-              settings: {
+              settings: asInputJson({
                 ...currentSettings,
                 workspaceLandingPage: body.preferences.workspaceLandingPage,
-              },
+              }),
             },
           });
           updatedWorkspaceLanding = body.preferences.workspaceLandingPage;
@@ -1570,10 +1571,10 @@ export async function authRoutes(app: FastifyInstance) {
         await prisma.membership.update({
           where: { id: membership.id },
           data: {
-            settings: {
+            settings: asInputJson({
               ...currentSettings,
               workspaceLandingPage: body.workspaceLandingPage,
-            },
+            }),
           },
         });
         updatedWorkspaceLanding = body.workspaceLandingPage;
@@ -1583,7 +1584,7 @@ export async function authRoutes(app: FastifyInstance) {
     const user = assertFound(
       await prisma.user.update({
         where: { id: jwtUser.sub },
-        data: { preferences: userPrefsToSave },
+        data: { preferences: asInputJson(userPrefsToSave) },
       })
     );
 
