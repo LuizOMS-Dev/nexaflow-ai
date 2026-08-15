@@ -3,10 +3,12 @@
 Plataforma de atendimento, CRM e agentes de IA para WhatsApp.  
 Feita para pequenas e médias empresas brasileiras: conversas, contatos, vendas e automação no mesmo lugar.
 
-- **Web:** http://localhost:3000
-- **API:** http://localhost:4000/health
+- **Produção:** [https://nexaflow.161.97.107.241.sslip.io](https://nexaflow.161.97.107.241.sslip.io)
+- **API (health):** [https://nexaflow-api.161.97.107.241.sslip.io/health](https://nexaflow-api.161.97.107.241.sslip.io/health)
+- **Painel EasyPanel:** [https://easypanel2.i9atendimento.com.br](https://easypanel2.i9atendimento.com.br)
+- **Desenvolvimento local:** Web em http://localhost:3000 · API em http://localhost:4000/health
 
-Não existe login padrão. O primeiro usuário nasce no seed.
+Não existe login padrão. O primeiro usuário é criado pelo seed; em uma instalação nova, o banco começa sem usuários.
 
 ---
 
@@ -160,11 +162,21 @@ Em produção, troque todos os secrets. Os valores de desenvolvimento **não** s
 
 ## Produção (EasyPanel)
 
-Deploy pelo GitHub com serviço **Compose** e o arquivo `docker-compose.easypanel.yml`.  
+Deploy contínuo pela branch `main`, usando um serviço **Compose** e o arquivo `docker-compose.easypanel.yml`.  
 Guia: [`docs/EASYPANEL.md`](docs/EASYPANEL.md). Variáveis: [`.env.easypanel.example`](.env.easypanel.example).
 
-Não publique Postgres, Redis nem WAHA. O front fala com a API em `/nexa-api` (mesmo origin) e o WebSocket no domínio da API (`wss://…/ws`).
+A arquitetura de produção usa:
+
+- `nexaflow`: Compose com Web, API, Redis e WAHA;
+- `postgres-main`: serviço separado com PostgreSQL 16;
+- hostname interno do banco: `i9atendimento_postgres-main:5432`;
+- banco e usuário: `nexaflow`;
+- Postgres, Redis e WAHA sem exposição pública.
+
+O front fala com a API em `/nexa-api` (mesmo origin) e o WebSocket usa o domínio da API (`wss://…/ws`). O `DATABASE_URL` é configurado somente nas variáveis protegidas do EasyPanel; nunca coloque credenciais no repositório.
+
+Em um banco novo, aplique as migrations e execute `npm run db:seed` com `SEED_SUPERADMIN_EMAIL` e `SEED_SUPERADMIN_PASSWORD` definidos para criar o primeiro administrador.
 
 ## Licença
 
-Repositório privado. Todos os direitos reservados.
+Todos os direitos reservados.
