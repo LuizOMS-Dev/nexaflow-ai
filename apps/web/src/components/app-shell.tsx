@@ -568,20 +568,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const adminNavLocked = false;
   const adminNavLockReason = undefined;
 
-  if (!hydrated || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7] dark:bg-[#0B0C10]">
-        <Spinner className="h-7 w-7" />
-      </div>
-    );
-  }
-
-  const currentUser = user;
-
-  if (isOnboardingRoute) {
-    return <div className="min-h-screen bg-[#F4F5F7] dark:bg-[#0B0C10]">{children}</div>;
-  }
-
   function toggleTheme() {
     const next = !document.documentElement.classList.contains("dark");
     document.documentElement.classList.toggle("dark", next);
@@ -646,6 +632,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
     await switchTenant(tenantId);
     window.location.reload();
+  }
+
+  if (!hydrated || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7] dark:bg-[#0B0C10]">
+        <Spinner className="h-7 w-7" />
+      </div>
+    );
+  }
+
+  const currentUser = user;
+
+  if (isOnboardingRoute) {
+    return <div className="min-h-screen bg-[#F4F5F7] dark:bg-[#0B0C10]">{children}</div>;
   }
 
   const companyLabel = onboarding ? "Configurar empresa" : tenant?.name || "Empresa";
