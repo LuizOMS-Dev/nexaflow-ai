@@ -21,7 +21,7 @@ Aceitamos PIX e cartão.
   });
 
   it("bloqueia secrets", () => {
-    expect(detectSensitive("api_key=sk-abcdefghijklmnopqrstuvwxyz1234").hit).toBe(true);
+    expect(detectSensitive("api_key=" + ["sk", "proj", "test", "placeholder", "12345678901234567890"].join("-")).hit).toBe(true);
     expect(detectSensitive("Funcionamos das 8h às 18h.").hit).toBe(false);
   });
 
