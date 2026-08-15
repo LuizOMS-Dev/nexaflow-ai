@@ -72,35 +72,36 @@ export function presetUrl(presetId: string): string {
  * 3. INITIALS
  * 4. fallback nexa-core
  */
-export function resolveAvatarPresentation(user: AvatarUser): {
+export function resolveAvatarPresentation(user?: AvatarUser | null): {
   mode: "image" | "initials";
   src?: string;
   initials: string;
   color: string;
   alt: string;
 } {
-  const initials = userInitials(user.name, user.email);
-  const color = resolveAvatarColor(user.avatarColor);
-  const alt = user.name?.trim() || user.email || "Usuário";
-  const type = (user.avatarType || "INITIALS") as AvatarType;
+  const safeUser = user || {};
+  const initials = userInitials(safeUser.name, safeUser.email);
+  const color = resolveAvatarColor(safeUser.avatarColor);
+  const alt = safeUser.name?.trim() || safeUser.email || "Usuário";
+  const type = (safeUser.avatarType || "INITIALS") as AvatarType;
 
   if (type === "UPLOAD") {
-    const src = resolveMediaUrl(user.avatarUrl);
+    const src = resolveMediaUrl(safeUser.avatarUrl);
     if (src) return { mode: "image", src, initials, color, alt };
   }
 
   if (type === "NEXA_AVATAR") {
-    const id = user.avatarPresetId;
+    const id = safeUser.avatarPresetId;
     const src =
-      resolveMediaUrl(user.avatarUrl) ||
+      resolveMediaUrl(safeUser.avatarUrl) ||
       (id ? presetUrl(id) : null) ||
       presetUrl("nexa-core-01");
     return { mode: "image", src, initials, color, alt };
   }
 
   // INITIALS ou fallback
-  if (user.avatarUrl && type !== "INITIALS") {
-    const src = resolveMediaUrl(user.avatarUrl);
+  if (safeUser.avatarUrl && type !== "INITIALS") {
+    const src = resolveMediaUrl(safeUser.avatarUrl);
     if (src) return { mode: "image", src, initials, color, alt };
   }
 

@@ -22,7 +22,7 @@ export function UserAvatar({
   className,
   ring,
 }: {
-  user: AvatarUser;
+  user?: AvatarUser | null;
   size?: keyof typeof sizeMap;
   className?: string;
   /** Anel sutil (sidebar, seleção) */

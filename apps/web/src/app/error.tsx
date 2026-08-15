@@ -14,11 +14,26 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error("[NexaFlow] route error:", error);
+    const msg = error?.message || "";
+    if (
+      msg.includes("ChunkLoadError") ||
+      msg.includes("Loading chunk") ||
+      msg.includes("Failed to fetch dynamically imported module") ||
+      msg.includes("is not a valid JavaScript")
+    ) {
+      const key = "nexaflow_chunk_reload";
+      const last = sessionStorage.getItem(key);
+      const now = Date.now();
+      if (!last || now - Number(last) > 10000) {
+        sessionStorage.setItem(key, String(now));
+        window.location.reload();
+      }
+    }
   }, [error]);
 
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center px-4 py-16 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-600/90 dark:text-violet-300/90">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-400">
         NexaFlow
       </p>
       <h1 className="mt-2 font-display text-xl font-semibold text-ink dark:text-white">
@@ -28,10 +43,15 @@ export default function Error({
         Pode ser um cache antigo após atualização. Tente recarregar. Se continuar, use
         Ctrl+F5 ou limpe o cache do site.
       </p>
-      {process.env.NODE_ENV !== "production" && error?.message ? (
-        <p className="mt-3 max-w-lg rounded-xl border border-black/[0.06] bg-black/[0.02] px-3 py-2 font-mono text-[11px] text-ink-faint dark:border-white/[0.08] dark:bg-white/[0.03]">
-          {error.message}
-        </p>
+      {error?.message ? (
+        <div className="mt-3 max-w-2xl text-left rounded-xl border border-red-500/20 bg-red-500/10 p-4 font-mono text-[12px] text-red-200">
+          <p className="font-bold text-red-100">{error.message}</p>
+          {error.stack ? (
+            <pre className="mt-2 max-h-48 overflow-auto text-[10.5px] opacity-80 whitespace-pre-wrap">
+              {error.stack}
+            </pre>
+          ) : null}
+        </div>
       ) : null}
       {error.digest ? (
         <p className="mt-3 text-[11px] text-ink-faint">Referência: {error.digest}</p>
@@ -44,7 +64,7 @@ export default function Error({
           type="button"
           className="btn-secondary h-9 px-4"
           onClick={() => {
-            window.location.href = "/";
+            window.location.href = "/app";
           }}
         >
           Ir ao início

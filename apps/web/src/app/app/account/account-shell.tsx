@@ -96,7 +96,7 @@ const NAV_GROUPS: NavGroup[] = [
 export function AccountShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/app/account";
   const user = useAuth((s) => s.user);
-  const memberships = useAuth((s) => s.memberships);
+  const memberships = useAuth((s) => s.memberships) || [];
   const isPlatformAdmin =
     user?.platformRole === "SUPERADMIN" && memberships.length === 0;
 
