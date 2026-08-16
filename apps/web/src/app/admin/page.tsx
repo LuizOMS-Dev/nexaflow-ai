@@ -12,25 +12,21 @@ import {
   Bot,
   Zap,
   RefreshCw,
-  TrendingUp,
   CircleDollarSign,
   AlertTriangle,
   CheckCircle2,
-  ShieldCheck,
-  Activity,
   ArrowRight,
   Send,
-  Radio,
   Server,
   Database,
   Cpu,
   Mail,
   Smartphone,
-  ExternalLink,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, pluralizePt } from "@/lib/utils";
+import { humanizeAuditAction } from "@/lib/audit-labels";
 import {
   AdminErrorState,
   AdminPageHeader,
@@ -165,9 +161,9 @@ function formatRelativeTime(isoString: string): string {
     const diffMin = Math.floor(diffSec / 60);
     if (diffMin < 60) return `há ${diffMin} min`;
     const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return `há ${diffHours} ${diffHours === 1 ? "hora" : "horas"}`;
+    if (diffHours < 24) return `há ${diffHours} ${pluralizePt(diffHours, "hora", "horas")}`;
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 30) return `há ${diffDays} ${diffDays === 1 ? "dia" : "dias"}`;
+    if (diffDays < 30) return `há ${diffDays} ${pluralizePt(diffDays, "dia", "dias")}`;
     return formatDate(isoString);
   } catch {
     return formatDate(isoString);
@@ -203,10 +199,10 @@ export default function AdminOverviewPage() {
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="h-64 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
-          <div className="h-64 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+          <div className="h-48 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+          <div className="h-48 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
         </div>
-        <div className="h-32 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+        <div className="h-28 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
       </div>
     );
   }
@@ -283,9 +279,9 @@ export default function AdminOverviewPage() {
           label="Empresas ativas"
           value={s.activeTenants ?? 0}
           hint={
-            s.trialTenants || s.paidSubscriptions
-              ? `${s.trialTenants ?? 0} em trial · ${s.paidSubscriptions ?? 0} pagantes`
-              : `${s.tenants} empresas no total`
+            (s.trialTenants ?? 0) > 0 || (s.paidSubscriptions ?? 0) > 0
+              ? `${s.trialTenants ?? 0} em trial · ${s.paidSubscriptions ?? 0} ${pluralizePt(s.paidSubscriptions ?? 0, "pagante", "pagantes")}`
+              : `${s.tenants} ${pluralizePt(s.tenants, "empresa", "empresas")} no total`
           }
           icon={<Building2 className="h-4 w-4" />}
           tone="brand"
@@ -296,9 +292,9 @@ export default function AdminOverviewPage() {
           label="Assinaturas pagas"
           value={s.paidSubscriptions ?? 0}
           hint={
-            (s.activeTenants ?? 0) > 0 && s.paidRatio != null
-              ? `${s.paidRatio}% das empresas ativas`
-              : "Sem contratos pagos"
+            (s.activeTenants ?? 0) > 0
+              ? `${s.paidRatio ?? 0}% das empresas ativas`
+              : "Nenhuma empresa ativa"
           }
           icon={<CreditCard className="h-4 w-4" />}
           tone="violet"
@@ -319,7 +315,7 @@ export default function AdminOverviewPage() {
           value={s.users}
           hint={
             s.newUsersPeriod != null && s.newUsersPeriod > 0
-              ? `+${s.newUsersPeriod} adicionados no período`
+              ? `+${s.newUsersPeriod} ${pluralizePt(s.newUsersPeriod, "adicionado", "adicionados")} no período`
               : "Cadastrados na plataforma"
           }
           icon={<Users className="h-4 w-4" />}
@@ -328,8 +324,8 @@ export default function AdminOverviewPage() {
         />
       </MetricGrid>
 
-      {/* ── 3. Receita por Plano & Empresas Recentes ── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* ── 3. Receita por Plano & Empresas Recentes (Alturas Adaptativas) ── */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
         {/* Bloco: Receita */}
         <AdminSection
           title="Receita"
@@ -337,28 +333,28 @@ export default function AdminOverviewPage() {
           action={<AdminSectionLink href="/admin/finance">Abrir Financeiro →</AdminSectionLink>}
         >
           {paidPlans.length === 0 ? (
-            <div className="py-8 text-center space-y-2">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                <CircleDollarSign className="h-5 w-5" />
+            <div className="py-5 text-center space-y-2">
+              <div className="inline-flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                <CircleDollarSign className="h-4.5 w-4.5" />
               </div>
               <p className="text-[13px] font-semibold text-zinc-900 dark:text-white">
                 Ainda não há receita recorrente
               </p>
-              <p className="text-[12px] text-zinc-500 max-w-sm mx-auto">
-                As métricas de MRR e faturamento aparecerão assim que houver assinaturas ativas em planos pagos.
+              <p className="text-[11.5px] text-zinc-500 max-w-xs mx-auto">
+                As métricas aparecerão assim que houver assinaturas ativas em planos pagos.
               </p>
-              <div className="pt-2">
+              <div className="pt-1">
                 <Link
                   href="/admin/plans"
-                  className="inline-flex items-center gap-1.5 text-[12px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+                  className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
                 >
                   Ver planos comerciais <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
             </div>
           ) : (
-            <div className="space-y-3.5">
-              <ul className="space-y-3">
+            <div className="space-y-3">
+              <ul className="space-y-2.5">
                 {paidPlans.map((r) => (
                   <li key={r.planId} className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2 text-[12.5px]">
@@ -366,8 +362,8 @@ export default function AdminOverviewPage() {
                         <span className="font-semibold text-zinc-900 dark:text-white truncate">
                           {r.planName}
                         </span>
-                        <span className="text-[11.5px] text-zinc-500">
-                          · {r.tenants} {r.tenants === 1 ? "cliente" : "clientes"}
+                        <span className="text-[11px] text-zinc-500">
+                          · {r.tenants} {pluralizePt(r.tenants, "cliente", "clientes")}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 tabular-nums">
@@ -394,15 +390,16 @@ export default function AdminOverviewPage() {
           )}
 
           {fin && !fin.costsAvailable ? (
-            <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 text-[12px] text-amber-700 dark:text-amber-300/90">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <span className="font-medium">Custos operacionais incompletos:</span>{" "}
-                indicadores de margem líquida serão calculados após a definição no financeiro.{" "}
-                <Link href="/admin/finance" className="font-semibold underline underline-offset-2 hover:opacity-80">
-                  Configurar custos →
-                </Link>
+            <div className="mt-3.5 flex items-center justify-between gap-2.5 rounded-lg border border-amber-500/15 bg-amber-500/[0.03] p-2.5 px-3 text-[11.5px] text-amber-800 dark:text-amber-300/80">
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span className="truncate">
+                  <strong className="font-medium text-amber-900 dark:text-amber-200">Custos operacionais incompletos:</strong> Indicadores de margem serão calculados após configurar os custos.
+                </span>
               </div>
+              <Link href="/admin/finance" className="shrink-0 font-semibold text-amber-900 dark:text-amber-200 hover:underline">
+                Configurar custos →
+              </Link>
             </div>
           ) : null}
         </AdminSection>
@@ -415,7 +412,7 @@ export default function AdminOverviewPage() {
           flush
         >
           {recentTenants.length === 0 ? (
-            <div className="px-5 py-8 text-center text-[12.5px] text-zinc-500">
+            <div className="px-5 py-6 text-center text-[12px] text-zinc-500">
               Nenhuma empresa criada recentemente.
             </div>
           ) : (
@@ -423,7 +420,7 @@ export default function AdminOverviewPage() {
               {recentTenants.map((t) => (
                 <li
                   key={t.id}
-                  className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5 hover:bg-black/[0.015] dark:hover:bg-white/[0.015] transition-colors"
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5 hover:bg-black/[0.015] dark:hover:bg-white/[0.015] transition-colors"
                 >
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
@@ -434,13 +431,13 @@ export default function AdminOverviewPage() {
                         {statusLabel[t.status] || t.status}
                       </StatusBadge>
                     </div>
-                    <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400">
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                       {t.plan?.name || "Gratuito"} · Criada em {formatDate(t.createdAt)}
                     </p>
                   </div>
                   <Link
                     href={`/admin/tenants/${t.id}`}
-                    className="admin-btn-ghost h-7.5 px-3 text-[12px] font-medium shrink-0 rounded-lg"
+                    className="admin-btn-ghost h-7 px-2.5 text-[11.5px] font-medium shrink-0 rounded-lg"
                   >
                     Abrir
                   </Link>
@@ -485,34 +482,34 @@ export default function AdminOverviewPage() {
 
           <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02] p-3.5 space-y-1">
             <div className="flex items-center justify-between text-zinc-500">
-              <span className="text-[12px] font-medium">Agentes de IA</span>
+              <span className="text-[12px] font-medium">Agentes de IA habilitados</span>
               <Bot className="h-4 w-4 text-emerald-500" />
             </div>
             <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
               {usage?.activeAgents ?? s.activeAgents ?? 0}
             </p>
             <p className="text-[11px] text-zinc-500">
-              Ativos e configurados
+              {usage?.activeAgents ?? s.activeAgents ?? 0} {pluralizePt(usage?.activeAgents ?? s.activeAgents ?? 0, "configurado atualmente", "configurados atualmente")}
             </p>
           </div>
 
           <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02] p-3.5 space-y-1">
             <div className="flex items-center justify-between text-zinc-500">
-              <span className="text-[12px] font-medium">Automações</span>
+              <span className="text-[12px] font-medium">Automações executadas</span>
               <Zap className="h-4 w-4 text-amber-500" />
             </div>
             <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
               {(usage?.automationRunsPeriod ?? s.automationRunsPeriod ?? 0).toLocaleString("pt-BR")}
             </p>
             <p className="text-[11px] text-zinc-500">
-              {(usage?.automationRuns ?? s.automationRuns ?? 0).toLocaleString("pt-BR")} execuções totais
+              {(usage?.automationRuns ?? s.automationRuns ?? 0).toLocaleString("pt-BR")} {pluralizePt(usage?.automationRuns ?? s.automationRuns ?? 0, "execução acumulada", "execuções acumuladas")}
             </p>
           </div>
         </div>
       </AdminSection>
 
-      {/* ── 5. Atividade Recente & Atenção Necessária ── */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* ── 5. Atividade Recente & Atenção Necessária (Alturas Adaptativas) ── */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
         {/* Atividade Recente */}
         <AdminSection
           title="Atividade recente"
@@ -521,7 +518,7 @@ export default function AdminOverviewPage() {
           flush
         >
           {recentActivity.length === 0 ? (
-            <div className="px-5 py-8 text-center text-[12.5px] text-zinc-500">
+            <div className="px-5 py-6 text-center text-[12px] text-zinc-500">
               Nenhuma atividade administrativa recente registrada.
             </div>
           ) : (
@@ -532,11 +529,11 @@ export default function AdminOverviewPage() {
                   className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5 hover:bg-black/[0.015] dark:hover:bg-white/[0.015] transition-colors"
                 >
                   <div className="min-w-0 space-y-0.5">
-                    <p className="text-[12.5px] font-medium text-zinc-900 dark:text-white truncate">
-                      {item.description}
+                    <p className="text-[12px] font-medium text-zinc-900 dark:text-white truncate">
+                      {humanizeAuditAction(item.action)}
                     </p>
-                    <p className="text-[11px] text-zinc-500">
-                      {item.userName} {item.tenantName ? `· ${item.tenantName}` : ""}
+                    <p className="text-[11px] text-zinc-500 truncate">
+                      {item.userName}{item.tenantName ? ` · ${item.tenantName}` : ""}
                     </p>
                   </div>
                   <span className="text-[11px] text-zinc-400 shrink-0 tabular-nums">
@@ -554,17 +551,17 @@ export default function AdminOverviewPage() {
           description="Pendências operacionais e conformidade."
         >
           {alerts.length === 0 ? (
-            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-emerald-800 dark:text-emerald-300">
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 sm:p-3.5 text-emerald-800 dark:text-emerald-300">
+              <CheckCircle2 className="h-4.5 w-4.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <div>
-                <p className="text-[13px] font-semibold">Nenhuma ação crítica pendente</p>
-                <p className="text-[11.5px] text-emerald-700/80 dark:text-emerald-400/80">
-                  Todas as empresas e serviços essenciais estão em operação normal.
+                <p className="text-[12.5px] font-semibold">Nenhuma ação crítica pendente</p>
+                <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                  Não há incidentes ou pendências críticas no momento.
                 </p>
               </div>
             </div>
           ) : (
-            <ul className="space-y-2.5">
+            <ul className="space-y-2">
               {alerts.map((a) => {
                 const isDanger = a.severity === "danger";
                 const isWarning = a.severity === "warning";
@@ -572,7 +569,7 @@ export default function AdminOverviewPage() {
                   <li
                     key={a.id}
                     className={cn(
-                      "flex items-center justify-between gap-3 rounded-xl border p-3 transition-colors",
+                      "flex items-center justify-between gap-3 rounded-xl border p-2.5 px-3 transition-colors",
                       isDanger
                         ? "border-rose-500/20 bg-rose-500/5 text-rose-800 dark:text-rose-300"
                         : isWarning
@@ -583,7 +580,7 @@ export default function AdminOverviewPage() {
                     <div className="flex items-center gap-2.5 min-w-0">
                       <AlertTriangle
                         className={cn(
-                          "h-4 w-4 shrink-0",
+                          "h-3.5 w-3.5 shrink-0",
                           isDanger
                             ? "text-rose-600 dark:text-rose-400"
                             : isWarning
@@ -591,12 +588,12 @@ export default function AdminOverviewPage() {
                               : "text-blue-600 dark:text-blue-400"
                         )}
                       />
-                      <span className="text-[12.5px] font-medium truncate">{a.title}</span>
+                      <span className="text-[12px] font-medium truncate">{a.title}</span>
                     </div>
                     {a.href ? (
                       <Link
                         href={a.href}
-                        className="text-[11.5px] font-semibold shrink-0 hover:underline inline-flex items-center gap-1"
+                        className="text-[11px] font-semibold shrink-0 hover:underline inline-flex items-center gap-1"
                       >
                         Ver <ArrowRight className="h-3 w-3" />
                       </Link>
@@ -613,7 +610,7 @@ export default function AdminOverviewPage() {
       <AdminSection
         title="Saúde operacional"
         description="Status em tempo real dos serviços fundamentais da infraestrutura."
-        action={<AdminSectionLink href="/admin/system/health">Ver Diagnóstico Completo →</AdminSectionLink>}
+        action={<AdminSectionLink href="/admin/system/health">Ver Saúde →</AdminSectionLink>}
       >
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {healthDeps.map((dep) => {
@@ -686,3 +683,4 @@ export default function AdminOverviewPage() {
     </div>
   );
 }
+
