@@ -231,9 +231,9 @@ export function HumanQueueBanner() {
       data-tour="human-queue-banner"
       className={cn(
         /* flex-shrink-0 no fluxo do .nf-main — NÃO sticky dentro do scroll */
-        "nf-queue-banner shrink-0 border-b px-3 py-2.5 sm:px-4",
-        "border-amber-500/[0.35] bg-amber-50/[0.97] shadow-[0_4px_16px_-8px_rgba(180,83,9,0.25)] backdrop-blur-md",
-        "dark:border-amber-400/30 dark:bg-amber-950/[0.92] dark:shadow-[0_4px_20px_-8px_rgba(0,0,0,0.5)]"
+        "nf-queue-banner shrink-0 border-b px-3.5 py-2.5 sm:px-4",
+        "border-amber-500/20 bg-amber-500/[0.06] shadow-sm backdrop-blur-md",
+        "dark:border-amber-400/20 dark:bg-amber-500/[0.08]"
       )}
     >
       <div className="mx-auto flex w-full max-w-[var(--nf-page-max-width)] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">

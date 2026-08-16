@@ -2265,32 +2265,36 @@ export default function SettingsPage() {
             {/* Barra de salvamento */}
             {showSaveBar && (
               <div
-                className="sticky bottom-3 z-20 mt-8"
+                className="sticky bottom-4 z-20 mt-8"
                 role="status"
                 aria-live="polite"
               >
-                <div className="flex items-center gap-3 rounded-2xl border border-line bg-white/95 px-3.5 py-2.5 shadow-[0_10px_32px_-10px_rgba(0,0,0,0.28)] backdrop-blur-md dark:border-white/[0.1] dark:bg-[#151820]/95">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/[0.15] text-amber-700 dark:text-amber-300">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-ink-secondary dark:text-gray-300">
-                    Alterações não salvas
-                  </span>
-                  <button
-                    type="button"
-                    className="btn-ghost btn-sm h-8 shrink-0 px-2.5 text-xs"
-                    disabled={saveMutation.isPending}
-                    onClick={discard}
-                  >
-                    Descartar
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn-primary btn-sm h-8 shrink-0 px-3 text-xs"
-                    disabled={saveMutation.isPending}
-                  >
-                    {saveMutation.isPending ? "Salvando…" : "Salvar"}
-                  </button>
+                <div className="flex items-center justify-between gap-4 rounded-2xl border border-black/[0.08] bg-white/95 px-4.5 py-2.5 shadow-2xl shadow-black/15 backdrop-blur-xl dark:border-white/[0.09] dark:bg-[#151822]/95 dark:shadow-black/70">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" />
+                    </span>
+                    <span className="truncate text-[13px] font-semibold text-ink dark:text-zinc-100">
+                      Alterações não salvas
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="btn-secondary h-8 px-3 text-xs font-medium rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
+                      disabled={saveMutation.isPending}
+                      onClick={discard}
+                    >
+                      Descartar
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-primary h-8 px-4 text-xs font-semibold bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 text-white rounded-xl shadow-md shadow-violet-600/20 active:scale-[0.985] transition-all cursor-pointer"
+                      disabled={saveMutation.isPending}
+                    >
+                      {saveMutation.isPending ? "Salvando…" : "Salvar alterações"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

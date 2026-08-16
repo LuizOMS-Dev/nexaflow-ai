@@ -110,7 +110,7 @@ export function WhatsAppStatusBanner() {
     <div
       role="status"
       className={cn(
-        "mb-3 flex flex-col gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3",
+        "mb-3 flex flex-col gap-2 rounded-xl border px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3",
         exiting && "wa-banner-exit",
         tone === "danger" &&
           "border-red-500/20 bg-red-500/[0.05] dark:border-red-400/[0.15] dark:bg-red-500/[0.07]",
@@ -123,7 +123,7 @@ export function WhatsAppStatusBanner() {
       <div className="flex min-w-0 items-center gap-2.5">
         <div
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
             tone === "danger" && "bg-red-500/[0.12] text-red-600 dark:text-red-300",
             tone === "info" && "bg-violet-500/[0.12] text-violet-600 dark:text-violet-300",
             tone === "warning" && "bg-amber-500/[0.12] text-amber-700 dark:text-amber-300"
