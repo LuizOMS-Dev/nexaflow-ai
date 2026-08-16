@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   CircleDollarSign,
@@ -20,6 +20,7 @@ import {
   Edit2,
   X,
   Check,
+  ChevronDown,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
@@ -27,7 +28,6 @@ import { useAuth } from "@/store/auth";
 import { cn, formatCurrency, formatDate, pluralizePt } from "@/lib/utils";
 import { useToast } from "@/components/ui-toast";
 import { Modal, Skeleton } from "@/components/ui";
-import { Select, type SelectOption } from "@/components/ui-select";
 import {
   AdminErrorState,
   AdminPageHeader,
@@ -122,7 +122,7 @@ type PlatformCostItem = {
   createdAt: string;
 };
 
-const COST_CATEGORIES: SelectOption[] = [
+const COST_CATEGORIES = [
   { value: "INFRASTRUCTURE", label: "Servidores e Nuvem" },
   { value: "AI", label: "Inteligência Artificial" },
   { value: "WHATSAPP", label: "WhatsApp / WAHA" },
@@ -147,6 +147,98 @@ function parseBrlInput(value: string): number {
   const digits = value.replace(/\D/g, "");
   if (!digits) return 0;
   return parseInt(digits, 10) / 100;
+}
+
+function CategorySelect({
+  value,
+  onChange,
+  size = "md",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [open]);
+
+  const selectedOption = COST_CATEGORIES.find((c) => c.value === value) || COST_CATEGORIES[0];
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center justify-between rounded-lg border border-white/[0.08] bg-white/[0.04] text-white hover:bg-white/[0.06] focus:border-violet-500 focus:outline-none transition-colors",
+          size === "md" ? "px-3 py-2 text-[13px]" : "px-2.5 py-1.5 text-[12px]"
+        )}
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-150",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 top-full z-[100] mt-1.5 w-full min-w-[220px] rounded-xl border border-white/[0.1] bg-[#161a26] p-1.5 shadow-2xl backdrop-blur-lg"
+        >
+          <div className="max-h-56 overflow-y-auto space-y-0.5 custom-scrollbar">
+            {COST_CATEGORIES.map((cat) => {
+              const isSelected = cat.value === value;
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(cat.value);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                    size === "md" ? "text-[12.5px]" : "text-[11.5px]",
+                    isSelected
+                      ? "bg-violet-600/20 text-violet-300 font-medium"
+                      : "text-gray-300 hover:bg-white/[0.06] hover:text-white"
+                  )}
+                >
+                  <span>{cat.label}</span>
+                  {isSelected && <Check className="h-3.5 w-3.5 text-violet-400 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AdminFinancePage() {
@@ -752,7 +844,7 @@ export default function AdminFinancePage() {
         size="lg"
       >
         <div className="space-y-6">
-          {/* Formulário Espaçoso de Novo Custo com Dropdown do Design System */}
+          {/* Formulário Espaçoso de Novo Custo com Visual Idêntico e Harmonioso */}
           <form onSubmit={handleCreateCostSubmit} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3.5">
             <p className="text-[13px] font-semibold text-white">Adicionar Custo da Plataforma</p>
             
@@ -769,16 +861,14 @@ export default function AdminFinancePage() {
               />
             </div>
 
-            {/* Linha 2: Categoria (Dropdown Design System) e Valor mensal */}
+            {/* Linha 2: Categoria e Valor mensal */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Categoria *</label>
-                <Select
+                <CategorySelect
                   value={costCategory}
                   onChange={setCostCategory}
-                  options={COST_CATEGORIES}
                   size="md"
-                  triggerClassName="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none"
                 />
               </div>
 
@@ -878,12 +968,10 @@ export default function AdminFinancePage() {
                             onChange={(e) => setEditName(e.target.value)}
                             className="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
                           />
-                          <Select
+                          <CategorySelect
                             value={editCategory}
                             onChange={setEditCategory}
-                            options={COST_CATEGORIES}
                             size="sm"
-                            triggerClassName="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
                           />
                           <div className="flex gap-2">
                             <div className="relative w-full">
