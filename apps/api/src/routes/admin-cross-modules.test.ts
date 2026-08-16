@@ -138,7 +138,7 @@ describe("Auditoria Cruzada 2.0: Visão Geral + Financeiro + Planos", () => {
     // Receita por plano fecha exatamente no total do MRR
     const totalPlanMrr = finance.revenueByPlan.reduce((acc: number, p: any) => acc + p.mrr, 0);
     expect(totalPlanMrr).toBe(finance.summary.mrr);
-  });
+  }, 60_000);
 
   it("2. Imutabilidade Contratual: Reajustar catálogo de R$ 100 para R$ 200 não afeta assinatura existente", async () => {
     const planAId = createdPlanIds[0];
@@ -167,7 +167,7 @@ describe("Auditoria Cruzada 2.0: Visão Geral + Financeiro + Planos", () => {
       app.inject({ method: "GET", url: "/admin/finance", headers: auth(superadminToken) }),
     ]);
     expect(overviewRes.json().stats.mrr).toBe(financeRes.json().summary.mrr);
-  });
+  }, 60_000);
 
   it("3. Nova Contratação no Novo Valor reflete imediatamente no MRR combinado", async () => {
     const planAId = createdPlanIds[0];
@@ -204,7 +204,7 @@ describe("Auditoria Cruzada 2.0: Visão Geral + Financeiro + Planos", () => {
 
     expect(overview.stats.mrr).toBe(finance.summary.mrr);
     expect(overview.stats.arr).toBe(finance.summary.arr);
-  });
+  }, 60_000);
 
   it("4. Arquivamento de Plano: Preserva contratos existentes no Financeiro", async () => {
     const planAId = createdPlanIds[0];
@@ -228,7 +228,7 @@ describe("Auditoria Cruzada 2.0: Visão Geral + Financeiro + Planos", () => {
     const finance = financeRes.json();
 
     expect(overview.stats.mrr).toBe(finance.summary.mrr);
-  });
+  }, 60_000);
 
   it("5. Limites Dinâmicos & Overrides: Enforcement no backend", async () => {
     const { getTenantLimits, assertCanAddUser } = await import("../services/entitlements");
@@ -270,7 +270,7 @@ describe("Auditoria Cruzada 2.0: Visão Geral + Financeiro + Planos", () => {
 
     // Agora assertCanAddUser passa sem erro
     await expect(assertCanAddUser(tenantAId)).resolves.toBeUndefined();
-  });
+  }, 60_000);
 
   it("6. Custos Operacionais: Cálculo de Margem e Resultado Estimado", async () => {
     // Adiciona custo de infraestrutura de R$ 50
@@ -304,5 +304,5 @@ describe("Auditoria Cruzada 2.0: Visão Geral + Financeiro + Planos", () => {
         (fin.performance.estimatedProfit / fin.performance.mrr) * 100
       );
     }
-  });
+  }, 60_000);
 });

@@ -30,6 +30,7 @@ export type PlanFormState = {
   priceType: "fixed" | "on_request" | "free";
   priceMonthly: string;
   priceAnnual: string;
+  annualPricingMode: "full" | "percentage" | "manual";
   discountMode: "0" | "5" | "10" | "15" | "20" | "25" | "30" | "custom";
   customDiscountPercent: string;
   maxUsers: string;
@@ -63,7 +64,7 @@ export const BADGE_LABEL: Record<string, string> = {
 };
 
 export const DISCOUNT_PRESET_OPTIONS = [
-  { value: "0", label: "Sem desconto (0%)" },
+  { value: "0", label: "Sem desconto" },
   { value: "5", label: "5% de desconto" },
   { value: "10", label: "10% de desconto" },
   { value: "15", label: "15% de desconto" },
@@ -189,6 +190,7 @@ export function emptyForm(): PlanFormState {
     priceType: "fixed",
     priceMonthly: "",
     priceAnnual: "",
+    annualPricingMode: "full",
     discountMode: "0",
     customDiscountPercent: "",
     maxUsers: "1",
@@ -218,6 +220,15 @@ export function planToForm(p: Plan): PlanFormState {
   const discountPct = getAnnualDiscountPercent(monthlyNum, annualNum);
   const { mode, customVal } = detectDiscountMode(discountPct);
 
+  let pricingMode: "full" | "percentage" | "manual" = "full";
+  if (discountPct === 0) {
+    pricingMode = "full";
+  } else if (mode !== "custom") {
+    pricingMode = "percentage";
+  } else {
+    pricingMode = "manual";
+  }
+
   return {
     name: p.name,
     slug: p.slug,
@@ -225,6 +236,7 @@ export function planToForm(p: Plan): PlanFormState {
     priceType: pType,
     priceMonthly: monthlyNum > 0 ? formatBrlInput(Math.round(monthlyNum * 100).toString()) : "",
     priceAnnual: annualNum != null && annualNum > 0 ? formatBrlInput(Math.round(annualNum * 100).toString()) : "",
+    annualPricingMode: pricingMode,
     discountMode: mode,
     customDiscountPercent: customVal,
     maxUsers: p.maxUsers != null ? formatIntegerInput(p.maxUsers.toString()) : "1",

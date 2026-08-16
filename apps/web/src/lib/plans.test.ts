@@ -10,6 +10,7 @@ import {
   emptyForm,
   planToForm,
   slugify,
+  DISCOUNT_PRESET_OPTIONS,
   type Plan,
 } from "./plans";
 
@@ -76,13 +77,14 @@ describe("Módulo de Planos Admin: Cálculos de Desconto, Presets e Estado do Fo
     expect(detectDiscountMode(0).mode).toBe("0");
   });
 
-  it("Caso G: emptyForm inicia rigorosamente sem dados residuais (zero state leakage)", () => {
+  it("Caso G: emptyForm inicia rigorosamente sem dados residuais (zero state leakage) e annualPricingMode full", () => {
     const fresh = emptyForm();
     expect(fresh.name).toBe("");
     expect(fresh.slug).toBe("");
     expect(fresh.description).toBe("");
     expect(fresh.priceMonthly).toBe("");
     expect(fresh.priceAnnual).toBe("");
+    expect(fresh.annualPricingMode).toBe("full");
     expect(fresh.discountMode).toBe("0");
     expect(fresh.customDiscountPercent).toBe("");
     expect(fresh.badge).toBe("");
@@ -95,7 +97,7 @@ describe("Módulo de Planos Admin: Cálculos de Desconto, Presets e Estado do Fo
     expect(slugify("---premium---")).toBe("premium");
   });
 
-  it("Caso I: planToForm converte planos comerciais e detecta presets de desconto", () => {
+  it("Caso I: planToForm converte planos comerciais, detecta presets e define annualPricingMode", () => {
     const mockPlan: Plan = {
       id: "plan-1",
       name: "Profissional",
@@ -117,7 +119,21 @@ describe("Módulo de Planos Admin: Cálculos de Desconto, Presets e Estado do Fo
     expect(form.slug).toBe("pro");
     expect(form.priceMonthly).toBe("299,00");
     expect(form.priceAnnual).toBe("3.049,80");
+    expect(form.annualPricingMode).toBe("percentage");
     expect(form.discountMode).toBe("15");
     expect(form.maxUsers).toBe("5");
+  });
+
+  it("Caso J: Presets 10%, 20%, 25%, 30% calculam preços anuais exatos", () => {
+    const monthly = 299;
+    expect(calculateAnnualPriceWithDiscount(monthly, 10)).toBe(3229.2);
+    expect(calculateAnnualPriceWithDiscount(monthly, 20)).toBe(2870.4);
+    expect(calculateAnnualPriceWithDiscount(monthly, 25)).toBe(2691);
+    expect(calculateAnnualPriceWithDiscount(monthly, 30)).toBe(2511.6);
+  });
+
+  it("Caso K: Opção 0% tem label 'Sem desconto'", () => {
+    const zeroOption = DISCOUNT_PRESET_OPTIONS.find((o) => o.value === "0");
+    expect(zeroOption?.label).toBe("Sem desconto");
   });
 });
