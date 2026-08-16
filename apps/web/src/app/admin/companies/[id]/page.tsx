@@ -1,9 +1,17 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { CompanyDetailPage } from "@/features/platform-admin/companies/company-detail-page";
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 
 export default function Page() {
   const params = useParams<{ id: string }>();
-  return <CompanyDetailPage id={params.id} />;
+  const router = useRouter();
+
+  useEffect(() => {
+    if (params.id) {
+      router.replace(`/admin/tenants/${params.id}`);
+    }
+  }, [params.id, router]);
+
+  return null;
 }

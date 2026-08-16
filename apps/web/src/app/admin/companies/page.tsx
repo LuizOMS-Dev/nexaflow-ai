@@ -284,6 +284,35 @@ export default function AdminCompaniesPage() {
       planFilter !== "ALL"
   );
 
+  const statusOptions: SelectOption[] = useMemo(
+    () => [
+      { value: "ALL", label: "Status: Todos" },
+      { value: "ACTIVE", label: "Ativas" },
+      { value: "TRIAL", label: "Trial" },
+      { value: "BLOCKED", label: "Bloqueadas" },
+      { value: "SUSPENDED", label: "Suspensas" },
+      { value: "CANCELLED", label: "Canceladas" },
+      { value: "PENDING_DELETION", label: "Exclusão agendada" },
+    ],
+    []
+  );
+
+  const financialOptions: SelectOption[] = useMemo(
+    () => [
+      { value: "ALL", label: "Financeiro: Todos" },
+      ...Object.entries(financialLabelMap).map(([k, v]) => ({ value: k, label: v })),
+    ],
+    []
+  );
+
+  const planFilterOptions: SelectOption[] = useMemo(
+    () => [
+      { value: "ALL", label: "Plano: Todos" },
+      ...(plansQuery.data || []).map((p) => ({ value: p.id, label: p.name })),
+    ],
+    [plansQuery.data]
+  );
+
   if (user?.platformRole !== "SUPERADMIN") return null;
 
   if (tenantsQuery.isLoading && !tenantsQuery.data) {
@@ -370,14 +399,14 @@ export default function AdminCompaniesPage() {
 
       {/* 3. Filtros */}
       <AdminFilterBar>
-        <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+        <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
           <input
             id="admin-companies-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome, e-mail ou slug…"
-            className="w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] py-1.5 pl-8 pr-7 text-[13px] text-white placeholder-white/35 focus:border-violet-500/50 focus:outline-none"
+            className="h-9 w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] py-1.5 pl-8 pr-7 text-[13px] text-white placeholder-white/35 focus:border-violet-500/50 focus:outline-none"
           />
           {search ? (
             <button
@@ -394,59 +423,49 @@ export default function AdminCompaniesPage() {
           ) : null}
         </div>
 
-        <select
-          className="rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[12.5px] text-white/90 focus:border-violet-500/50 focus:outline-none"
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setParam("status", e.target.value);
-          }}
-        >
-          <option value="ALL">Status: Todos</option>
-          <option value="ACTIVE">Ativas</option>
-          <option value="TRIAL">Trial</option>
-          <option value="BLOCKED">Bloqueadas</option>
-          <option value="SUSPENDED">Suspensas</option>
-          <option value="CANCELLED">Canceladas</option>
-          <option value="PENDING_DELETION">Exclusão agendada</option>
-        </select>
+        <div className="w-full sm:w-44">
+          <PortalSelect
+            size="sm"
+            value={statusFilter}
+            onChange={(val) => {
+              setStatusFilter(val);
+              setParam("status", val);
+            }}
+            options={statusOptions}
+            triggerClassName="h-9 bg-[#0c0d12] border-white/[0.08] text-[12.5px]"
+          />
+        </div>
 
-        <select
-          className="rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[12.5px] text-white/90 focus:border-violet-500/50 focus:outline-none"
-          value={financialFilter}
-          onChange={(e) => {
-            setFinancialFilter(e.target.value);
-            setParam("financial", e.target.value);
-          }}
-        >
-          <option value="ALL">Financeiro: Todos</option>
-          {Object.entries(financialLabelMap).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
+        <div className="w-full sm:w-48">
+          <PortalSelect
+            size="sm"
+            value={financialFilter}
+            onChange={(val) => {
+              setFinancialFilter(val);
+              setParam("financial", val);
+            }}
+            options={financialOptions}
+            triggerClassName="h-9 bg-[#0c0d12] border-white/[0.08] text-[12.5px]"
+          />
+        </div>
 
-        <select
-          className="rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[12.5px] text-white/90 focus:border-violet-500/50 focus:outline-none"
-          value={planFilter}
-          onChange={(e) => {
-            setPlanFilter(e.target.value);
-            setParam("planId", e.target.value);
-          }}
-        >
-          <option value="ALL">Plano: Todos</option>
-          {(plansQuery.data || []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="w-full sm:w-44">
+          <PortalSelect
+            size="sm"
+            value={planFilter}
+            onChange={(val) => {
+              setPlanFilter(val);
+              setParam("planId", val);
+            }}
+            options={planFilterOptions}
+            triggerClassName="h-9 bg-[#0c0d12] border-white/[0.08] text-[12.5px]"
+          />
+        </div>
 
         {hasActiveFilters ? (
           <button
             type="button"
-            className="admin-btn-ghost h-8 px-2.5 text-[12px] text-white/60 hover:text-white"
+            className="admin-btn-ghost h-9 px-2.5 text-[12px] text-white/60 hover:text-white shrink-0"
             onClick={clearAllFilters}
           >
             Limpar filtros

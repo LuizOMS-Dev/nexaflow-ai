@@ -156,10 +156,11 @@ export async function updateSalesLeadStatus(
     "Lead não encontrado."
   );
 
-  const status = statusInput as SalesLeadStatus;
-  if (!SALES_LEAD_STATUSES.includes(status)) {
+  if (!(SALES_LEAD_STATUSES as readonly string[]).includes(statusInput)) {
     throw new AppError("Status de lead inválido.", 400, "INVALID_LEAD_STATUS");
   }
+
+  const status = statusInput as (typeof SALES_LEAD_STATUSES)[number];
 
   if (status === "CONVERTED") {
     if (!lead.convertedTenantId) {
