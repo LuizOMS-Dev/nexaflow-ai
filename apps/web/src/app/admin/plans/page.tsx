@@ -440,7 +440,7 @@ export default function AdminPlansPage() {
               <div
                 key={plan.id}
                 className={cn(
-                  "relative flex flex-col justify-between rounded-2xl border transition-all duration-200 p-5 bg-white/[0.02]",
+                  "relative flex flex-col justify-between rounded-2xl border transition-all duration-200 p-5 bg-white/[0.02] h-full",
                   isPopular
                     ? "border-violet-500/40 bg-gradient-to-b from-violet-950/20 via-white/[0.02] to-transparent shadow-lg shadow-violet-950/20"
                     : isEnterprise
@@ -448,8 +448,8 @@ export default function AdminPlansPage() {
                     : "border-white/[0.08] hover:border-white/[0.15]"
                 )}
               >
-                {/* Top: Header do Card (sem slug técnico visível) */}
-                <div>
+                {/* Top: Header e Limites do Card */}
+                <div className="flex-1 flex flex-col">
                   <div className="flex items-start justify-between gap-2 min-h-[32px]">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <h3 className="text-[16px] font-bold text-white tracking-tight">
@@ -572,48 +572,48 @@ export default function AdminPlansPage() {
                   </div>
                 </div>
 
-                {/* Bottom: Uso do Plano & Ações */}
-                <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-3">
-                  {/* Quantidade de Empresas Utilizando (separado dos limites!) */}
-                  <div className="flex items-center gap-1.5 text-[11.5px] text-gray-400">
+                {/* Bottom: Uso do Plano & Ações (Footer estrutural único ancorado no final) */}
+                <div className="mt-auto pt-4 border-t border-white/[0.06] space-y-2.5">
+                  {/* Quantidade de Empresas Utilizando */}
+                  <div className="flex items-center gap-1.5 text-[11.5px] text-gray-400 h-5 whitespace-nowrap overflow-hidden">
                     <Building2 className="h-3.5 w-3.5 text-violet-400 shrink-0" />
-                    <span>
+                    <span className="truncate">
                       {tenantCount === 0
                         ? "Nenhuma empresa utilizando"
                         : `${tenantCount} ${tenantCount === 1 ? "empresa utilizando" : "empresas utilizando"}`}
                     </span>
                   </div>
 
-                  {/* Ações do Card */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  {/* Ações do Card em Linha Única Padronizada */}
+                  <div className="flex items-center gap-1.5 h-7">
                     {plan.isActive ? (
                       <>
                         <button
                           type="button"
                           onClick={() => openEditModal(plan)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
                         >
-                          <Pencil className="h-3 w-3" />
-                          Editar
+                          <Pencil className="h-3 w-3 shrink-0" />
+                          <span>Editar</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => openDuplicateModal(plan)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
                           title="Duplicar configurações do plano"
                         >
-                          <Copy className="h-3 w-3" />
-                          Duplicar
+                          <Copy className="h-3 w-3 shrink-0" />
+                          <span>Duplicar</span>
                         </button>
                         {plan.slug !== "free" && (
                           <button
                             type="button"
                             onClick={() => setPlanToArchive(plan)}
-                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium text-gray-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                            className="inline-flex items-center justify-center gap-1 h-7 rounded-lg px-2 text-[11.5px] font-medium text-gray-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors shrink-0 ml-auto"
                             title="Arquivar plano comercial"
                           >
-                            <Archive className="h-3 w-3" />
-                            Arquivar
+                            <Archive className="h-3 w-3 shrink-0" />
+                            <span>Arquivar</span>
                           </button>
                         )}
                       </>
@@ -622,18 +622,18 @@ export default function AdminPlansPage() {
                         <button
                           type="button"
                           onClick={() => toggleArchiveMutation.mutate({ id: plan.id, isActive: true })}
-                          className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-[11.5px] font-semibold text-white hover:bg-violet-500 transition-colors shadow-sm"
+                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white hover:bg-violet-500 transition-colors shadow-sm shrink-0"
                         >
-                          <RotateCcw className="h-3 w-3" />
-                          Restaurar plano
+                          <RotateCcw className="h-3 w-3 shrink-0" />
+                          <span>Restaurar</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => openDuplicateModal(plan)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
                         >
-                          <Copy className="h-3 w-3" />
-                          Duplicar
+                          <Copy className="h-3 w-3 shrink-0" />
+                          <span>Duplicar</span>
                         </button>
                       </>
                     )}
