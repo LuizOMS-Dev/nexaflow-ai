@@ -19,10 +19,11 @@ import {
   Sparkles,
   Building2,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { cn, formatCurrency, pluralizePt } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/components/ui-toast";
 import { Modal, Skeleton } from "@/components/ui";
 import {
@@ -229,14 +230,14 @@ function emptyForm(): PlanFormState {
     slug: "",
     description: "",
     priceType: "fixed",
-    priceMonthly: "299,00",
-    priceAnnual: "3.049,80",
-    maxUsers: "5",
-    maxChannels: "2",
-    maxAgents: "3",
-    maxContacts: "5.000",
-    maxActiveFlows: "10",
-    maxAiMessages: "2.000",
+    priceMonthly: "",
+    priceAnnual: "",
+    maxUsers: "2",
+    maxChannels: "1",
+    maxAgents: "1",
+    maxContacts: "2000",
+    maxActiveFlows: "5",
+    maxAiMessages: "1000",
     isActive: true,
     badge: "",
     sortOrder: "100",
@@ -257,8 +258,8 @@ function planToForm(p: Plan): PlanFormState {
     slug: p.slug,
     description: p.description || "",
     priceType: pType,
-    priceMonthly: p.priceMonthly != null ? formatBrlInput(Math.round(Number(p.priceMonthly) * 100).toString()) : "",
-    priceAnnual: p.priceAnnual != null ? formatBrlInput(Math.round(Number(p.priceAnnual) * 100).toString()) : "",
+    priceMonthly: p.priceMonthly != null && Number(p.priceMonthly) > 0 ? formatBrlInput(Math.round(Number(p.priceMonthly) * 100).toString()) : "",
+    priceAnnual: p.priceAnnual != null && Number(p.priceAnnual) > 0 ? formatBrlInput(Math.round(Number(p.priceAnnual) * 100).toString()) : "",
     maxUsers: p.maxUsers != null ? formatIntegerInput(p.maxUsers.toString()) : "1",
     maxChannels: p.maxChannels != null ? formatIntegerInput(p.maxChannels.toString()) : "1",
     maxAgents: feats.maxAgents != null ? formatIntegerInput(String(feats.maxAgents)) : "1",
@@ -282,6 +283,7 @@ export default function AdminPlansPage() {
   const [formData, setFormData] = useState<PlanFormState>(emptyForm());
   const [initialFormJson, setInitialFormJson] = useState<string>("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   // Archive confirmation state
   const [planToArchive, setPlanToArchive] = useState<Plan | null>(null);
@@ -301,7 +303,7 @@ export default function AdminPlansPage() {
       api<Plan>("/admin/plans", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
       toast.success("Plano comercial criado com sucesso!");
-      closeModal();
+      forceCloseModal();
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
@@ -314,7 +316,7 @@ export default function AdminPlansPage() {
       api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: () => {
       toast.success("Plano atualizado com sucesso!");
-      closeModal();
+      forceCloseModal();
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
@@ -327,7 +329,7 @@ export default function AdminPlansPage() {
       api<Plan>(`/admin/plans/${id}/duplicate`, { method: "POST" }),
     onSuccess: () => {
       toast.success("Plano duplicado com sucesso!");
-      closeModal();
+      forceCloseModal();
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
@@ -354,6 +356,7 @@ export default function AdminPlansPage() {
     setInitialFormJson(JSON.stringify(fresh));
     setEditingPlan(null);
     setSlugManuallyEdited(false);
+    setShowDiscardConfirm(false);
     setModalMode("create");
   };
 
@@ -363,6 +366,7 @@ export default function AdminPlansPage() {
     setInitialFormJson(JSON.stringify(f));
     setEditingPlan(p);
     setSlugManuallyEdited(true);
+    setShowDiscardConfirm(false);
     setModalMode("edit");
   };
 
@@ -377,13 +381,27 @@ export default function AdminPlansPage() {
     setInitialFormJson(JSON.stringify(f));
     setEditingPlan(p);
     setSlugManuallyEdited(true);
+    setShowDiscardConfirm(false);
     setModalMode("duplicate");
   };
 
-  const closeModal = () => {
+  const isDirty = useMemo(() => {
+    return JSON.stringify(formData) !== initialFormJson;
+  }, [formData, initialFormJson]);
+
+  const requestCloseModal = () => {
+    if (isDirty) {
+      setShowDiscardConfirm(true);
+    } else {
+      forceCloseModal();
+    }
+  };
+
+  const forceCloseModal = () => {
     setModalMode(null);
     setEditingPlan(null);
     setSlugManuallyEdited(false);
+    setShowDiscardConfirm(false);
   };
 
   const handleNameChange = (nameVal: string) => {
@@ -395,10 +413,6 @@ export default function AdminPlansPage() {
       return next;
     });
   };
-
-  const isDirty = useMemo(() => {
-    return JSON.stringify(formData) !== initialFormJson;
-  }, [formData, initialFormJson]);
 
   const handleFormSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -417,10 +431,7 @@ export default function AdminPlansPage() {
     let monthly = parseBrlInput(formData.priceMonthly);
     let annual = parseBrlInput(formData.priceAnnual);
 
-    if (isEnterprise) {
-      monthly = 0;
-      annual = 0;
-    } else if (isFree) {
+    if (isEnterprise || isFree) {
       monthly = 0;
       annual = 0;
     }
@@ -582,21 +593,16 @@ export default function AdminPlansPage() {
               >
                 {/* Top: Header do Card */}
                 <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h3 className="text-[16px] font-bold text-white tracking-tight">
-                          {plan.name}
-                        </h3>
-                        {badgeKey && BADGE_LABEL[badgeKey] && (
-                          <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
-                            {BADGE_LABEL[badgeKey]}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-[11px] font-medium text-gray-500">
-                        {plan.slug}
-                      </p>
+                  <div className="flex items-start justify-between gap-2 min-h-[32px]">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="text-[16px] font-bold text-white tracking-tight">
+                        {plan.name}
+                      </h3>
+                      {badgeKey && BADGE_LABEL[badgeKey] && (
+                        <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
+                          {BADGE_LABEL[badgeKey]}
+                        </span>
+                      )}
                     </div>
 
                     <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
@@ -604,8 +610,8 @@ export default function AdminPlansPage() {
                     </StatusBadge>
                   </div>
 
-                  {/* Preço Comercial */}
-                  <div className="mt-4 pb-3 border-b border-white/[0.06]">
+                  {/* Preço Comercial com baseline consistente */}
+                  <div className="mt-3.5 pb-3 border-b border-white/[0.06] min-h-[56px] flex flex-col justify-end">
                     {isEnterprise ? (
                       <div>
                         <span className="text-[20px] font-bold text-white">Sob consulta</span>
@@ -640,8 +646,8 @@ export default function AdminPlansPage() {
                     )}
                   </div>
 
-                  {/* Descrição */}
-                  <p className="mt-3 text-[12px] text-gray-300 line-clamp-3 min-h-[36px]">
+                  {/* Descrição com área previsível */}
+                  <p className="mt-3 text-[12px] text-gray-300 line-clamp-2 min-h-[36px] leading-relaxed">
                     {plan.description || "Plano comercial para atendimento e automação."}
                   </p>
 
@@ -717,7 +723,7 @@ export default function AdminPlansPage() {
                     <span>
                       {tenantCount === 0
                         ? "Nenhuma empresa utilizando"
-                        : `${tenantCount} ${pluralizePt(tenantCount, "empresa utilizando", "empresas utilizando")}`}
+                        : `${tenantCount} ${tenantCount === 1 ? "empresa utilizando" : "empresas utilizando"}`}
                     </span>
                   </div>
 
@@ -785,7 +791,7 @@ export default function AdminPlansPage() {
       {/* 3. MODAL UNIFICADO: PlanFormDialog (Criar / Editar / Duplicar) */}
       <Modal
         open={modalMode !== null}
-        onClose={closeModal}
+        onClose={requestCloseModal}
         title={
           modalMode === "create"
             ? "Novo Plano Comercial"
@@ -955,9 +961,17 @@ export default function AdminPlansPage() {
 
           {/* Seção 3: Limites Oficiais */}
           <div className="space-y-3 pt-3 border-t border-white/[0.06]">
-            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
-              Limites do Produto
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+                Limites do Produto
+              </h4>
+              {modalMode === "edit" && (
+                <span className="text-[11px] text-amber-300/80 flex items-center gap-1">
+                  <Info className="h-3 w-3 text-amber-400" />
+                  Alterações afetam empresas vinculadas
+                </span>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div>
@@ -1107,7 +1121,7 @@ export default function AdminPlansPage() {
           <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/[0.06]">
             <button
               type="button"
-              onClick={closeModal}
+              onClick={requestCloseModal}
               className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
             >
               Cancelar
@@ -1133,7 +1147,33 @@ export default function AdminPlansPage() {
         </form>
       </Modal>
 
-      {/* 4. MODAL: Confirmação de Arquivamento */}
+      {/* 4. MODAL: Confirmação de Descarte de Alterações Não Salvas */}
+      <Modal
+        open={showDiscardConfirm}
+        onClose={() => setShowDiscardConfirm(false)}
+        title="Descartar alterações não salvas?"
+        description="Você possui alterações não salvas no formulário. Se você sair agora, todos os dados modificados serão perdidos."
+        size="sm"
+      >
+        <div className="flex items-center justify-end gap-2.5 pt-2">
+          <button
+            type="button"
+            onClick={() => setShowDiscardConfirm(false)}
+            className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
+          >
+            Continuar editando
+          </button>
+          <button
+            type="button"
+            onClick={forceCloseModal}
+            className="rounded-lg bg-red-600/90 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-red-500 transition-colors shadow-sm"
+          >
+            Descartar alterações
+          </button>
+        </div>
+      </Modal>
+
+      {/* 5. MODAL: Confirmação de Arquivamento */}
       <Modal
         open={planToArchive !== null}
         onClose={() => setPlanToArchive(null)}
