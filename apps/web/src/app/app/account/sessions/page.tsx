@@ -209,24 +209,29 @@ export default function AccountSessionsPage() {
       <Modal
         open={Boolean(sessionToRevoke)}
         onClose={() => setSessionToRevoke(null)}
-        title="Encerrar sessão?"
+        title="Encerrar sessão selecionada"
+        description="O dispositivo selecionado será desconectado imediatamente."
+        size="md"
+        icon={<LogOut className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
+        tone="danger"
+        preventBackdropClose
       >
-        <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
+        <div className="space-y-4 pt-1 text-xs text-ink-muted dark:text-zinc-300">
           <p className="leading-relaxed">
-            Isso desconectará o dispositivo selecionado ({sessionToRevoke ? parseDeviceInfo(sessionToRevoke.deviceLabel, sessionToRevoke.userAgent).displayTitle : ""}). O usuário precisará fazer login novamente.
+            Isso desconectará o dispositivo <strong className="font-semibold text-ink dark:text-white">{sessionToRevoke ? parseDeviceInfo(sessionToRevoke.deviceLabel, sessionToRevoke.userAgent).displayTitle : ""}</strong>. O acesso será revogado e será necessário fazer login novamente.
           </p>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs font-medium active:scale-[0.985] transition-all duration-150"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:scale-[0.985] transition-all cursor-pointer"
               onClick={() => setSessionToRevoke(null)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 active:scale-[0.985] text-white transition-all duration-150"
+              className="btn-primary h-8.5 px-4 text-xs font-semibold bg-rose-600 hover:bg-rose-700 active:scale-[0.985] text-white rounded-xl shadow-md shadow-rose-600/20 transition-all cursor-pointer"
               disabled={revokeOne.isPending}
               onClick={() => sessionToRevoke && revokeOne.mutate(sessionToRevoke.id)}
             >
@@ -240,25 +245,30 @@ export default function AccountSessionsPage() {
       <Modal
         open={confirmRevokeOthersOpen}
         onClose={() => setConfirmRevokeOthersOpen(false)}
-        title="Encerrar outras sessões?"
+        title="Encerrar todas as outras sessões"
+        description="Todos os outros navegadores e dispositivos conectados serão desvinculados."
+        size="md"
+        icon={<LogOut className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
+        tone="danger"
+        preventBackdropClose
       >
-        <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
+        <div className="space-y-4 pt-1 text-xs text-ink-muted dark:text-zinc-300">
           <p className="leading-relaxed">
             Isso desconectará sua conta de todos os outros navegadores e dispositivos conectados.
-            Apenas este dispositivo atual permanecerá conectado.
+            Apenas este dispositivo atual permanecerá com a sessão ativa.
           </p>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs font-medium active:scale-[0.985] transition-all duration-150"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:scale-[0.985] transition-all cursor-pointer"
               onClick={() => setConfirmRevokeOthersOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 active:scale-[0.985] text-white transition-all duration-150"
+              className="btn-primary h-8.5 px-4 text-xs font-semibold bg-rose-600 hover:bg-rose-700 active:scale-[0.985] text-white rounded-xl shadow-md shadow-rose-600/20 transition-all cursor-pointer"
               disabled={revokeOthers.isPending}
               onClick={() => revokeOthers.mutate()}
             >

@@ -333,8 +333,11 @@ export default function AccountSecurityPage() {
         open={pwdOpen}
         onClose={() => setPwdOpen(false)}
         title="Alterar senha de acesso"
+        description="Defina uma nova senha segura com no mínimo 8 caracteres."
         size="md"
         preventBackdropClose
+        icon={<KeyRound className="h-5 w-5 text-violet-600 dark:text-violet-400" />}
+        tone="violet"
       >
         <form
           onSubmit={(e: FormEvent) => {
@@ -477,8 +480,11 @@ export default function AccountSecurityPage() {
           setMfaError(null);
         }}
         title="Ativar autenticação em duas etapas (2FA)"
+        description="Conecte seu aplicativo autenticador escaneando o QR Code."
         size="md"
         preventBackdropClose
+        icon={<Smartphone className="h-5 w-5 text-violet-600 dark:text-violet-400" />}
+        tone="violet"
       >
         <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
           <p className="leading-relaxed">
@@ -681,8 +687,11 @@ export default function AccountSecurityPage() {
         open={disableOpen}
         onClose={() => setDisableOpen(false)}
         title="Desativar autenticação em duas etapas"
+        description="Confirme sua senha e o código do autenticador para remover a proteção."
         size="md"
         preventBackdropClose
+        icon={<ShieldAlert className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
+        tone="danger"
       >
         <form
           onSubmit={(e: FormEvent) => {
