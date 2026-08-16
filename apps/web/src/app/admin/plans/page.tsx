@@ -546,6 +546,12 @@ export default function AdminPlansPage() {
         "Revise os campos destacados",
         "Algumas informações precisam ser corrigidas antes de salvar."
       );
+      const firstKey = Object.keys(errors)[0];
+      const el = document.getElementById(`field-${firstKey}`);
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
 
@@ -922,8 +928,13 @@ export default function AdminPlansPage() {
                   const form = document.getElementById("plan-form-dialog") as HTMLFormElement | null;
                   if (form) form.requestSubmit();
                 }}
-                disabled={createPlanMutation.isPending || updatePlanMutation.isPending}
-                className="rounded-lg bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
+                disabled={
+                  createPlanMutation.isPending ||
+                  updatePlanMutation.isPending ||
+                  (modalMode === "edit" && !isDirty) ||
+                  !formData.name.trim()
+                }
+                className="rounded-lg bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
                 {createPlanMutation.isPending || updatePlanMutation.isPending
                   ? "Salvando..."
@@ -938,10 +949,10 @@ export default function AdminPlansPage() {
         }
         size="lg"
       >
-        <form id="plan-form-dialog" onSubmit={handleFormSubmit} className="space-y-4.5">
+        <form id="plan-form-dialog" onSubmit={handleFormSubmit} className="space-y-3.5">
           {/* Barra Flutuante de Ação Rápida no Topo do Formulário (aparece instantaneamente ao editar qualquer campo) */}
           {isDirty && (
-            <div className="sticky -top-4 z-20 -mx-6 -mt-2 mb-3 px-6 py-2 bg-[#161a26]/95 backdrop-blur-md border-b border-violet-500/30 flex items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="sticky -top-4 z-20 -mx-6 -mt-2 mb-2 px-6 py-2 bg-[#161a26]/95 backdrop-blur-md border-b border-violet-500/30 flex items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150">
               <div className="flex items-center gap-2 text-[12px] text-violet-300">
                 <span className="h-2 w-2 rounded-full bg-violet-400 animate-pulse" />
                 <span className="font-medium">Alterações não salvas</span>
@@ -956,8 +967,13 @@ export default function AdminPlansPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={createPlanMutation.isPending || updatePlanMutation.isPending}
-                  className="rounded-md bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
+                  disabled={
+                    createPlanMutation.isPending ||
+                    updatePlanMutation.isPending ||
+                    (modalMode === "edit" && !isDirty) ||
+                    !formData.name.trim()
+                  }
+                  className="rounded-md bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
                   {createPlanMutation.isPending || updatePlanMutation.isPending
                     ? "Salvando..."
@@ -970,24 +986,26 @@ export default function AdminPlansPage() {
               </div>
             </div>
           )}
+
           {/* Seção 1: Informações do Plano */}
-          <div className="space-y-2.5">
-            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+          <div className="space-y-2">
+            <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
               Informações do Plano
             </h4>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <div>
                 <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
                   Nome comercial *
                 </label>
                 <input
+                  id="field-name"
                   type="text"
                   placeholder="Ex: Profissional Plus"
                   value={formData.name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   className={cn(
-                    "w-full rounded-lg border bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:outline-none transition-colors",
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white placeholder-gray-500 focus:outline-none transition-colors",
                     fieldErrors.name
                       ? "border-red-500/60 focus:border-red-500"
                       : "border-white/[0.08] focus:border-violet-500"
@@ -1003,6 +1021,7 @@ export default function AdminPlansPage() {
                   Identificador (Slug) *
                 </label>
                 <input
+                  id="field-slug"
                   type="text"
                   placeholder="ex: plano-plus"
                   value={formData.slug}
@@ -1012,10 +1031,11 @@ export default function AdminPlansPage() {
                     setFormData((prev) => ({ ...prev, slug: slugify(e.target.value) }));
                   }}
                   disabled={modalMode === "edit"}
+                  readOnly={modalMode === "edit"}
                   className={cn(
-                    "w-full rounded-lg border px-3 py-2 text-[13px] text-white focus:outline-none placeholder-gray-500 transition-colors",
+                    "w-full rounded-lg border px-3 py-1.5 text-[13px] text-white focus:outline-none placeholder-gray-500 transition-colors",
                     modalMode === "edit"
-                      ? "bg-white/[0.02] text-gray-400 cursor-not-allowed border-white/[0.06]"
+                      ? "bg-white/[0.02] text-gray-400 cursor-not-allowed border-white/[0.06] select-all"
                       : fieldErrors.slug
                       ? "border-red-500/60 bg-white/[0.04] focus:border-red-500"
                       : "border-white/[0.08] bg-white/[0.04] focus:border-violet-500"
@@ -1036,14 +1056,14 @@ export default function AdminPlansPage() {
                 placeholder="Ex: Para empresas que buscam escalar o atendimento com IA e automações avançadas."
                 value={formData.description}
                 onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none resize-none"
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none resize-none"
               />
             </div>
           </div>
 
           {/* Seção 2: Precificação de Catálogo */}
-          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
-            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+          <div className="space-y-2.5 pt-2.5 border-t border-white/[0.06]">
+            <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
               Precificação de Catálogo
             </h4>
 
@@ -1059,21 +1079,21 @@ export default function AdminPlansPage() {
             </div>
 
             {formData.priceType === "free" && (
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12px] text-gray-400">
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-[12px] text-gray-400">
                 Sem cobrança de catálogo comercial. As empresas vinculadas não serão cobradas mensalmente.
               </div>
             )}
 
             {formData.priceType === "on_request" && (
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12px] text-gray-400">
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-[12px] text-gray-400">
                 O valor e os termos comerciais serão definidos no contrato customizado de cada empresa.
               </div>
             )}
 
             {formData.priceType === "fixed" && (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {/* Valores Mensal e Anual lado a lado */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   <div>
                     <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
                       Preço mensal (R$) *
@@ -1083,12 +1103,13 @@ export default function AdminPlansPage() {
                         R$
                       </span>
                       <input
+                        id="field-priceMonthly"
                         type="text"
                         placeholder="0,00"
                         value={formData.priceMonthly}
                         onChange={(e) => handleMonthlyChange(e.target.value)}
                         className={cn(
-                          "w-full rounded-lg border bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:outline-none tabular-nums transition-colors",
+                          "w-full rounded-lg border bg-white/[0.04] pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-gray-500 focus:outline-none tabular-nums transition-colors",
                           fieldErrors.priceMonthly
                             ? "border-red-500/60 focus:border-red-500"
                             : "border-white/[0.08] focus:border-violet-500"
@@ -1109,12 +1130,13 @@ export default function AdminPlansPage() {
                         R$
                       </span>
                       <input
+                        id="field-priceAnnual"
                         type="text"
                         placeholder="0,00"
                         value={formData.priceAnnual}
                         onChange={(e) => handleAnnualChange(e.target.value)}
                         className={cn(
-                          "w-full rounded-lg border bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:outline-none tabular-nums transition-colors",
+                          "w-full rounded-lg border bg-white/[0.04] pl-9 pr-3 py-1.5 text-[13px] text-white placeholder-gray-500 focus:outline-none tabular-nums transition-colors",
                           fieldErrors.priceAnnual
                             ? "border-red-500/60 focus:border-red-500"
                             : "border-white/[0.08] focus:border-violet-500"
@@ -1137,30 +1159,21 @@ export default function AdminPlansPage() {
                   const savings = calculateAnnualSavings(monthlyNum, annualNum);
 
                   return (
-                    <div className="space-y-1.5 pt-1">
+                    <div className="space-y-1.5 pt-0.5">
                       <div className="flex items-center justify-between gap-2">
                         <label className="block text-[11.5px] font-medium text-gray-400">
                           Desconto anual
                         </label>
                         {hasDiscount && (
-                          <div className="flex items-center gap-2">
-                            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10.5px] font-bold text-emerald-400 border border-emerald-500/25">
-                              {formatDiscountPercent(discountPct)} OFF
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleRemoveDiscount}
-                              className="text-[11.5px] text-gray-400 hover:text-white transition-colors"
-                            >
-                              Remover
-                            </button>
-                          </div>
+                          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10.5px] font-bold text-emerald-400 border border-emerald-500/25">
+                            {formatDiscountPercent(discountPct)} OFF
+                          </span>
                         )}
                       </div>
 
                       <div
                         className={cn(
-                          "grid gap-2.5",
+                          "grid gap-2",
                           formData.discountMode === "custom" && hasValidMonthly
                             ? "grid-cols-1 sm:grid-cols-2"
                             : "grid-cols-1"
@@ -1178,13 +1191,14 @@ export default function AdminPlansPage() {
                           <div>
                             <div className="relative">
                               <input
+                                id="field-customDiscount"
                                 type="text"
                                 inputMode="decimal"
                                 placeholder="Ex: 12,5"
                                 value={formData.customDiscountPercent}
                                 onChange={(e) => handleCustomDiscountChange(e.target.value)}
                                 className={cn(
-                                  "w-full rounded-lg border bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:outline-none tabular-nums placeholder-gray-500 transition-colors",
+                                  "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums placeholder-gray-500 transition-colors",
                                   fieldErrors.customDiscount
                                     ? "border-red-500/60 focus:border-red-500"
                                     : "border-white/[0.08] focus:border-violet-500"
@@ -1205,7 +1219,7 @@ export default function AdminPlansPage() {
 
                       {!hasValidMonthly ? (
                         <p className="text-[11px] text-gray-500">
-                          Informe o preço mensal para configurar um desconto anual.
+                          Informe o preço mensal para configurar o desconto anual.
                         </p>
                       ) : hasDiscount ? (
                         <p className="text-[11.5px] text-emerald-400 font-medium">
@@ -1220,9 +1234,9 @@ export default function AdminPlansPage() {
           </div>
 
           {/* Seção 3: Limites do Produto */}
-          <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
+          <div className="space-y-2.5 pt-2.5 border-t border-white/[0.06]">
             <div className="flex items-center justify-between flex-wrap gap-1">
-              <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+              <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
                 Limites do Produto
               </h4>
               <div
@@ -1235,7 +1249,7 @@ export default function AdminPlansPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 mb-1">
                   Usuários *
@@ -1246,7 +1260,7 @@ export default function AdminPlansPage() {
                   value={formData.maxUsers}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxUsers: formatIntegerInput(e.target.value) }))}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
 
@@ -1260,7 +1274,7 @@ export default function AdminPlansPage() {
                   value={formData.maxChannels}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxChannels: formatIntegerInput(e.target.value) }))}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
 
@@ -1274,7 +1288,7 @@ export default function AdminPlansPage() {
                   value={formData.maxAgents}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxAgents: formatIntegerInput(e.target.value) }))}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
 
@@ -1288,7 +1302,7 @@ export default function AdminPlansPage() {
                   value={formData.maxContacts}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxContacts: formatIntegerInput(e.target.value) }))}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
 
@@ -1302,7 +1316,7 @@ export default function AdminPlansPage() {
                   value={formData.maxActiveFlows}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxActiveFlows: formatIntegerInput(e.target.value) }))}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
 
@@ -1316,19 +1330,19 @@ export default function AdminPlansPage() {
                   value={formData.maxAiMessages}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxAiMessages: formatIntegerInput(e.target.value) }))}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
             </div>
           </div>
 
           {/* Seção 4: Exibição & Disponibilidade */}
-          <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
-            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+          <div className="space-y-2 pt-2.5 border-t border-white/[0.06]">
+            <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
               Exibição & Disponibilidade
             </h4>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <div>
                 <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
                   Destaque comercial
@@ -1349,12 +1363,12 @@ export default function AdminPlansPage() {
                   placeholder="100"
                   value={formData.sortOrder}
                   onChange={(e) => setFormData((prev) => ({ ...prev, sortOrder: e.target.value }))}
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-2.5">
               <div>
                 <p className="text-[12.5px] font-semibold text-white">Disponível para novas contratações</p>
                 <p className="text-[11px] text-gray-400">
@@ -1380,11 +1394,11 @@ export default function AdminPlansPage() {
           </div>
 
           {/* Sticky Footer com Ações */}
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/[0.06]">
+          <div className="flex items-center justify-end gap-2.5 pt-2.5 border-t border-white/[0.06]">
             <button
               type="button"
               onClick={requestCloseModal}
-              className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
+              className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
             >
               Cancelar
             </button>
@@ -1393,9 +1407,10 @@ export default function AdminPlansPage() {
               disabled={
                 createPlanMutation.isPending ||
                 updatePlanMutation.isPending ||
-                (modalMode === "edit" && !isDirty)
+                (modalMode === "edit" && !isDirty) ||
+                !formData.name.trim()
               }
-              className="rounded-lg bg-violet-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              className="rounded-lg bg-violet-600 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               {createPlanMutation.isPending || updatePlanMutation.isPending
                 ? "Salvando..."
