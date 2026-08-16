@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -13,6 +13,7 @@ import {
   GitCommit,
   GitPullRequest,
   History,
+  Info,
   Layers,
   RefreshCw,
   Rocket,
@@ -38,9 +39,12 @@ import {
 } from "@/components/admin";
 import { Modal, useToast } from "@/components/ui";
 
+type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE";
+
 type DeployOverviewResponse = {
   environment: string;
   isOnline: boolean;
+  healthState: "HEALTHY" | "VALIDATING" | "DEGRADED" | "UNKNOWN";
   status: "UP_TO_DATE" | "UPDATE_AVAILABLE" | "DEPLOYING" | "UNKNOWN";
   currentCommit: {
     sha: string;
@@ -49,6 +53,7 @@ type DeployOverviewResponse = {
     author: string;
     deployedAt: string | null;
     deployedBy: string | null;
+    isKnown: boolean;
   } | null;
   latestGitHubCommit: {
     sha: string;
@@ -60,14 +65,20 @@ type DeployOverviewResponse = {
   } | null;
   gitHub: {
     connected: boolean;
+    owner: string;
     repo: string;
     branch: string;
     error?: string;
   };
   easyPanel: {
+    state: EasyPanelState;
     connected: boolean;
+    url?: string;
     projectName: string;
     serviceName: string;
+    serviceType: string;
+    hasUrl: boolean;
+    hasToken: boolean;
     error?: string;
   };
   activeDeployment: {
@@ -152,7 +163,7 @@ function deployStatusTone(st: string): "brand" | "neutral" | "success" | "warnin
 function deployStatusLabel(st: string): string {
   switch (st) {
     case "COMPLETED":
-      return "Concluído";
+      return "Sucesso";
     case "FAILED":
       return "Falhou";
     case "BUILDING":
@@ -178,10 +189,11 @@ export default function AdminDeployPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
-  const [selectedLogsId, setSelectedLogsId] = useState<string | null>(null);
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
   const [page, setPage] = useState(1);
 
-  // 1. Status geral de deploy (re-polled a cada 5s quando houver deploy ativo)
+  // 1. Status geral de deploy
   const overviewQuery = useQuery({
     queryKey: ["admin-deploy-status"],
     queryFn: () => api<DeployOverviewResponse>("/admin/deploy/status"),
@@ -206,13 +218,13 @@ export default function AdminDeployPage() {
     refetchInterval: () => (overviewQuery.data?.activeDeployment ? 5000 : false),
   });
 
-  // 3. Detalhe / Logs de um deploy selecionado
+  // 3. Detalhes do deploy selecionado
   const detailQuery = useQuery({
-    queryKey: ["admin-deploy-detail", selectedLogsId],
-    queryFn: () => api<DeploymentDetail>(`/admin/deploy/${selectedLogsId}`),
-    enabled: Boolean(selectedLogsId) && user?.platformRole === "SUPERADMIN",
+    queryKey: ["admin-deploy-detail", selectedDetailId],
+    queryFn: () => api<DeploymentDetail>(`/admin/deploy/${selectedDetailId}`),
+    enabled: Boolean(selectedDetailId) && user?.platformRole === "SUPERADMIN",
     refetchInterval: () =>
-      overviewQuery.data?.activeDeployment?.id === selectedLogsId ? 3000 : false,
+      overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 3000 : false,
   });
 
   // Mutação: Iniciar deploy
@@ -231,7 +243,7 @@ export default function AdminDeployPage() {
         description: "O processo de build e validação foi enviado ao EasyPanel.",
         kind: "success",
       });
-      setSelectedLogsId(res.deploymentId);
+      setSelectedDetailId(res.deploymentId);
     },
     onError: (e) => {
       toast({
@@ -258,7 +270,7 @@ export default function AdminDeployPage() {
         description: "Reimplantando a versão anterior selecionada.",
         kind: "success",
       });
-      setSelectedLogsId(res.deploymentId);
+      setSelectedDetailId(res.deploymentId);
     },
     onError: (e) => {
       toast({
@@ -291,13 +303,33 @@ export default function AdminDeployPage() {
   }
 
   const data = overviewQuery.data;
-  const current = data?.currentCommit ?? null;
-  const latest = data?.latestGitHubCommit ?? null;
-  const active = data?.activeDeployment ?? null;
-  const isUpToDate = data?.status === "UP_TO_DATE";
-  const isUpdateAvailable = data?.status === "UPDATE_AVAILABLE";
+  const current = data.currentCommit;
+  const latest = data.latestGitHubCommit;
+  const active = data.activeDeployment;
+  const isUpToDate = data.status === "UP_TO_DATE";
+  const isUpdateAvailable = data.status === "UPDATE_AVAILABLE";
   const historyItems = historyQuery.data?.items || [];
   const totalPages = historyQuery.data?.totalPages || 1;
+
+  // EasyPanel card values
+  const epState = data.easyPanel?.state || (data.easyPanel?.connected ? "CONNECTED" : "NOT_CONFIGURED");
+  let epLabel = "Conectado";
+  let epTone: "success" | "neutral" | "danger" = "success";
+  let epHint = `Serviço ${data.easyPanel?.serviceName} · Projeto ${data.easyPanel?.projectName}`;
+
+  if (epState === "NOT_CONFIGURED") {
+    epLabel = "Não configurado";
+    epTone = "neutral";
+    epHint = "Configure a integração para habilitar deployments.";
+  } else if (epState === "AUTH_FAILED") {
+    epLabel = "Erro de autenticação";
+    epTone = "danger";
+    epHint = "Chave de API ou token do EasyPanel inválido.";
+  } else if (epState === "UNAVAILABLE") {
+    epLabel = "Indisponível";
+    epTone = "danger";
+    epHint = "Não foi possível conectar ao EasyPanel.";
+  }
 
   return (
     <div className="space-y-5">
@@ -332,36 +364,35 @@ export default function AdminDeployPage() {
           tone={active ? "warning" : "success"}
           compact
         />
+
         <MetricCard
           label="Versão em Produção"
           value={current ? current.shortSha : "—"}
           hint={
             current?.deployedAt
               ? `Implantado há ${formatRelativeTime(current.deployedAt)}`
-              : current?.author || "Versão inicial"
+              : current ? "Versão base de implantação" : "Versão desconhecida"
           }
           icon={<GitCommit className="h-4 w-4" />}
           tone="brand"
           compact
         />
+
         <MetricCard
           label="Repositório GitHub"
-          value={data?.gitHub?.branch ?? "main"}
-          hint={data?.gitHub?.connected ? data.gitHub.repo : data?.gitHub?.error || "Desconectado"}
+          value={data.gitHub?.repo || "LuizOMS-Dev/nexaflow-ai"}
+          hint={`Branch: ${data.gitHub?.branch || "main"}`}
           icon={<GitBranch className="h-4 w-4" />}
-          tone={data?.gitHub?.connected ? "neutral" : "danger"}
+          tone={data.gitHub?.connected ? "neutral" : "danger"}
           compact
         />
+
         <MetricCard
           label="EasyPanel"
-          value={data?.easyPanel?.connected ? "Conectado" : "Erro"}
-          hint={
-            data?.easyPanel?.connected
-              ? `Serviço ${data.easyPanel.serviceName}`
-              : data?.easyPanel?.error || "Indisponível"
-          }
+          value={epLabel}
+          hint={epHint}
           icon={<Layers className="h-4 w-4" />}
-          tone={data?.easyPanel?.connected ? "success" : "danger"}
+          tone={epTone}
           compact
         />
       </MetricGrid>
@@ -392,7 +423,7 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-secondary shrink-0 text-[12px]"
-              onClick={() => setSelectedLogsId(active.id)}
+              onClick={() => setSelectedDetailId(active.id)}
             >
               <Terminal className="h-3.5 w-3.5" /> Ver logs em tempo real
             </button>
@@ -418,7 +449,7 @@ export default function AdminDeployPage() {
                   <code className="rounded bg-white/[0.08] px-2 py-0.5 font-mono text-[13px] font-bold text-violet-300">
                     {current ? current.shortSha : "—"}
                   </code>
-                  <span className="truncate text-[13px] font-medium text-gray-200">
+                  <span className="truncate text-[13px] font-medium text-gray-200" title={current?.message}>
                     {current ? current.message : "Sem versão registrada"}
                   </span>
                 </div>
@@ -431,13 +462,13 @@ export default function AdminDeployPage() {
               {/* Último no GitHub */}
               <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3.5">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                  Último no GitHub ({data?.gitHub?.branch ?? "main"})
+                  Último no GitHub ({data.gitHub?.branch || "main"})
                 </span>
                 <div className="mt-1.5 flex items-center gap-2">
                   <code className="rounded bg-white/[0.08] px-2 py-0.5 font-mono text-[13px] font-bold text-emerald-300">
                     {latest ? latest.shortSha : "—"}
                   </code>
-                  <span className="truncate text-[13px] font-medium text-gray-200">
+                  <span className="truncate text-[13px] font-medium text-gray-200" title={latest?.message}>
                     {latest ? latest.message : "Nenhum commit retornado"}
                   </span>
                 </div>
@@ -462,18 +493,45 @@ export default function AdminDeployPage() {
                 </div>
               ) : null}
 
-              <button
-                type="button"
-                className={cn(
-                  "h-10 px-5 text-[13px] font-semibold",
-                  isUpdateAvailable ? "admin-btn-primary" : "admin-btn-secondary"
-                )}
-                disabled={Boolean(active) || startDeployMut.isPending || !data?.easyPanel?.connected}
-                onClick={() => setConfirmOpen(true)}
-              >
-                <Rocket className="h-4 w-4" />
-                {isUpdateAvailable ? "Implantar nova versão" : "Reimplantar versão atual"}
-              </button>
+              {/* Se houver versão nova: exibe o botão de implantar */}
+              {isUpdateAvailable ? (
+                <div className="flex flex-col items-end gap-1.5">
+                  <button
+                    type="button"
+                    className="admin-btn-primary h-10 px-5 text-[13px] font-semibold"
+                    disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel?.connected}
+                    onClick={() => setConfirmOpen(true)}
+                  >
+                    <Rocket className="h-4 w-4" />
+                    Implantar nova versão
+                  </button>
+
+                  {!data.easyPanel?.connected ? (
+                    <div className="flex items-center gap-1 text-[11px] text-gray-400">
+                      <span>{epHint}</span>
+                      <button
+                        type="button"
+                        className="text-violet-400 hover:underline"
+                        onClick={() => setConfigModalOpen(true)}
+                      >
+                        Ver configuração
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {!data.easyPanel?.connected ? (
+                    <button
+                      type="button"
+                      className="admin-btn-ghost h-9 text-[12px]"
+                      onClick={() => setConfigModalOpen(true)}
+                    >
+                      <Info className="h-3.5 w-3.5" /> Ver configuração EasyPanel
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -486,11 +544,15 @@ export default function AdminDeployPage() {
         flush
       >
         {historyItems.length === 0 ? (
-          <AdminEmptyState
-            icon={<History className="h-5 w-5" strokeWidth={1.5} />}
-            title="Nenhum deploy registrado"
-            description="O histórico de implantações aparecerá aqui assim que o primeiro deploy for concluído."
-          />
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04] text-gray-400">
+              <History className="h-5 w-5" strokeWidth={1.5} />
+            </div>
+            <p className="mt-2 text-[13px] font-medium text-gray-300">Nenhum deploy registrado</p>
+            <p className="mt-0.5 text-[12px] text-gray-500">
+              O histórico de implantações aparecerá aqui assim que o primeiro deploy for concluído.
+            </p>
+          </div>
         ) : (
           <>
             <div className="admin-table-wrap overflow-x-auto">
@@ -539,7 +601,7 @@ export default function AdminDeployPage() {
                         </td>
 
                         <td className="px-4 py-3 align-middle">
-                          <p className="max-w-xs truncate text-[13px] font-medium text-gray-200">
+                          <p className="max-w-xs truncate text-[13px] font-medium text-gray-200" title={item.commitMessage}>
                             {item.commitMessage}
                           </p>
                           {item.errorSummary ? (
@@ -573,12 +635,12 @@ export default function AdminDeployPage() {
                             <button
                               type="button"
                               className="admin-btn-ghost h-8 px-2.5 text-[12px]"
-                              onClick={() => setSelectedLogsId(item.id)}
+                              onClick={() => setSelectedDetailId(item.id)}
                             >
-                              <Terminal className="h-3.5 w-3.5" /> Logs
+                              <Terminal className="h-3.5 w-3.5" /> Detalhes
                             </button>
 
-                            {item.status === "COMPLETED" && !isItemCurrent && !active ? (
+                            {item.status === "COMPLETED" && !isItemCurrent && !active && data.easyPanel?.connected ? (
                               <button
                                 type="button"
                                 className="admin-btn-ghost h-8 px-2.5 text-[12px] text-amber-300 hover:text-amber-200"
@@ -634,7 +696,7 @@ export default function AdminDeployPage() {
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        title="Implantar em produção?"
+        title="Implantar nova versão em produção?"
         description="Confirme o disparo da nova versão para o ambiente de produção."
         size="md"
         footer={
@@ -667,20 +729,24 @@ export default function AdminDeployPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Branch:</span>
-              <span className="font-medium text-white">{data?.gitHub?.branch ?? "main"}</span>
+              <span className="font-medium text-white">{data.gitHub?.branch || "main"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Commit:</span>
-              <span className="max-w-[240px] truncate text-right font-medium text-white">
+              <span className="max-w-[240px] truncate text-right font-medium text-white" title={latest?.message}>
                 {latest ? latest.message : "Última versão"}
               </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Serviços afetados:</span>
+              <span className="font-medium text-white">nexaflow (API + Web)</span>
             </div>
           </div>
 
           <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/[0.08] p-3 text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
             <p className="text-[12px] leading-relaxed">
-              O NexaFlow iniciará o build automatizado no EasyPanel, atualizará os containers de API e Web e verificará os endpoints de saúde pós-deploy.
+              O NexaFlow iniciará o build automatizado no EasyPanel, atualizará os containers de API e Web e verificará os endpoints de integridade pós-deploy.
             </p>
           </div>
         </div>
@@ -733,21 +799,21 @@ export default function AdminDeployPage() {
               </div>
             </div>
             <p className="text-[12px] text-gray-300">
-              Esta ação gerará uma nova implantação no histórico e validará a integridade do sistema.
+              Esta ação gerará uma nova implantação no histórico e validará a integridade do sistema pós-restauração.
             </p>
           </div>
         ) : null}
       </Modal>
 
-      {/* MODAL 3: Visualizador de Logs */}
+      {/* MODAL 3: Visualizador de Detalhes & Logs */}
       <Modal
-        open={Boolean(selectedLogsId)}
-        onClose={() => setSelectedLogsId(null)}
-        title="Logs de Implantação"
+        open={Boolean(selectedDetailId)}
+        onClose={() => setSelectedDetailId(null)}
+        title="Detalhes da Implantação"
         description={
           detailQuery.data
             ? `Deploy ${detailQuery.data.commitShortSha} — ${deployStatusLabel(detailQuery.data.status)}`
-            : "Carregando logs…"
+            : "Carregando detalhes…"
         }
         size="xl"
         footer={
@@ -767,23 +833,97 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-secondary h-9 text-[12px]"
-              onClick={() => setSelectedLogsId(null)}
+              onClick={() => setSelectedDetailId(null)}
             >
               Fechar
             </button>
           </div>
         }
       >
-        <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-4 text-[12px]">
+        <div className="space-y-4 py-1">
           {detailQuery.isLoading ? (
-            <p className="text-gray-500 font-mono">Carregando logs do deploy…</p>
-          ) : detailQuery.data?.logs ? (
-            <pre className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap font-mono text-emerald-400 leading-relaxed scrollbar-thin">
-              {detailQuery.data.logs}
-            </pre>
-          ) : (
-            <p className="text-gray-500 font-mono">Nenhum log registrado para este deploy.</p>
-          )}
+            <p className="text-gray-500 font-mono text-[12px]">Carregando detalhes do deploy…</p>
+          ) : detailQuery.data ? (
+            <>
+              {/* Resumo das etapas */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-[12px]">
+                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
+                  <span className="text-gray-400 text-[11px] block">Status</span>
+                  <StatusBadge tone={deployStatusTone(detailQuery.data.status)}>
+                    {deployStatusLabel(detailQuery.data.status)}
+                  </StatusBadge>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
+                  <span className="text-gray-400 text-[11px] block">Duração</span>
+                  <span className="font-semibold text-white">{formatDuration(detailQuery.data.durationSeconds)}</span>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
+                  <span className="text-gray-400 text-[11px] block">Saúde Final</span>
+                  <span className="font-semibold text-emerald-400">{detailQuery.data.healthStatus || "OK"}</span>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
+                  <span className="text-gray-400 text-[11px] block">Iniciado Por</span>
+                  <span className="font-semibold text-white truncate block">{detailQuery.data.startedBy}</span>
+                </div>
+              </div>
+
+              {/* Logs */}
+              <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-4 text-[12px]">
+                <span className="text-gray-400 text-[11px] uppercase tracking-wider block mb-2">Logs de Execução</span>
+                {detailQuery.data.logs ? (
+                  <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap font-mono text-emerald-400 leading-relaxed scrollbar-thin">
+                    {detailQuery.data.logs}
+                  </pre>
+                ) : (
+                  <p className="text-gray-500 font-mono">Nenhum log registrado para este deploy.</p>
+                )}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </Modal>
+
+      {/* MODAL 4: Visualizador Seguro de Configuração do EasyPanel */}
+      <Modal
+        open={configModalOpen}
+        onClose={() => setConfigModalOpen(false)}
+        title="Integração com o EasyPanel"
+        description="Parâmetros de conexão necessários no servidor para habilitar deployments."
+        size="md"
+        footer={
+          <button
+            type="button"
+            className="admin-btn-secondary h-9 w-full sm:w-auto text-[12px]"
+            onClick={() => setConfigModalOpen(false)}
+          >
+            Fechar
+          </button>
+        }
+      >
+        <div className="space-y-3 py-1 text-[12.5px]">
+          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">Projeto EasyPanel:</span>
+              <code className="font-mono text-white">{data.easyPanel?.projectName || "i9atendimento"}</code>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">Serviço Compose:</span>
+              <code className="font-mono text-white">{data.easyPanel?.serviceName || "nexaflow"}</code>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">URL do Servidor:</span>
+              <span className="text-white">{data.easyPanel?.hasUrl ? "Configurada" : "Ausente"}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">Token de API:</span>
+              <span className={cn("font-medium", data.easyPanel?.hasToken ? "text-emerald-400" : "text-amber-400")}>
+                {data.easyPanel?.hasToken ? "Definido no servidor" : "Não configurado"}
+              </span>
+            </div>
+          </div>
+          <p className="text-[11.5px] text-gray-400 leading-relaxed">
+            As credenciais do EasyPanel são gerenciadas de forma segura nas variáveis de ambiente do backend e nunca expostas ao navegador.
+          </p>
         </div>
       </Modal>
     </div>

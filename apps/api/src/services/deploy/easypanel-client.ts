@@ -1,9 +1,18 @@
+export type EasyPanelState =
+  | "CONNECTED"
+  | "NOT_CONFIGURED"
+  | "AUTH_FAILED"
+  | "UNAVAILABLE";
+
 export type EasyPanelConnectionStatus = {
+  state: EasyPanelState;
   connected: boolean;
   url?: string;
   projectName: string;
   serviceName: string;
   serviceType: string;
+  hasUrl: boolean;
+  hasToken: boolean;
   error?: string;
 };
 
@@ -82,7 +91,10 @@ export class EasyPanelClient {
         .replace(/Bearer\s+[a-zA-Z0-9_-]+/gi, "Bearer [REDACTED]")
         .replace(/password=[^\s&]+/gi, "password=[REDACTED]")
         .slice(0, 500);
-      throw new Error(`EasyPanel (${proc}) falhou com status ${res.status}: ${cleanMsg}`);
+
+      const err = new Error(`EasyPanel (${proc}) falhou com status ${res.status}: ${cleanMsg}`);
+      (err as any).statusCode = res.status;
+      throw err;
     }
 
     return json?.result?.data?.json ?? json?.result?.data ?? json;
@@ -91,31 +103,43 @@ export class EasyPanelClient {
   async checkConnection(): Promise<EasyPanelConnectionStatus> {
     if (!this.isConfigured()) {
       return {
+        state: "NOT_CONFIGURED",
         connected: false,
         projectName: this.defaultProject,
         serviceName: this.defaultService,
         serviceType: "compose",
-        error: "Credenciais do EasyPanel não configuradas no servidor.",
+        hasUrl: Boolean(this.baseUrl),
+        hasToken: Boolean(this.token),
+        error: "Configure a integração com o EasyPanel para realizar deployments.",
       };
     }
 
     try {
       await this.trpc("projects.listProjects", {}, "GET");
       return {
+        state: "CONNECTED",
         connected: true,
         url: this.baseUrl,
         projectName: this.defaultProject,
         serviceName: this.defaultService,
         serviceType: "compose",
+        hasUrl: true,
+        hasToken: true,
       };
-    } catch (e) {
+    } catch (e: any) {
+      const isAuth = e?.statusCode === 401 || e?.statusCode === 403 || /unauthorized|auth|forbidden/i.test(e?.message || "");
       return {
+        state: isAuth ? "AUTH_FAILED" : "UNAVAILABLE",
         connected: false,
         url: this.baseUrl,
         projectName: this.defaultProject,
         serviceName: this.defaultService,
         serviceType: "compose",
-        error: e instanceof Error ? e.message : "Erro ao conectar com o EasyPanel",
+        hasUrl: true,
+        hasToken: true,
+        error: isAuth
+          ? "Erro de autenticação: credencial EasyPanel inválida."
+          : e instanceof Error ? e.message : "Erro ao conectar com o EasyPanel",
       };
     }
   }

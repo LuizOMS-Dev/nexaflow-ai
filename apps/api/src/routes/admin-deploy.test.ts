@@ -244,4 +244,54 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     expect(raw).not.toContain("EASYPANEL_API_TOKEN");
     expect(raw).not.toContain("ca13e3e9f211");
   });
+
+  it("10. Regra de Comparação: SHA igual resulta em UP_TO_DATE e SHA diferente em UPDATE_AVAILABLE", async () => {
+    // 1. Cria um deployment concluído com o MESMO SHA que o latest do GitHub
+    const statusBefore = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/status",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    const latestGhSha = (statusBefore.json() as any)?.latestGitHubCommit?.sha;
+
+    if (latestGhSha) {
+      const upToDateDep = await prisma.deployment.create({
+        data: {
+          environment: "production",
+          branch: "main",
+          commitSha: latestGhSha,
+          commitShortSha: latestGhSha.slice(0, 7),
+          commitMessage: "Latest deployed commit",
+          startedById: superadminUser.id,
+          status: "COMPLETED",
+          startedAt: new Date(),
+          finishedAt: new Date(),
+          durationSeconds: 30,
+        },
+      });
+
+      const resUp = await app.inject({
+        method: "GET",
+        url: "/admin/deploy/status",
+        headers: { authorization: `Bearer ${superadminToken}` },
+      });
+      expect(resUp.json().status).toBe("UP_TO_DATE");
+
+      // 2. Agora altera para um SHA anterior/diferente
+      await prisma.deployment.update({
+        where: { id: upToDateDep.id },
+        data: { commitSha: "0000000000000000000000000000000000000000", commitShortSha: "0000000" },
+      });
+
+      const resDiff = await app.inject({
+        method: "GET",
+        url: "/admin/deploy/status",
+        headers: { authorization: `Bearer ${superadminToken}` },
+      });
+      expect(resDiff.json().status).toBe("UPDATE_AVAILABLE");
+
+      // Limpeza
+      await prisma.deployment.delete({ where: { id: upToDateDep.id } });
+    }
+  });
 });

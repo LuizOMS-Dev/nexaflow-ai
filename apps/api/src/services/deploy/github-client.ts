@@ -57,19 +57,20 @@ export class GitHubClient {
 
     const data = (await res.json()) as {
       sha: string;
-      commit: {
-        message: string;
-        author: { name: string; date: string };
+      commit?: {
+        message?: string;
+        author?: { name?: string; date?: string };
       };
       html_url?: string;
     };
 
+    const fullSha = (data.sha || "").trim();
     return {
-      sha: data.sha,
-      shortSha: data.sha.slice(0, 7),
-      message: (data.commit.message || "").split("\n")[0].trim(),
-      author: data.commit.author?.name || "Desconhecido",
-      date: data.commit.author?.date || new Date().toISOString(),
+      sha: fullSha,
+      shortSha: fullSha.slice(0, 7),
+      message: (data.commit?.message || "Sem mensagem").split("\n")[0].trim(),
+      author: data.commit?.author?.name || "Desconhecido",
+      date: data.commit?.author?.date || new Date().toISOString(),
       url: data.html_url,
     };
   }
@@ -93,21 +94,24 @@ export class GitHubClient {
 
     const data = (await res.json()) as Array<{
       sha: string;
-      commit: {
-        message: string;
-        author: { name: string; date: string };
+      commit?: {
+        message?: string;
+        author?: { name?: string; date?: string };
       };
       html_url?: string;
     }>;
 
-    return data.map((d) => ({
-      sha: d.sha,
-      shortSha: d.sha.slice(0, 7),
-      message: (d.commit.message || "").split("\n")[0].trim(),
-      author: d.commit.author?.name || "Desconhecido",
-      date: d.commit.author?.date || new Date().toISOString(),
-      url: d.html_url,
-    }));
+    return data.map((d) => {
+      const fullSha = (d.sha || "").trim();
+      return {
+        sha: fullSha,
+        shortSha: fullSha.slice(0, 7),
+        message: (d.commit?.message || "Sem mensagem").split("\n")[0].trim(),
+        author: d.commit?.author?.name || "Desconhecido",
+        date: d.commit?.author?.date || new Date().toISOString(),
+        url: d.html_url,
+      };
+    });
   }
 
   async getRepoStatus(): Promise<GitHubRepoStatus> {

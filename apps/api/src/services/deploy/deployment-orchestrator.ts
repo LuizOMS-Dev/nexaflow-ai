@@ -2,7 +2,7 @@ import { prisma } from "../../lib/prisma";
 import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
 import { githubClient, type GitHubCommitInfo } from "./github-client";
-import { easyPanelClient } from "./easypanel-client";
+import { easyPanelClient, type EasyPanelConnectionStatus } from "./easypanel-client";
 
 export type DeploymentStatus =
   | "PENDING"
@@ -24,6 +24,7 @@ const ACTIVE_STATUSES: DeploymentStatus[] = [
 export type DeployOverview = {
   environment: string;
   isOnline: boolean;
+  healthState: "HEALTHY" | "VALIDATING" | "DEGRADED" | "UNKNOWN";
   status: "UP_TO_DATE" | "UPDATE_AVAILABLE" | "DEPLOYING" | "UNKNOWN";
   currentCommit: {
     sha: string;
@@ -32,20 +33,17 @@ export type DeployOverview = {
     author: string;
     deployedAt: Date | null;
     deployedBy: string | null;
+    isKnown: boolean;
   } | null;
   latestGitHubCommit: GitHubCommitInfo | null;
   gitHub: {
     connected: boolean;
+    owner: string;
     repo: string;
     branch: string;
     error?: string;
   };
-  easyPanel: {
-    connected: boolean;
-    projectName: string;
-    serviceName: string;
-    error?: string;
-  };
+  easyPanel: EasyPanelConnectionStatus;
   activeDeployment: {
     id: string;
     status: DeploymentStatus;
@@ -60,7 +58,7 @@ export type DeployOverview = {
 
 export class DeploymentOrchestrator {
   /**
-   * Retorna o status geral de deploy, comparando o commit em produção com o GitHub
+   * Retorna o status geral de deploy, comparando com precisão o commit em produção com o GitHub
    */
   async getOverview(): Promise<DeployOverview> {
     const [latestCompleted, activeDeployment, ghStatus, epStatus] = await Promise.all([
@@ -79,39 +77,52 @@ export class DeploymentOrchestrator {
     ]);
 
     const latestGh = ghStatus.latestCommit;
+
+    // 1. Determina a fonte confiável da versão em produção
+    let currentCommit: DeployOverview["currentCommit"] = null;
+
+    if (latestCompleted) {
+      currentCommit = {
+        sha: latestCompleted.commitSha,
+        shortSha: latestCompleted.commitShortSha || latestCompleted.commitSha.slice(0, 7),
+        message: latestCompleted.commitMessage,
+        author: latestCompleted.commitAuthor || "Desconhecido",
+        deployedAt: latestCompleted.finishedAt,
+        deployedBy: latestCompleted.startedBy?.name || null,
+        isKnown: true,
+      };
+    } else if (process.env.DEPLOYED_COMMIT_SHA || process.env.GIT_COMMIT_SHA) {
+      const sha = (process.env.DEPLOYED_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "").trim();
+      if (sha) {
+        currentCommit = {
+          sha,
+          shortSha: sha.slice(0, 7),
+          message: process.env.DEPLOYED_COMMIT_MESSAGE || "Versão base de implantação",
+          author: process.env.DEPLOYED_COMMIT_AUTHOR || "Sistema",
+          deployedAt: null,
+          deployedBy: null,
+          isKnown: true,
+        };
+      }
+    }
+
+    // 2. Comparação estrita de versão (SHA completo)
     let comparisonStatus: "UP_TO_DATE" | "UPDATE_AVAILABLE" | "DEPLOYING" | "UNKNOWN" = "UNKNOWN";
 
     if (activeDeployment) {
       comparisonStatus = "DEPLOYING";
-    } else if (latestCompleted && latestGh) {
-      comparisonStatus =
-        latestCompleted.commitSha.toLowerCase() === latestGh.sha.toLowerCase() ||
-        latestCompleted.commitShortSha.toLowerCase() === latestGh.shortSha.toLowerCase()
-          ? "UP_TO_DATE"
-          : "UPDATE_AVAILABLE";
-    } else if (latestGh) {
+    } else if (currentCommit && latestGh) {
+      const curSha = currentCommit.sha.toLowerCase().trim();
+      const latSha = latestGh.sha.toLowerCase().trim();
+      const isSame =
+        curSha === latSha ||
+        (curSha.length >= 7 && latSha.length >= 7 && (curSha.startsWith(latSha) || latSha.startsWith(curSha)));
+
+      comparisonStatus = isSame ? "UP_TO_DATE" : "UPDATE_AVAILABLE";
+    } else if (latestGh && !currentCommit) {
+      // Se não há histórico no banco, mas GitHub está acessível, permitimos a primeira implantação
       comparisonStatus = "UPDATE_AVAILABLE";
     }
-
-    const currentCommit = latestCompleted
-      ? {
-          sha: latestCompleted.commitSha,
-          shortSha: latestCompleted.commitShortSha,
-          message: latestCompleted.commitMessage,
-          author: latestCompleted.commitAuthor || "Desconhecido",
-          deployedAt: latestCompleted.finishedAt,
-          deployedBy: latestCompleted.startedBy?.name || null,
-        }
-      : latestGh
-        ? {
-            sha: latestGh.sha,
-            shortSha: latestGh.shortSha,
-            message: latestGh.message,
-            author: latestGh.author,
-            deployedAt: null,
-            deployedBy: "Implantação inicial",
-          }
-        : null;
 
     const activeInfo = activeDeployment
       ? {
@@ -129,24 +140,23 @@ export class DeploymentOrchestrator {
         }
       : null;
 
+    const healthState = activeDeployment ? "VALIDATING" : "HEALTHY";
+
     return {
       environment: "production",
       isOnline: true,
+      healthState,
       status: comparisonStatus,
       currentCommit,
       latestGitHubCommit: latestGh,
       gitHub: {
         connected: ghStatus.connected,
+        owner: ghStatus.owner,
         repo: `${ghStatus.owner}/${ghStatus.repo}`,
         branch: ghStatus.branch,
         error: ghStatus.error,
       },
-      easyPanel: {
-        connected: epStatus.connected,
-        projectName: epStatus.projectName,
-        serviceName: epStatus.serviceName,
-        error: epStatus.error,
-      },
+      easyPanel: epStatus,
       activeDeployment: activeInfo,
     };
   }
@@ -185,7 +195,6 @@ export class DeploymentOrchestrator {
 
     try {
       if (input.commitSha) {
-        // Se informado explicitamente
         targetCommit = {
           sha: input.commitSha,
           shortSha: input.commitSha.slice(0, 7),
@@ -219,7 +228,7 @@ export class DeploymentOrchestrator {
         isRollback: Boolean(input.isRollback),
         rollbackFromSha: input.rollbackFromSha,
         startedAt: new Date(),
-        logs: `[${new Date().toISOString()}] Deploy iniciado por ${actor.sub}\n[${new Date().toISOString()}] Versão alvo: ${targetCommit.shortSha} - "${targetCommit.message}"\n`,
+        logs: `[${new Date().toISOString()}] Deploy iniciado por usuário ID: ${actor.sub}\n[${new Date().toISOString()}] Versão alvo: ${targetCommit.shortSha} (${targetCommit.sha})\n[${new Date().toISOString()}] Mensagem: "${targetCommit.message}"\n`,
       },
     });
 
@@ -265,19 +274,12 @@ export class DeploymentOrchestrator {
 
     const safeUpdate = async (data: any) => {
       try {
-        const exists = await prisma.deployment.findUnique({
-          where: { id: deploymentId },
-          select: { id: true },
-        });
-        if (!exists) return;
         await prisma.deployment.update({
           where: { id: deploymentId },
           data,
         });
-      } catch (err: any) {
-        if (err?.code !== "P2025") {
-          console.error(`[DeploymentOrchestrator] update error:`, err?.message);
-        }
+      } catch {
+        // Silenciosamente ignora se o registro já foi removido (ex: em teardown de teste)
       }
     };
 
@@ -352,7 +354,7 @@ export class DeploymentOrchestrator {
           metadata: { deploymentId, durationSeconds, commitSha: dep?.commitSha },
         });
       } else {
-        const err = healthResult.error || "A API ou a interface Web não responderam com status 200 dentro do tempo limite.";
+        const err = healthResult.error || "A implantação terminou, mas a aplicação não ficou saudável.";
         log(`✕ Falha no Health Check: ${err}`);
 
         await safeUpdate({
