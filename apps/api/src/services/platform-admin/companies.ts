@@ -66,56 +66,54 @@ export async function listCompanies(q: ListCompaniesQuery) {
     ];
   }
 
-  // 1. Busca os tenants filtrados para a listagem
-  const filteredRaw = await prisma.tenant.findMany({
-    where,
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      status: true,
-      logoUrl: true,
-      primaryColor: true,
-      createdAt: true,
-      settings: true,
-      planId: true,
-      plan: { select: { id: true, name: true, slug: true, priceMonthly: true, priceOnRequest: true } },
-      _count: { select: { members: true, contacts: true, conversations: true } },
-      members: {
-        where: { role: "ADMIN", isActive: true },
-        take: 1,
-        select: {
-          user: { select: { id: true, name: true, email: true } },
+  const [allMatched, allTenantsGlobal, allSubs] = await Promise.all([
+    prisma.tenant.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        logoUrl: true,
+        primaryColor: true,
+        createdAt: true,
+        settings: true,
+        planId: true,
+        plan: { select: { id: true, name: true, slug: true, priceMonthly: true, priceOnRequest: true } },
+        _count: { select: { members: true, contacts: true, conversations: true } },
+        members: {
+          where: { role: "ADMIN", isActive: true },
+          take: 1,
+          select: {
+            user: { select: { id: true, name: true, email: true } },
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.tenant.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        status: true,
+        settings: true,
+        planId: true,
+      },
+    }),
+    prisma.subscription.findMany({
+      include: {
+        plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } },
+      },
+    }),
+  ]);
 
-  const realFiltered = filteredRaw.filter((t) => !isTestFixtureTenant(t));
-  const filteredIds = realFiltered.map((t) => t.id);
-
-  // 2. Busca todas as assinaturas necessárias para enriquecer os filtrados e calcular KPIs globais
-  const allTenantsForSummary = await prisma.tenant.findMany({
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      status: true,
-      planId: true,
-      settings: true,
-    },
-  });
-  const allReal = allTenantsForSummary.filter((t) => !isTestFixtureTenant(t));
-
-  const allSubs = await prisma.subscription.findMany({
-    include: {
-      plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } },
-    },
-  });
   const subMap = new Map(allSubs.map((s) => [s.tenantId, s as SubscriptionRow]));
 
-  let enriched = realFiltered.map((t) => {
+  const realMatched = allMatched.filter((t) => !isTestFixtureTenant(t));
+  const realGlobal = allTenantsGlobal.filter((t) => !isTestFixtureTenant(t));
+
+  let enriched = realMatched.map((t) => {
     const billing = enrichTenantBilling(t, subMap.get(t.id));
     const primaryAdmin = t.members[0]?.user || null;
     const { members: _m, settings: _s, ...rest } = t;
@@ -130,26 +128,25 @@ export async function listCompanies(q: ListCompaniesQuery) {
     }
   }
 
-  // 3. KPIs consolidados globais (sem distorção de filtros)
-  const summaryBase = allReal.map((t) => enrichTenantBilling(t, subMap.get(t.id)));
-  const suspendedCount = allReal.filter((t) => t.status === "SUSPENDED").length;
-  const blockedCount = allReal.filter((t) => t.status === "BLOCKED").length;
+  const summaryBillingGlobal = realGlobal.map((t) => enrichTenantBilling(t, subMap.get(t.id)));
+  const suspendedCount = realGlobal.filter((t) => t.status === "SUSPENDED").length;
+  const blockedCount = realGlobal.filter((t) => t.status === "BLOCKED").length;
 
   const summary = {
-    total: allReal.length,
-    active: allReal.filter((t) => t.status === "ACTIVE").length,
-    overdue: summaryBase.filter((b) => b.financialStatus === "OVERDUE").length,
+    total: realGlobal.length,
+    active: realGlobal.filter((t) => t.status === "ACTIVE").length,
+    overdue: summaryBillingGlobal.filter((b) => b.financialStatus === "OVERDUE").length,
     suspended: suspendedCount,
     blocked: blockedCount,
     suspendedBlocked: suspendedCount + blockedCount,
-    trial: allReal.filter((t) => t.status === "TRIAL").length,
-    dueIn7Days: summaryBase.filter(
+    trial: realGlobal.filter((t) => t.status === "TRIAL").length,
+    dueIn7Days: summaryBillingGlobal.filter(
       (b) => b.financialStatus === "DUE_SOON" || b.financialStatus === "DUE_TODAY"
     ).length,
-    cancelled: allReal.filter(
+    cancelled: realGlobal.filter(
       (t) => t.status === "CANCELLED" || t.status === "PENDING_DELETION"
     ).length,
-    needsAttention: summaryBase.filter((b) => b.needsAttention).length,
+    needsAttention: summaryBillingGlobal.filter((b) => b.needsAttention).length,
   };
 
   const total = enriched.length;

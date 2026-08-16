@@ -221,21 +221,9 @@ export default function AdminCompaniesPage() {
     const t = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
-      const currentParam = searchParams.get("q") || searchParams.get("search") || "";
-      if (search.trim() !== currentParam.trim()) {
-        const next = new URLSearchParams(searchParams.toString());
-        if (search.trim()) {
-          next.set("q", search.trim());
-        } else {
-          next.delete("q");
-          next.delete("search");
-        }
-        next.delete("page");
-        router.replace(`/admin/companies?${next.toString()}`);
-      }
     }, 300);
     return () => clearTimeout(t);
-  }, [search, searchParams, router]);
+  }, [search]);
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -822,7 +810,7 @@ function CreateCompanyModal({
     onError: (e) => {
       if (e instanceof ApiError) {
         if (e.fieldErrors && Object.keys(e.fieldErrors).length > 0) {
-          setFieldErrors((prev) => ({ ...prev, ...e.fieldErrors }));
+          setFieldErrors(e.fieldErrors);
         }
         if (e.code === "SIMILAR_TENANT_NAME") {
           setForce(true);
@@ -887,7 +875,7 @@ function CreateCompanyModal({
       onClose={onClose}
       title="Nova empresa"
       description="Cadastre a empresa, o administrador inicial e o plano de acesso."
-      size="md"
+      size="lg"
       footer={
         <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
           <button type="button" className="admin-btn-ghost" onClick={onClose}>

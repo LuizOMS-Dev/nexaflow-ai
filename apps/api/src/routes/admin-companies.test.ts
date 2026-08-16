@@ -411,4 +411,116 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
     expect(body.summary.active).toBeGreaterThanOrEqual(4);
     expect(typeof body.summary.suspendedBlocked).toBe("number");
   });
+
+  it("10. Validação de E-mail Inválido e Senha Fraca", async () => {
+    // E-mail inválido
+    const resInvalidEmail = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Valida ${suffix}`,
+        adminEmail: "invalid-email-no-at-sign",
+        adminName: "Admin Test",
+      },
+    });
+    expect(resInvalidEmail.statusCode).toBe(400);
+
+    // Senha com menos de 8 caracteres
+    const resWeakPass = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Senha Curta ${suffix}`,
+        adminEmail: `short-pass-${suffix}@test.nexaflow.local`,
+        adminName: "Admin Test",
+        adminPassword: "123",
+      },
+    });
+    expect(resWeakPass.statusCode).toBe(400);
+  });
+
+  it("11. Slug duplicado explícito retorna 409 SLUG_TAKEN", async () => {
+    const existingSlug = `custom-slug-${suffix}`;
+    const firstRes = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Slug 1 ${suffix}`,
+        slug: existingSlug,
+        adminEmail: `slug1-${suffix}@test.nexaflow.local`,
+        adminName: "Admin Slug 1",
+      },
+    });
+    expect(firstRes.statusCode).toBe(200);
+    createdTenantIds.push(firstRes.json().id);
+
+    const dupRes = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Slug 2 ${suffix}`,
+        slug: existingSlug,
+        adminEmail: `slug2-${suffix}@test.nexaflow.local`,
+        adminName: "Admin Slug 2",
+      },
+    });
+    expect(dupRes.statusCode).toBe(409);
+    expect(dupRes.json().error).toBe("SLUG_TAKEN");
+  });
+
+  it("12. Congelamento Contratual: Mudança no catálogo do Plano não altera o contrato da Subscription existente", async () => {
+    const proPlanId = createdPlanIds[1];
+    const email = `freeze-check-${suffix}@test.nexaflow.local`;
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Preco Congelado ${suffix}`,
+        adminEmail: email,
+        adminName: "Admin Freeze",
+        planId: proPlanId,
+      },
+    });
+    expect(createRes.statusCode).toBe(200);
+    const tenantId = createRes.json().id;
+    createdTenantIds.push(tenantId);
+
+    // Altera o preço de catálogo do plano de 299 para 399
+    await prisma.plan.update({
+      where: { id: proPlanId },
+      data: { priceMonthly: 399 },
+    });
+
+    // Consulta os dados da empresa via /admin/tenants
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/admin/tenants?search=Empresa%20Preco%20Congelado%20${suffix}`,
+      headers: auth(superToken),
+    });
+    expect(getRes.statusCode).toBe(200);
+    const item = getRes.json().items.find((t: any) => t.id === tenantId);
+    expect(item).toBeTruthy();
+    expect(Number(item.contractedPrice)).toBe(299); // Preserva os 299 originais
+  });
+
+  it("13. Filtros por status, plano e financeiro retornam subconjuntos exatos", async () => {
+    const proPlanId = createdPlanIds[1];
+    const res = await app.inject({
+      method: "GET",
+      url: `/admin/tenants?status=ACTIVE&planId=${proPlanId}`,
+      headers: auth(superToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    for (const item of body.items) {
+      expect(item.status).toBe("ACTIVE");
+      expect(item.planId).toBe(proPlanId);
+    }
+  });
 });

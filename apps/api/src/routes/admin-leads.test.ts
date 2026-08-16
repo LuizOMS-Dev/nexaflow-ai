@@ -198,7 +198,7 @@ describe("Leads Comerciais da Administração (/admin/sales-leads) — Backend, 
     const bodyStatus = resStatusFilter.json();
     expect(bodyStatus.items.every((i: any) => i.status === "QUALIFIED")).toBe(true);
     expect(bodyStatus.items.some((i: any) => i.id === leadQualified.id)).toBe(true);
-  }, 15_000);
+  });
 
   it("3. Atualização de status e bloqueio de CONVERTED direto", async () => {
     const lead = await prisma.salesLead.create({
