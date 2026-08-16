@@ -360,3 +360,119 @@ export function computePlatformFinancialMetrics(params: {
     },
   };
 }
+
+export type PlanWithCommercialStats = Plan & {
+  activeCustomerCount: number;
+  isMostPopular: boolean;
+  _count: {
+    tenants: number;
+  };
+};
+
+export function computePlansCommercialStats(params: {
+  plans: Plan[];
+  tenants: TenantMinimal[];
+  subscriptions: SubscriptionWithPlan[];
+}): {
+  plans: PlanWithCommercialStats[];
+  summary: {
+    availablePlansCount: number;
+    archivedPlansCount: number;
+    payingCompaniesCount: number;
+    mostPopularPlanId: string | null;
+    mostPopularPlanName: string | null;
+    mostPopularStatus: "leader" | "tie" | "empty";
+  };
+} {
+  const finMetrics = computePlatformFinancialMetrics({
+    tenants: params.tenants,
+    plans: params.plans,
+    subscriptions: params.subscriptions,
+  });
+
+  const realTenants = params.tenants.filter((t) => !isTestTenant(t));
+
+  // Mapa de clientes ativos por plano usando a métrica unificada de finanças
+  const activeCountByPlan = new Map<string, number>();
+
+  // Inicializa com as contagens calculadas pelo financeiro para planos pagos
+  for (const rev of finMetrics.revenueByPlan) {
+    activeCountByPlan.set(rev.planId, rev.tenants);
+  }
+
+  // Para o plano free: conta tenants reais ativos não cancelados/deletados
+  const freePlan = params.plans.find((p) => p.slug === "free");
+  if (freePlan) {
+    const freeTenantsCount = realTenants.filter(
+      (t) =>
+        t.planId === freePlan.id &&
+        t.status !== "CANCELLED" &&
+        t.status !== "PENDING_DELETION"
+    ).length;
+    activeCountByPlan.set(freePlan.id, freeTenantsCount);
+  }
+
+  // Determina o "Mais Popular" entre os planos comerciais pagos (excluindo Free)
+  const paidCommercialPlans = params.plans.filter(
+    (p) =>
+      p.slug !== "free" &&
+      (Number(p.priceMonthly) > 0 || p.priceOnRequest || p.slug === "enterprise")
+  );
+
+  let maxCount = 0;
+  for (const p of paidCommercialPlans) {
+    const count = activeCountByPlan.get(p.id) || 0;
+    if (count > maxCount) {
+      maxCount = count;
+    }
+  }
+
+  let mostPopularPlanId: string | null = null;
+  let mostPopularStatus: "leader" | "tie" | "empty" = "empty";
+
+  if (maxCount > 0) {
+    const leaders = paidCommercialPlans.filter(
+      (p) => (activeCountByPlan.get(p.id) || 0) === maxCount
+    );
+    if (leaders.length === 1) {
+      mostPopularPlanId = leaders[0].id;
+      mostPopularStatus = "leader";
+    } else {
+      mostPopularStatus = "tie";
+    }
+  }
+
+  const mostPopularPlanName = mostPopularPlanId
+    ? params.plans.find((p) => p.id === mostPopularPlanId)?.name || null
+    : null;
+
+  const availablePlansCount = params.plans.filter((p) => p.isActive).length;
+  const archivedPlansCount = params.plans.filter((p) => !p.isActive).length;
+  const payingCompaniesCount = finMetrics.summary.paidSubscriptions;
+
+  const enrichedPlans: PlanWithCommercialStats[] = params.plans.map((p) => {
+    const count = activeCountByPlan.get(p.id) || 0;
+    const isMostPopular = Boolean(mostPopularPlanId && p.id === mostPopularPlanId);
+    return {
+      ...p,
+      activeCustomerCount: count,
+      isMostPopular,
+      _count: {
+        tenants: count,
+      },
+    };
+  });
+
+  return {
+    plans: enrichedPlans,
+    summary: {
+      availablePlansCount,
+      archivedPlansCount,
+      payingCompaniesCount,
+      mostPopularPlanId,
+      mostPopularPlanName,
+      mostPopularStatus,
+    },
+  };
+}
+

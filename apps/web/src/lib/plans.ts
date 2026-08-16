@@ -20,6 +20,8 @@ export type Plan = {
   sortOrder?: number;
   isActive: boolean;
   features?: Record<string, unknown> | null;
+  activeCustomerCount?: number;
+  isMostPopular?: boolean;
   _count?: { tenants: number };
 };
 

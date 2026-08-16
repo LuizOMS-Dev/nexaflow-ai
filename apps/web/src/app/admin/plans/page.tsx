@@ -238,6 +238,21 @@ export default function AdminPlansPage() {
   const activePlans = useMemo(() => plans.filter((p) => p.isActive), [plans]);
   const archivedPlans = useMemo(() => plans.filter((p) => !p.isActive), [plans]);
 
+  const availablePlansCount = useMemo(() => plans.filter((p) => p.isActive).length, [plans]);
+  const archivedPlansCount = useMemo(() => plans.filter((p) => !p.isActive).length, [plans]);
+  const payingCompaniesCount = useMemo(() => {
+    return plans
+      .filter((p) => p.slug !== "free")
+      .reduce((acc, p) => acc + (p.activeCustomerCount ?? 0), 0);
+  }, [plans]);
+
+  const mostPopularPlan = useMemo(() => plans.find((p) => p.isMostPopular), [plans]);
+  const mostPopularLabel = useMemo(() => {
+    if (mostPopularPlan) return mostPopularPlan.name;
+    if (payingCompaniesCount === 0) return "Ainda sem dados";
+    return "Sem líder no momento";
+  }, [mostPopularPlan, payingCompaniesCount]);
+
   // Mutations
   const createPlanMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -667,230 +682,287 @@ export default function AdminPlansPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {displayedPlans.map((plan) => {
-            const isEnterprise = Boolean(plan.priceOnRequest) || plan.slug === "enterprise";
-            const isFree = plan.slug === "free" || (Number(plan.priceMonthly) === 0 && !isEnterprise);
-            const monthlyPrice = Number(plan.priceMonthly || 0);
-            const annualPrice = plan.priceAnnual != null ? Number(plan.priceAnnual) : null;
-            const discountPct = getAnnualDiscountPercent(monthlyPrice, annualPrice);
-            const feats = (plan.features || {}) as Record<string, unknown>;
-            const maxAgents = feats.maxAgents != null ? Number(feats.maxAgents) : 1;
-            const maxFlows = feats.maxActiveFlows != null ? Number(feats.maxActiveFlows) : 5;
-            const badgeKey = plan.badge || "";
-            const isPopular = badgeKey === "popular";
-            const tenantCount = plan._count?.tenants ?? 0;
+        <div>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {displayedPlans.map((plan) => {
+              const isEnterprise = Boolean(plan.priceOnRequest) || plan.slug === "enterprise";
+              const isFree = plan.slug === "free" || (Number(plan.priceMonthly) === 0 && !isEnterprise);
+              const monthlyPrice = Number(plan.priceMonthly || 0);
+              const annualPrice = plan.priceAnnual != null ? Number(plan.priceAnnual) : null;
+              const discountPct = getAnnualDiscountPercent(monthlyPrice, annualPrice);
+              const feats = (plan.features || {}) as Record<string, unknown>;
+              const maxAgents = feats.maxAgents != null ? Number(feats.maxAgents) : 1;
+              const maxFlows = feats.maxActiveFlows != null ? Number(feats.maxActiveFlows) : 5;
+              const isPopular = Boolean(plan.isMostPopular);
+              const tenantCount = plan.activeCustomerCount ?? plan._count?.tenants ?? 0;
 
-            return (
-              <div
-                key={plan.id}
-                className={cn(
-                  "relative flex flex-col justify-between rounded-2xl border transition-all duration-200 p-5 bg-white/[0.02] h-full",
-                  isPopular
-                    ? "border-violet-500/40 bg-gradient-to-b from-violet-950/20 via-white/[0.02] to-transparent shadow-lg shadow-violet-950/20"
-                    : isEnterprise
-                    ? "border-indigo-500/30 bg-gradient-to-b from-indigo-950/15 via-white/[0.02] to-transparent"
-                    : "border-white/[0.08] hover:border-white/[0.15]"
-                )}
-              >
-                {/* Top: Header e Limites do Card */}
-                <div className="flex-1 flex flex-col">
-                  {/* Header com slot de badge reservado para alinhar perfeitamente todos os cards */}
-                  <div className="min-h-[50px] flex flex-col justify-start">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-[16px] font-bold text-white tracking-tight truncate">
+              return (
+                <div
+                  key={plan.id}
+                  className={cn(
+                    "relative flex flex-col justify-between rounded-2xl border transition-all duration-200 p-5 bg-white/[0.02] h-full",
+                    isPopular
+                      ? "border-violet-500/40 bg-gradient-to-b from-violet-950/20 via-white/[0.02] to-transparent shadow-lg shadow-violet-950/20"
+                      : isEnterprise
+                      ? "border-indigo-500/30 bg-gradient-to-b from-indigo-950/15 via-white/[0.02] to-transparent"
+                      : "border-white/[0.08] hover:border-white/[0.15]"
+                  )}
+                >
+                  {/* Top: Header e Limites do Card */}
+                  <div className="flex-1 flex flex-col">
+                    {/* Header: Linha Superior com Mais Popular à esquerda & Disponível à direita */}
+                    <div className="min-h-[50px] flex flex-col justify-start">
+                      <div className="flex items-center justify-between gap-2 h-5 mb-1">
+                        <div className="h-5 flex items-center">
+                          {isPopular ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
+                              <Sparkles className="h-3 w-3 text-violet-400 shrink-0" />
+                              <span>Mais popular</span>
+                            </span>
+                          ) : (
+                            <span className="invisible text-[10px] select-none" aria-hidden="true">·</span>
+                          )}
+                        </div>
+
+                        <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
+                          {plan.isActive ? "Disponível" : "Indisponível"}
+                        </StatusBadge>
+                      </div>
+
+                      <h3 className="text-[16px] font-bold text-white tracking-tight truncate mt-0.5">
                         {plan.name}
                       </h3>
-                      <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
-                        {plan.isActive ? "Disponível" : "Indisponível"}
-                      </StatusBadge>
                     </div>
-                    <div className="h-5 flex items-center mt-1">
-                      {badgeKey && BADGE_LABEL[badgeKey] ? (
-                        <span className="inline-flex items-center rounded-full bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
-                          {BADGE_LABEL[badgeKey]}
-                        </span>
+
+                    {/* Preço Comercial com baseline e altura rigorosamente padronizadas */}
+                    <div className="mt-3 pb-3 border-b border-white/[0.06] h-[58px] flex flex-col justify-center">
+                      {isEnterprise ? (
+                        <div>
+                          <span className="text-[20px] font-bold text-white">Sob consulta</span>
+                          <p className="text-[11.5px] text-gray-400 mt-0.5">Contrato customizado</p>
+                        </div>
+                      ) : isFree ? (
+                        <div>
+                          <span className="text-[22px] font-bold text-white">Gratuito</span>
+                          <p className="text-[11.5px] text-gray-400 mt-0.5">Sem cobrança mensal</p>
+                        </div>
                       ) : (
-                        <span className="invisible text-[10px] py-0.5 select-none" aria-hidden="true">·</span>
+                        <div>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[22px] font-extrabold text-white tabular-nums">
+                              {formatCurrency(monthlyPrice)}
+                            </span>
+                            <span className="text-[12px] text-gray-400 font-medium">/mês</span>
+                          </div>
+                          {annualPrice != null && annualPrice > 0 && (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <p className="text-[11.5px] text-gray-400 tabular-nums">
+                                ou {formatCurrency(annualPrice)}/ano
+                              </p>
+                              {discountPct > 0 && (
+                                <span className="rounded bg-emerald-500/15 px-1.5 py-0.2 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
+                                  {formatDiscountPercent(discountPct)} OFF
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Descrição com altura estritamente controlada */}
+                    <p className="mt-3 text-[12px] text-gray-300 line-clamp-2 h-[36px] leading-relaxed overflow-hidden">
+                      {plan.description || "Plano comercial para atendimento e automação."}
+                    </p>
+
+                    {/* Grade de 6 Limites Oficiais */}
+                    <div className="mt-4 space-y-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3.5 text-[12px]">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                          <Users className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                          Usuários
+                        </span>
+                        <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                          {isEnterprise ? "Personalizado" : plan.maxUsers.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                          <MessageSquare className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                          WhatsApp
+                        </span>
+                        <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                          {isEnterprise ? "Personalizado" : plan.maxChannels.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                          <Bot className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                          Agentes IA
+                        </span>
+                        <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                          {isEnterprise ? "Personalizado" : maxAgents.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                          <Contact className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                          Contatos
+                        </span>
+                        <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                          {isEnterprise ? "Personalizado" : plan.maxContacts.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                          <Workflow className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                          Fluxos
+                        </span>
+                        <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                          {isEnterprise ? "Personalizado" : maxFlows.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                          <Sparkles className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                          Créditos IA / mês
+                        </span>
+                        <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                          {isEnterprise ? "Personalizado" : plan.maxAiMessages.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom: Uso do Plano & Ações (Footer estrutural único perfeitamente alinhado) */}
+                  <div className="mt-4 pt-3.5 border-t border-white/[0.06] space-y-2.5">
+                    {/* Quantidade de Empresas Utilizando */}
+                    <div className="flex items-center gap-1.5 text-[11.5px] text-gray-400 h-5 whitespace-nowrap overflow-hidden">
+                      <Building2 className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+                      <span className="truncate">
+                        {tenantCount === 0
+                          ? "Nenhuma empresa utilizando"
+                          : `${tenantCount} ${tenantCount === 1 ? "empresa utilizando" : "empresas utilizando"}`}
+                      </span>
+                    </div>
+
+                    {/* Ações do Card em Linha Única Padronizada */}
+                    <div className="flex items-center gap-1.5 h-7">
+                      {plan.isActive ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(plan)}
+                            className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
+                          >
+                            <Pencil className="h-3 w-3 shrink-0" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDuplicateModal(plan)}
+                            className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
+                            title="Duplicar configurações do plano"
+                          >
+                            <Copy className="h-3 w-3 shrink-0" />
+                            <span>Duplicar</span>
+                          </button>
+                          {plan.slug !== "free" && (
+                            <button
+                              type="button"
+                              onClick={() => setPlanToArchive(plan)}
+                              className="inline-flex items-center justify-center gap-1 h-7 rounded-lg px-2 text-[11.5px] font-medium text-gray-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors shrink-0 ml-auto"
+                              title="Arquivar plano comercial"
+                            >
+                              <Archive className="h-3 w-3 shrink-0" />
+                              <span>Arquivar</span>
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => toggleArchiveMutation.mutate({ id: plan.id, isActive: true })}
+                            className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white hover:bg-violet-500 transition-colors shadow-sm shrink-0"
+                          >
+                            <RotateCcw className="h-3 w-3 shrink-0" />
+                            <span>Restaurar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDuplicateModal(plan)}
+                            className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
+                          >
+                            <Copy className="h-3 w-3 shrink-0" />
+                            <span>Duplicar</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
+                </div>
+              );
+            })}
+          </div>
 
-                  {/* Preço Comercial com baseline e altura rigorosamente padronizadas */}
-                  <div className="mt-3 pb-3 border-b border-white/[0.06] h-[58px] flex flex-col justify-center">
-                    {isEnterprise ? (
-                      <div>
-                        <span className="text-[20px] font-bold text-white">Sob consulta</span>
-                        <p className="text-[11.5px] text-gray-400 mt-0.5">Contrato customizado</p>
-                      </div>
-                    ) : isFree ? (
-                      <div>
-                        <span className="text-[22px] font-bold text-white">Gratuito</span>
-                        <p className="text-[11.5px] text-gray-400 mt-0.5">Sem cobrança mensal</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-[22px] font-extrabold text-white tabular-nums">
-                            {formatCurrency(monthlyPrice)}
-                          </span>
-                          <span className="text-[12px] text-gray-400 font-medium">/mês</span>
-                        </div>
-                        {annualPrice != null && annualPrice > 0 && (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <p className="text-[11.5px] text-gray-400 tabular-nums">
-                              ou {formatCurrency(annualPrice)}/ano
-                            </p>
-                            {discountPct > 0 && (
-                              <span className="rounded bg-emerald-500/15 px-1.5 py-0.2 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
-                                {formatDiscountPercent(discountPct)} OFF
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+          {/* 2. RESUMO DO CATÁLOGO (Faixa horizontal discreta de 90-120px) */}
+          {!isLoading && !error && plans.length > 0 && (
+            <div className="mt-7 rounded-2xl border border-white/[0.08] bg-[#141721]/80 backdrop-blur-sm p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-3.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
+                  Resumo do catálogo
+                </h4>
+              </div>
 
-                  {/* Descrição com altura estritamente controlada */}
-                  <p className="mt-3 text-[12px] text-gray-300 line-clamp-2 h-[36px] leading-relaxed overflow-hidden">
-                    {plan.description || "Plano comercial para atendimento e automação."}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0 lg:divide-x lg:divide-white/[0.08]">
+                {/* 1. Planos disponíveis */}
+                <div className="lg:px-4 first:lg:pl-0">
+                  <p className="text-[11px] font-medium text-gray-400">Planos disponíveis</p>
+                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight">
+                    {availablePlansCount}{" "}
+                    <span className="text-[12.5px] font-normal text-gray-400">disponíveis</span>
                   </p>
-
-                  {/* Grade de 6 Limites Oficiais */}
-                  <div className="mt-4 space-y-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3.5 text-[12px]">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
-                        <Users className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        Usuários
-                      </span>
-                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : plan.maxUsers.toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
-                        <MessageSquare className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        WhatsApp
-                      </span>
-                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : plan.maxChannels.toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
-                        <Bot className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        Agentes IA
-                      </span>
-                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : maxAgents.toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
-                        <Contact className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        Contatos
-                      </span>
-                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : plan.maxContacts.toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
-                        <Workflow className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        Fluxos
-                      </span>
-                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : maxFlows.toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
-                        <Sparkles className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        Créditos IA / mês
-                      </span>
-                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : plan.maxAiMessages.toLocaleString("pt-BR")}
-                      </span>
-                    </div>
-                  </div>
                 </div>
 
-                {/* Bottom: Uso do Plano & Ações (Footer estrutural único perfeitamente alinhado) */}
-                <div className="mt-4 pt-3.5 border-t border-white/[0.06] space-y-2.5">
-                  {/* Quantidade de Empresas Utilizando */}
-                  <div className="flex items-center gap-1.5 text-[11.5px] text-gray-400 h-5 whitespace-nowrap overflow-hidden">
-                    <Building2 className="h-3.5 w-3.5 text-violet-400 shrink-0" />
-                    <span className="truncate">
-                      {tenantCount === 0
-                        ? "Nenhuma empresa utilizando"
-                        : `${tenantCount} ${tenantCount === 1 ? "empresa utilizando" : "empresas utilizando"}`}
+                {/* 2. Empresas em planos pagos */}
+                <div className="lg:px-4">
+                  <p className="text-[11px] font-medium text-gray-400">Empresas em planos pagos</p>
+                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight">
+                    {payingCompaniesCount}{" "}
+                    <span className="text-[12.5px] font-normal text-gray-400">
+                      {payingCompaniesCount === 1 ? "empresa pagante" : "empresas pagantes"}
                     </span>
-                  </div>
+                  </p>
+                </div>
 
-                  {/* Ações do Card em Linha Única Padronizada */}
-                  <div className="flex items-center gap-1.5 h-7">
-                    {plan.isActive ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(plan)}
-                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
-                        >
-                          <Pencil className="h-3 w-3 shrink-0" />
-                          <span>Editar</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openDuplicateModal(plan)}
-                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
-                          title="Duplicar configurações do plano"
-                        >
-                          <Copy className="h-3 w-3 shrink-0" />
-                          <span>Duplicar</span>
-                        </button>
-                        {plan.slug !== "free" && (
-                          <button
-                            type="button"
-                            onClick={() => setPlanToArchive(plan)}
-                            className="inline-flex items-center justify-center gap-1 h-7 rounded-lg px-2 text-[11.5px] font-medium text-gray-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors shrink-0 ml-auto"
-                            title="Arquivar plano comercial"
-                          >
-                            <Archive className="h-3 w-3 shrink-0" />
-                            <span>Arquivar</span>
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => toggleArchiveMutation.mutate({ id: plan.id, isActive: true })}
-                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-violet-600 px-2.5 text-[11.5px] font-semibold text-white hover:bg-violet-500 transition-colors shadow-sm shrink-0"
-                        >
-                          <RotateCcw className="h-3 w-3 shrink-0" />
-                          <span>Restaurar</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openDuplicateModal(plan)}
-                          className="inline-flex items-center justify-center gap-1 h-7 rounded-lg bg-white/[0.04] px-2.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
-                        >
-                          <Copy className="h-3 w-3 shrink-0" />
-                          <span>Duplicar</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
+                {/* 3. Plano mais popular */}
+                <div className="lg:px-4">
+                  <p className="text-[11px] font-medium text-gray-400">Plano mais popular</p>
+                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight truncate">
+                    {mostPopularLabel}
+                  </p>
+                </div>
+
+                {/* 4. Planos arquivados */}
+                <div className="lg:px-4 last:lg:pr-0">
+                  <p className="text-[11px] font-medium text-gray-400">Planos arquivados</p>
+                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight">
+                    {archivedPlansCount}{" "}
+                    <span className="text-[12.5px] font-normal text-gray-400">
+                      {archivedPlansCount === 1 ? "arquivado" : "arquivados"}
+                    </span>
+                  </p>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1336,36 +1408,23 @@ export default function AdminPlansPage() {
             </div>
           </div>
 
-          {/* Seção 4: Exibição & Disponibilidade */}
+          {/* Seção 4: Disponibilidade & Ordem */}
           <div className="space-y-2 pt-2.5 border-t border-white/[0.06]">
             <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
-              Exibição & Disponibilidade
+              Disponibilidade & Ordem
             </h4>
 
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <div>
-                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
-                  Destaque comercial
-                </label>
-                <CustomSelect
-                  value={formData.badge}
-                  onChange={(val) => setFormData((prev) => ({ ...prev, badge: val }))}
-                  options={BADGE_OPTIONS}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
-                  Ordem de exibição
-                </label>
-                <input
-                  type="number"
-                  placeholder="100"
-                  value={formData.sortOrder}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, sortOrder: e.target.value }))}
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
-                />
-              </div>
+            <div>
+              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                Ordem de exibição
+              </label>
+              <input
+                type="number"
+                placeholder="100"
+                value={formData.sortOrder}
+                onChange={(e) => setFormData((prev) => ({ ...prev, sortOrder: e.target.value }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+              />
             </div>
 
             <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-2.5">

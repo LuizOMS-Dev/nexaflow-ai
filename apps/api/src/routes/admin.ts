@@ -28,7 +28,7 @@ import {
   computeNextDueDate,
 } from "../services/billing";
 import { getPlatformHealthDetailed } from "../services/platform-diagnostics";
-import { computePlatformFinancialMetrics } from "../services/financial-metrics";
+import { computePlatformFinancialMetrics, computePlansCommercialStats } from "../services/financial-metrics";
 
 function cookieSecure() {
   return env.nodeEnv === "production";
@@ -1790,18 +1790,35 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const junkSlugs = ["basic", "premium", "trial", "demo", "test", "initial"];
 
-    let plans = await prisma.plan.findMany({
-      orderBy: [{ sortOrder: "asc" }, { priceMonthly: "asc" }, { createdAt: "asc" }],
-      include: {
-        _count: {
-          select: {
-            tenants: {
-              where: { status: { not: "PENDING_DELETION" } },
-            },
-          },
+    const [allPlansRaw, allTenantsRaw, subscriptionsRaw] = await Promise.all([
+      prisma.plan.findMany({
+        orderBy: [{ sortOrder: "asc" }, { priceMonthly: "asc" }, { createdAt: "asc" }],
+      }),
+      prisma.tenant.findMany({
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          planId: true,
+          trialEndsAt: true,
+          settings: true,
+          createdAt: true,
+          updatedAt: true,
         },
-      },
+      }),
+      prisma.subscription.findMany({
+        include: { plan: true },
+      }),
+    ]);
+
+    const { plans: enrichedPlans } = computePlansCommercialStats({
+      plans: allPlansRaw,
+      tenants: allTenantsRaw,
+      subscriptions: subscriptionsRaw,
     });
+
+    let plans = enrichedPlans;
 
     if (commercial) {
       plans = plans.filter((p) => {
