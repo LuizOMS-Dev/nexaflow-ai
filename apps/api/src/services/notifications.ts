@@ -8,6 +8,7 @@ export const NOTIFICATION_TYPES = [
   "WEBHOOK_FAILED",
   "SECURITY_EVENT",
   "INVITE",
+  "MENTION",
   "SYSTEM",
   /** Release pública da NexaFlow (Novidades) — por usuário, sem tenant */
   "PLATFORM_RELEASE",
@@ -53,11 +54,17 @@ export async function createNotification(params: NotifyParams) {
       ? (user.preferences as Record<string, unknown>)
       : {};
 
-  // Preferências: segurança / atribuição
+  // Preferências: segurança / atribuição / menções
   if (params.type === "SECURITY_EVENT" && prefs.notifySecurity === false) return null;
   if (
     (params.type === "CONVERSATION_ASSIGNED" || params.type === "TASK_OVERDUE") &&
     prefs.notifyAssigned === false
+  ) {
+    return null;
+  }
+  if (
+    (params.type === "MENTION" || params.type === "USER_MENTION") &&
+    prefs.notifyMentions === false
   ) {
     return null;
   }
