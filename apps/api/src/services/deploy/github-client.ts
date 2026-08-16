@@ -17,16 +17,32 @@ export type GitHubRepoStatus = {
 };
 
 export class GitHubClient {
-  private readonly owner: string;
-  private readonly repo: string;
-  private readonly branch: string;
-  private readonly token?: string;
+  private customOwner?: string;
+  private customRepo?: string;
+  private customBranch?: string;
+  private customToken?: string;
 
   constructor(opts?: { owner?: string; repo?: string; branch?: string; token?: string }) {
-    this.owner = opts?.owner || process.env.GITHUB_REPO_OWNER || "LuizOMS-Dev";
-    this.repo = opts?.repo || process.env.GITHUB_REPO_NAME || "nexaflow-ai";
-    this.branch = opts?.branch || process.env.GITHUB_BRANCH || "main";
-    this.token = opts?.token || process.env.GITHUB_TOKEN;
+    this.customOwner = opts?.owner;
+    this.customRepo = opts?.repo;
+    this.customBranch = opts?.branch;
+    this.customToken = opts?.token;
+  }
+
+  get owner(): string {
+    return this.customOwner || process.env.GITHUB_REPO_OWNER || "LuizOMS-Dev";
+  }
+
+  get repo(): string {
+    return this.customRepo || process.env.GITHUB_REPO_NAME || "nexaflow-ai";
+  }
+
+  get branch(): string {
+    return this.customBranch || process.env.GITHUB_BRANCH || "main";
+  }
+
+  get token(): string | undefined {
+    return this.customToken || process.env.GITHUB_TOKEN;
   }
 
   getRepoInfo() {

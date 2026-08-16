@@ -17,10 +17,10 @@ export type EasyPanelConnectionStatus = {
 };
 
 export class EasyPanelClient {
-  private readonly baseUrl: string;
-  private readonly token: string;
-  public readonly defaultProject: string;
-  public readonly defaultService: string;
+  private customBaseUrl?: string;
+  private customToken?: string;
+  private customProject?: string;
+  private customService?: string;
 
   constructor(opts?: {
     baseUrl?: string;
@@ -28,15 +28,31 @@ export class EasyPanelClient {
     projectName?: string;
     serviceName?: string;
   }) {
-    this.baseUrl = (opts?.baseUrl || process.env.EASYPANEL_URL || "").trim().replace(/\/+$/, "");
-    this.token = (
-      opts?.token ||
+    this.customBaseUrl = opts?.baseUrl;
+    this.customToken = opts?.token;
+    this.customProject = opts?.projectName;
+    this.customService = opts?.serviceName;
+  }
+
+  get baseUrl(): string {
+    return (this.customBaseUrl || process.env.EASYPANEL_URL || "").trim().replace(/\/+$/, "");
+  }
+
+  get token(): string {
+    return (
+      this.customToken ||
       process.env.EASYPANEL_API_TOKEN ||
       process.env.EASYPANEL_API_KEY ||
       ""
     ).trim();
-    this.defaultProject = opts?.projectName || process.env.EASYPANEL_PROJECT || "i9atendimento";
-    this.defaultService = opts?.serviceName || process.env.EASYPANEL_SERVICE || "nexaflow";
+  }
+
+  get defaultProject(): string {
+    return this.customProject || process.env.EASYPANEL_PROJECT || "i9atendimento";
+  }
+
+  get defaultService(): string {
+    return this.customService || process.env.EASYPANEL_SERVICE || "nexaflow";
   }
 
   isConfigured(): boolean {
