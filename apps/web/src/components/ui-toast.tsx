@@ -127,27 +127,27 @@ const statusConfig: Record<
   success: {
     Icon: CheckCircle2,
     badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    progressClass: "bg-emerald-500/70 dark:bg-emerald-400/80",
+    progressClass: "bg-emerald-500/80 dark:bg-emerald-400/90",
   },
   error: {
     Icon: AlertCircle,
     badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
-    progressClass: "bg-rose-500/70 dark:bg-rose-400/80",
+    progressClass: "bg-rose-500/80 dark:bg-rose-400/90",
   },
   warning: {
     Icon: AlertTriangle,
     badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    progressClass: "bg-amber-500/70 dark:bg-amber-400/80",
+    progressClass: "bg-amber-500/80 dark:bg-amber-400/90",
   },
   info: {
     Icon: Info,
     badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-    progressClass: "bg-violet-500/70 dark:bg-violet-400/80",
+    progressClass: "bg-violet-500/80 dark:bg-violet-400/90",
   },
   loading: {
     Icon: Loader2,
     badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-    progressClass: "bg-violet-500/70 dark:bg-violet-400/80",
+    progressClass: "bg-violet-500/80 dark:bg-violet-400/90",
   },
 };
 
@@ -190,7 +190,7 @@ function ToastCard({
         timerRef.current = null;
       }
     };
-  }, [paused, isAutoDismiss, item.duration, item.id, item.exiting, onDismiss, item.refreshCount]);
+  }, [paused, isAutoDismiss, item.id, item.exiting, onDismiss, item.refreshCount]);
 
   // Se o toast for atualizado/reiniciado, reseta remainingRef
   useEffect(() => {
@@ -207,17 +207,16 @@ function ToastCard({
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       className={cn(
-        "nf-toast-card group relative flex w-full max-w-[360px] items-start gap-3 rounded-2xl p-3.5",
+        "nf-toast-card group relative flex w-full max-w-[360px] items-start gap-3 rounded-2xl p-3.5 select-none",
         "border border-black/[0.08] bg-white/95 text-ink shadow-xl shadow-black/10 backdrop-blur-md",
         "dark:border-white/[0.08] dark:bg-[#12141c]/95 dark:text-zinc-100 dark:shadow-2xl dark:shadow-black/70",
-        "transition-all duration-150 ease-out select-none",
         item.exiting ? "nf-toast-out" : "nf-toast-in"
       )}
     >
       {/* ── ÍCONE COM BADGE DEDICADO ── */}
       <div
         className={cn(
-          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl transition-transform duration-150 group-hover:scale-105",
+          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl transition-colors",
           badgeClass
         )}
         aria-hidden
@@ -271,10 +270,13 @@ function ToastCard({
 
       {/* ── BARRA DE PROGRESSO DO TEMPO RESTANTE ── */}
       {isAutoDismiss && !item.exiting ? (
-        <div className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden rounded-b-2xl bg-black/[0.03] dark:bg-white/[0.04]" aria-hidden>
+        <div
+          className="absolute inset-x-0 bottom-0 h-[2.5px] overflow-hidden rounded-b-2xl bg-black/[0.04] dark:bg-white/[0.05]"
+          aria-hidden
+        >
           <div
             key={item.refreshCount}
-            className={cn("h-full w-full origin-left", progressClass)}
+            className={cn("h-full", progressClass)}
             style={{
               animation: `nf-toast-progress ${item.duration}ms linear forwards`,
               animationPlayState: paused ? "paused" : "running",
@@ -292,7 +294,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dismiss = useCallback((id?: string) => {
     if (!id) {
       setItems((prev) => prev.map((t) => ({ ...t, exiting: true })));
-      window.setTimeout(() => setItems([]), 150);
+      window.setTimeout(() => setItems([]), 160);
       return;
     }
 
@@ -301,7 +303,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     );
     window.setTimeout(() => {
       setItems((prev) => prev.filter((t) => t.id !== id));
-    }, 150);
+    }, 160);
   }, []);
 
   const update = useCallback((id: string, opts: Partial<ToastOptions>) => {
@@ -355,6 +357,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             description: opts.description ?? existing.description,
             duration,
             action: opts.action ?? existing.action,
+            exiting: false,
             refreshCount: existing.refreshCount + 1,
           };
           return updated;
@@ -375,7 +378,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
         const activeList = prev.filter((t) => !t.exiting);
         if (activeList.length >= 4) {
-          // Marca o mais antigo como saindo
           return [...prev.slice(-3), newToast];
         }
         return [...prev, newToast];
