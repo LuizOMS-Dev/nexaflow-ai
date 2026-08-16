@@ -12,8 +12,6 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
-  XCircle,
-  Plus,
   Trash2,
   ArrowRight,
   Sparkles,
@@ -124,14 +122,31 @@ type PlatformCostItem = {
 };
 
 const COST_CATEGORIES = [
-  { value: "INFRASTRUCTURE", label: "Servidores & Nuvem" },
-  { value: "WHATSAPP", label: "WhatsApp Gateway (WAHA)" },
-  { value: "AI", label: "Provedores de IA" },
-  { value: "EMAIL", label: "E-mail Transacional" },
-  { value: "DATABASE", label: "Banco de Dados & Redis" },
-  { value: "SUPPORT", label: "Ferramentas & Suporte" },
-  { value: "OTHER", label: "Outros Custos Fixos" },
+  { value: "INFRASTRUCTURE", label: "Servidores e Nuvem" },
+  { value: "AI", label: "Inteligência Artificial" },
+  { value: "WHATSAPP", label: "WhatsApp / WAHA" },
+  { value: "DATABASE", label: "Banco e Infraestrutura" },
+  { value: "EMAIL", label: "E-mail" },
+  { value: "TOOLS", label: "Ferramentas" },
+  { value: "SUPPORT", label: "Suporte" },
+  { value: "OTHER", label: "Outros" },
 ];
+
+function formatBrlInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10) / 100;
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
+function parseBrlInput(value: string): number {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return 0;
+  return parseInt(digits, 10) / 100;
+}
 
 export default function AdminFinancePage() {
   const user = useAuth((s) => s.user);
@@ -235,9 +250,8 @@ export default function AdminFinancePage() {
 
   const handleCreateCostSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanStr = costAmount.replace(/[^\d.,]/g, "").replace(",", ".");
-    const amt = parseFloat(cleanStr);
-    if (!costName.trim() || isNaN(amt) || amt <= 0) {
+    const amt = parseBrlInput(costAmount);
+    if (!costName.trim() || amt <= 0) {
       toast.error("Preencha o nome e um valor mensal válido maior que zero.");
       return;
     }
@@ -254,13 +268,12 @@ export default function AdminFinancePage() {
     setEditingCostId(cost.id);
     setEditName(cost.name);
     setEditCategory(cost.category);
-    setEditAmount(cost.amount.toString());
+    setEditAmount(formatBrlInput(Math.round(cost.amount * 100).toString()));
   };
 
   const handleSaveEditSubmit = (costId: string) => {
-    const cleanStr = editAmount.replace(/[^\d.,]/g, "").replace(",", ".");
-    const amt = parseFloat(cleanStr);
-    if (!editName.trim() || isNaN(amt) || amt <= 0) {
+    const amt = parseBrlInput(editAmount);
+    if (!editName.trim() || amt <= 0) {
       toast.error("Preencha o nome e um valor válido.");
       return;
     }
@@ -280,7 +293,7 @@ export default function AdminFinancePage() {
     if (isSuperadminMfaRequiredError(error)) return null;
     return (
       <AdminErrorState
-        title="Não foi possível carregar o financeiro"
+        title="Não foi possível carregar os dados financeiros."
         description="Verifique a conexão e tente novamente."
         onRetry={() => void refetch()}
       />
@@ -395,7 +408,7 @@ export default function AdminFinancePage() {
               </p>
             </div>
             <div>
-              <span className="text-[11px] font-medium text-gray-500 uppercase">Lucro estimado</span>
+              <span className="text-[11px] font-medium text-gray-500 uppercase">Resultado estimado</span>
               <p
                 className={cn(
                   "mt-0.5 text-[15px] font-semibold tabular-nums",
@@ -453,15 +466,15 @@ export default function AdminFinancePage() {
           flush
         >
           {s.mrr === 0 || byPlan.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <CreditCard className="h-8 w-8 text-gray-600 mb-2" />
-              <p className="text-[13.5px] font-semibold text-gray-200">Ainda não há receita recorrente</p>
-              <p className="mt-1 max-w-sm text-[12px] text-gray-400">
+            <div className="flex flex-col items-center justify-center py-7 px-4 text-center">
+              <CreditCard className="h-7 w-7 text-gray-600 mb-2" />
+              <p className="text-[13px] font-semibold text-gray-200">Ainda não há receita recorrente</p>
+              <p className="mt-0.5 max-w-sm text-[11.5px] text-gray-400">
                 A distribuição por plano aparecerá quando houver assinaturas pagas.
               </p>
               <Link
                 href="/admin/plans"
-                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3.5 py-1.5 text-[12px] font-medium text-gray-200 hover:bg-white/[0.08] transition-colors"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-[12px] font-medium text-gray-200 hover:bg-white/[0.08] transition-colors"
               >
                 Ver planos comerciais →
               </Link>
@@ -547,12 +560,12 @@ export default function AdminFinancePage() {
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <Clock className="h-8 w-8 text-gray-600 mb-2" />
-              <p className="text-[13.5px] font-semibold text-gray-200">
+            <div className="flex flex-col items-center justify-center py-7 px-4 text-center">
+              <Clock className="h-7 w-7 text-gray-600 mb-2" />
+              <p className="text-[13px] font-semibold text-gray-200">
                 Ainda não há histórico financeiro suficiente
               </p>
-              <p className="mt-1 max-w-sm text-[12px] text-gray-400">
+              <p className="mt-0.5 max-w-sm text-[11.5px] text-gray-400">
                 A evolução do MRR aparecerá conforme novos ciclos forem registrados.
               </p>
             </div>
@@ -573,7 +586,7 @@ export default function AdminFinancePage() {
         flush
       >
         {data.recentSubscriptions.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-gray-500">
+          <div className="py-5 px-4 text-center text-[12px] text-gray-400">
             Nenhuma assinatura registrada ainda.
           </div>
         ) : (
@@ -645,24 +658,24 @@ export default function AdminFinancePage() {
             <div className="grid grid-cols-3 gap-3 text-center border-b border-white/[0.06] pb-3">
               <div>
                 <span className="text-[11px] font-medium text-gray-500 uppercase">Ativos</span>
-                <p className="mt-0.5 text-[18px] font-bold text-white tabular-nums">
+                <p className="mt-0.5 text-[17px] font-bold text-white tabular-nums">
                   {data.trials.total}
                 </p>
               </div>
               <div>
                 <span className="text-[11px] font-medium text-gray-500 uppercase">Vencem em 7 dias</span>
-                <p className="mt-0.5 text-[18px] font-bold text-amber-300 tabular-nums">
+                <p className={cn("mt-0.5 text-[17px] font-bold tabular-nums", data.trials.expiringIn7Days > 0 ? "text-amber-300" : "text-gray-400")}>
                   {data.trials.expiringIn7Days}
                 </p>
               </div>
               <div>
                 <span className="text-[11px] font-medium text-gray-500 uppercase">Vencidos</span>
-                <p className="mt-0.5 text-[18px] font-bold text-red-400 tabular-nums">
+                <p className={cn("mt-0.5 text-[17px] font-bold tabular-nums", data.trials.expired > 0 ? "text-red-400" : "text-gray-400")}>
                   {data.trials.expired}
                 </p>
               </div>
             </div>
-            <p className="text-[12px] text-gray-400 text-center">
+            <p className="text-[11.5px] text-gray-400 text-center">
               Empresas em período de teste gratuito da plataforma.
             </p>
           </div>
@@ -674,7 +687,7 @@ export default function AdminFinancePage() {
             {data.attention.overdueCount === 0 &&
             data.attention.overdueMrrRisk === 0 &&
             data.attention.inconsistentEnterpriseCount === 0 ? (
-              <div className="flex items-center gap-2.5 py-3">
+              <div className="flex items-center gap-2.5 py-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                 <div>
                   <p className="text-[12.5px] font-semibold text-white">
@@ -710,7 +723,7 @@ export default function AdminFinancePage() {
 
                 {data.attention.inconsistentEnterpriseCount > 0 && (
                   <div className="flex items-center justify-between text-[12px] text-amber-300">
-                    <span>Enterprise sem valor contratado acordado:</span>
+                    <span>Contrato Enterprise sem valor definido:</span>
                     <span className="font-bold">{data.attention.inconsistentEnterpriseCount}</span>
                   </div>
                 )}
@@ -742,7 +755,7 @@ export default function AdminFinancePage() {
               <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Nome do custo *</label>
               <input
                 type="text"
-                placeholder="Ex: Servidor EasyPanel Cloud"
+                placeholder="Ex: Servidor EasyPanel"
                 value={costName}
                 onChange={(e) => setCostName(e.target.value)}
                 required
@@ -768,15 +781,20 @@ export default function AdminFinancePage() {
               </div>
 
               <div>
-                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Valor mensal (R$) *</label>
-                <input
-                  type="text"
-                  placeholder="350,00"
-                  value={costAmount}
-                  onChange={(e) => setCostAmount(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none"
-                />
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Valor mensal *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
+                    R$
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="350,00"
+                    value={costAmount}
+                    onChange={(e) => setCostAmount(formatBrlInput(e.target.value))}
+                    required
+                    className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
+                  />
+                </div>
               </div>
             </div>
 
@@ -799,7 +817,7 @@ export default function AdminFinancePage() {
               </p>
               {costs.length > 0 && (
                 <span className="text-[12.5px] font-bold tabular-nums text-white">
-                  Total: <span className="text-amber-300">{formatCurrency(totalActiveCostsAmount)}</span>/mês
+                  Total mensal: <span className="text-amber-300">{formatCurrency(totalActiveCostsAmount)}</span>
                 </span>
               )}
             </div>
@@ -867,16 +885,21 @@ export default function AdminFinancePage() {
                             ))}
                           </select>
                           <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={editAmount}
-                              onChange={(e) => setEditAmount(e.target.value)}
-                              className="w-full rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
-                            />
+                            <div className="relative w-full">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400 pointer-events-none">
+                                R$
+                              </span>
+                              <input
+                                type="text"
+                                value={editAmount}
+                                onChange={(e) => setEditAmount(formatBrlInput(e.target.value))}
+                                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.06] pl-7 pr-2 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500 tabular-nums"
+                              />
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleSaveEditSubmit(cost.id)}
-                              className="rounded-lg bg-emerald-600 p-1.5 text-white hover:bg-emerald-500"
+                              className="rounded-lg bg-emerald-600 p-1.5 text-white hover:bg-emerald-500 shrink-0"
                               title="Salvar"
                             >
                               <Check className="h-4 w-4" />
@@ -884,7 +907,7 @@ export default function AdminFinancePage() {
                             <button
                               type="button"
                               onClick={() => setEditingCostId(null)}
-                              className="rounded-lg bg-white/[0.08] p-1.5 text-gray-400 hover:text-white"
+                              className="rounded-lg bg-white/[0.08] p-1.5 text-gray-400 hover:text-white shrink-0"
                               title="Cancelar"
                             >
                               <X className="h-4 w-4" />

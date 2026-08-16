@@ -217,5 +217,34 @@ describe("Financeiro do Superadmin (/admin/finance) — RBAC, Métricas & Custos
       headers: auth(superadminToken),
     });
   });
+
+  it("6. Consistência Absoluta: /admin/overview e /admin/finance compartilham exatamente os mesmos valores de MRR, ARR e empresas pagantes", async () => {
+    const [overviewRes, financeRes] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/admin/overview",
+        headers: auth(superadminToken),
+      }),
+      app.inject({
+        method: "GET",
+        url: "/admin/finance",
+        headers: auth(superadminToken),
+      }),
+    ]);
+
+    expect(overviewRes.statusCode).toBe(200);
+    expect(financeRes.statusCode).toBe(200);
+
+    const overview = overviewRes.json();
+    const finance = financeRes.json();
+
+    // Compara MRR, ARR, Ticket Médio e Empresas Pagantes
+    expect(finance.summary.mrr).toBe(overview.finance.mrr);
+    expect(finance.summary.arr).toBe(overview.finance.arr);
+    expect(finance.summary.avgTicket).toBe(overview.finance.avgTicket);
+    expect(finance.summary.paidSubscriptions).toBe(overview.finance.paidSubscriptions);
+    expect(finance.performance.costsConfigured).toBe(overview.finance.costsAvailable);
+  });
 });
+
 
