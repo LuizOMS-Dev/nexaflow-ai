@@ -24,6 +24,7 @@ import {
   Library,
   UsersRound,
   Radio,
+  Rocket,
   ChartColumn,
   Settings,
   Shield,
@@ -132,6 +133,7 @@ const platformNavGroups = [
   {
     label: "Sistema",
     items: [
+      { href: "/admin/deploy", label: "Deploy", icon: Rocket },
       { href: "/admin/system/releases", label: "Atualizações", icon: Megaphone },
       { href: "/admin/system/diagnostics", label: "Diagnóstico", icon: Activity },
       { href: "/admin/system/health", label: "Saúde", icon: Radio },
