@@ -585,7 +585,7 @@ export default function AdminPlansPage() {
                   </div>
 
                   {/* Ações do Card */}
-                  <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {plan.isActive ? (
                       <>
                         <button
