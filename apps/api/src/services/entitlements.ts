@@ -91,15 +91,22 @@ export async function getTenantLimits(tenantId: string): Promise<PlanLimits> {
   const maxAgents = num(flags.raw.maxAgents, 1);
   const maxActiveFlows = num(flags.raw.maxActiveFlows ?? flags.raw.maxAutomations, 5);
 
+  const settingsObj = (tenant?.settings && typeof tenant.settings === "object" ? tenant.settings : {}) as Record<string, unknown>;
+  const customLimits = (settingsObj.customLimits && typeof settingsObj.customLimits === "object"
+    ? settingsObj.customLimits
+    : settingsObj.limitsOverride && typeof settingsObj.limitsOverride === "object"
+    ? settingsObj.limitsOverride
+    : {}) as Record<string, unknown>;
+
   return {
-    maxUsers: plan?.maxUsers ?? 2,
-    maxChannels: plan?.maxChannels ?? 1,
-    maxContacts: plan?.maxContacts ?? 2000,
-    maxConversations: plan?.maxConversations ?? 10_000,
-    maxAiMessages: monthlyAi,
-    monthlyAiCredits: monthlyAi,
-    maxAgents,
-    maxActiveFlows,
+    maxUsers: num(customLimits.maxUsers, plan?.maxUsers ?? 2),
+    maxChannels: num(customLimits.maxChannels, plan?.maxChannels ?? 1),
+    maxContacts: num(customLimits.maxContacts, plan?.maxContacts ?? 2000),
+    maxConversations: num(customLimits.maxConversations, plan?.maxConversations ?? 10_000),
+    maxAiMessages: num(customLimits.maxAiMessages, num(customLimits.monthlyAiCredits, monthlyAi)),
+    monthlyAiCredits: num(customLimits.monthlyAiCredits, num(customLimits.maxAiMessages, monthlyAi)),
+    maxAgents: num(customLimits.maxAgents, maxAgents),
+    maxActiveFlows: num(customLimits.maxActiveFlows, maxActiveFlows),
     extraAiCredits: sub?.extraAiCredits ?? 0,
     features: flags,
     planSlug: plan?.slug,
@@ -359,7 +366,7 @@ export async function ensureTenantSubscription(params: {
   const existing = await prisma.subscription.findUnique({ where: { tenantId: params.tenantId } });
   const catalogMonthly = Number(plan.priceMonthly || 0);
   const catalogAnnual =
-    plan.priceAnnual != null ? Number(plan.priceAnnual) : Math.round(catalogMonthly * 12 * 0.85 * 100) / 100;
+    plan.priceAnnual != null ? Number(plan.priceAnnual) : Math.round(catalogMonthly * 12 * 100) / 100;
 
   if (!existing) {
     // Default: dia 10 + próximo vencimento calculado (cobrança manual)

@@ -286,7 +286,10 @@ export default function AdminFinancePage() {
       notes?: string | null;
     }) => api<PlatformCostItem>("/admin/finance/costs", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      toast.success("Custo adicionado");
+      toast.success(
+        "Custo adicionado",
+        "O custo operacional foi registrado e atualizou o cálculo de margem da plataforma."
+      );
       setCostName("");
       setCostAmount("");
       setCostNotes("");
@@ -295,7 +298,10 @@ export default function AdminFinancePage() {
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao adicionar custo");
+      toast.error(
+        "Não foi possível adicionar o custo",
+        err.message || "Verifique os valores informados e tente novamente."
+      );
     },
   });
 
@@ -306,14 +312,20 @@ export default function AdminFinancePage() {
         body: JSON.stringify(payload),
       }),
     onSuccess: () => {
-      toast.success("Custo atualizado");
+      toast.success(
+        "Custo atualizado",
+        "As alterações no custo operacional foram salvas com sucesso."
+      );
       setEditingCostId(null);
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao atualizar custo");
+      toast.error(
+        "Não foi possível atualizar o custo",
+        err.message || "Verifique os dados informados e tente novamente."
+      );
     },
   });
 
@@ -325,24 +337,45 @@ export default function AdminFinancePage() {
       }),
     onSuccess: (_, variables) => {
       if (variables.isActive) {
-        toast.success("Custo reativado");
+        toast.success(
+          "Custo reativado",
+          "O custo operacional voltou a ser contabilizado no cálculo de margem."
+        );
       } else {
-        toast.success("Custo desativado");
+        toast.success(
+          "Custo desativado",
+          "O custo operacional foi desativado e não afeta o resultado estimado atual."
+        );
       }
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (err: any) => {
+      toast.error(
+        "Não foi possível alterar status do custo",
+        err.message || "Ocorreu um erro ao atualizar o custo."
+      );
     },
   });
 
   const deleteCostMutation = useMutation({
     mutationFn: (id: string) => api(`/admin/finance/costs/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Custo excluído");
+      toast.success(
+        "Custo excluído",
+        "O registro do custo operacional foi removido permanentemente."
+      );
       setCostToDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (err: any) => {
+      toast.error(
+        "Não foi possível excluir o custo",
+        err.message || "Ocorreu um erro ao remover o custo."
+      );
     },
   });
 
