@@ -886,7 +886,7 @@ function CreateCompanyModal({
   }
 
   const inputStyle =
-    "w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-2 text-[13px] text-white placeholder-white/35 focus:border-violet-500/60 focus:outline-none";
+    "h-9 w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[13px] text-white placeholder-white/35 focus:border-violet-500/60 focus:outline-none";
 
   return (
     <Modal
@@ -897,13 +897,13 @@ function CreateCompanyModal({
       size="lg"
       footer={
         <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
-          <button type="button" className="admin-btn-ghost" onClick={onClose}>
+          <button type="button" className="admin-btn-ghost h-9" onClick={onClose}>
             Cancelar
           </button>
           <button
             type="submit"
             form="create-company-form"
-            className="admin-btn-primary"
+            className="admin-btn-primary h-9"
             disabled={mut.isPending}
           >
             {mut.isPending ? "Criando empresa…" : "Criar empresa"}
@@ -996,7 +996,7 @@ function CreateCompanyModal({
                 Senha inicial
               </label>
               <p className="text-[11px] text-gray-400 mb-1.5">
-                Opcional se o e-mail já possuir conta no NexaFlow (o usuário será vinculado como administrador sem alterar sua senha).
+                Opcional se o e-mail já possuir uma conta no NexaFlow.
               </p>
               <div className="relative">
                 <input
@@ -1004,7 +1004,7 @@ function CreateCompanyModal({
                   type={showPassword ? "text" : "password"}
                   minLength={8}
                   autoComplete="new-password"
-                  placeholder="Mínimo de 8 caracteres (ou deixe em branco se já cadastrado)"
+                  placeholder="Mínimo de 8 caracteres"
                   className={cn(
                     inputStyle,
                     "pr-9",
@@ -1047,7 +1047,9 @@ function CreateCompanyModal({
               onChange={setSelectedPlanId}
               options={planOptions}
               placeholder="Selecione o plano..."
-              triggerClassName="bg-[#0c0d12] border-white/[0.1] text-[13px]"
+              preferredPlacement="top"
+              matchTriggerWidth={true}
+              triggerClassName="h-9 w-full bg-[#0c0d12] border-white/[0.08] text-[13px]"
             />
             {fieldErrors.planId ? (
               <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.planId}</p>

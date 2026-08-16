@@ -48,10 +48,19 @@ export type SelectProps = {
    * O menu NÃO fica preso à largura do trigger — usa max(trigger, min, conteúdo).
    */
   menuMinWidth?: number;
+  /**
+   * Preferência de posicionamento: "auto" (default) | "bottom" | "top"
+   */
+  preferredPlacement?: "auto" | "bottom" | "top";
+  /**
+   * Se true, força a largura do menu a ser igual à largura do trigger (comum em formulários)
+   */
+  matchTriggerWidth?: boolean;
 };
 
 type MenuPos = {
-  top: number;
+  top?: number | "auto";
+  bottom?: number | "auto";
   left: number;
   width: number;
   maxHeight: number;
@@ -110,6 +119,8 @@ export function Select({
   required,
   size = "md",
   menuMinWidth,
+  preferredPlacement = "auto",
+  matchTriggerWidth = false,
 }: SelectProps) {
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -138,41 +149,62 @@ export function Select({
     const r = el.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const width = computeMenuWidth({
-      triggerWidth: r.width,
-      options,
-      menuMinWidth,
-      size,
-      viewportWidth: vw,
-    });
-    const spaceBelow = vh - r.bottom - GAP - 8;
-    const spaceAbove = r.top - GAP - 8;
-    const preferBottom = spaceBelow >= Math.min(MENU_MAX, 160) || spaceBelow >= spaceAbove;
-    const maxHeight = Math.min(MENU_MAX, preferBottom ? spaceBelow : spaceAbove);
-    const heightEstimate = Math.min(maxHeight, options.length * 36 + 8);
+    const width = matchTriggerWidth
+      ? r.width
+      : computeMenuWidth({
+          triggerWidth: r.width,
+          options,
+          menuMinWidth,
+          size,
+          viewportWidth: vw,
+        });
+    const spaceBelow = Math.max(0, vh - r.bottom - GAP - 8);
+    const spaceAbove = Math.max(0, r.top - GAP - 8);
+
+    let placement: "bottom" | "top" = "bottom";
+    if (preferredPlacement === "top") {
+      placement = "top";
+    } else if (preferredPlacement === "bottom") {
+      placement = "bottom";
+    } else {
+      // Auto: se o espaço abaixo for menor que o necessário (~210px) e houver mais espaço acima, abre para cima
+      const neededHeight = Math.min(MENU_MAX, options.length * 38 + 12);
+      if (spaceBelow < neededHeight && spaceAbove > spaceBelow) {
+        placement = "top";
+      } else if (spaceBelow >= neededHeight) {
+        placement = "bottom";
+      } else {
+        placement = spaceAbove >= spaceBelow ? "top" : "bottom";
+      }
+    }
+
+    const maxHeight = Math.min(MENU_MAX, placement === "bottom" ? spaceBelow : spaceAbove);
+
     // align start com o trigger; se estourar a direita, empurra para dentro da viewport
     let left = r.left;
     if (left + width > vw - 8) left = Math.max(8, vw - width - 8);
     if (left < 8) left = 8;
 
-    if (preferBottom) {
+    if (placement === "bottom") {
       setPos({
         top: r.bottom + GAP,
+        bottom: "auto",
         left,
         width,
-        maxHeight: Math.max(120, maxHeight),
+        maxHeight: Math.max(100, maxHeight),
         placement: "bottom",
       });
     } else {
       setPos({
-        top: Math.max(8, r.top - GAP - heightEstimate),
+        top: "auto",
+        bottom: vh - r.top + GAP,
         left,
         width,
-        maxHeight: Math.max(120, maxHeight),
+        maxHeight: Math.max(100, maxHeight),
         placement: "top",
       });
     }
-  }, [menuMinWidth, options, size]);
+  }, [matchTriggerWidth, menuMinWidth, options, preferredPlacement, size]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -325,13 +357,14 @@ export function Select({
             )}
             style={{
               position: "fixed",
-              top: pos.top,
-              left: pos.left,
+              top: pos.top !== "auto" ? `${pos.top}px` : "auto",
+              bottom: pos.bottom !== "auto" ? `${pos.bottom}px` : "auto",
+              left: `${pos.left}px`,
               width: pos.width,
-              minWidth: pos.width,
+              minWidth: matchTriggerWidth ? undefined : pos.width,
               maxWidth: `min(${MENU_MAX_WIDTH}px, calc(100vw - 16px))`,
               maxHeight: pos.maxHeight,
-              zIndex: "var(--z-popover)",
+              zIndex: 99999,
             }}
             onKeyDown={onListKey}
           >
