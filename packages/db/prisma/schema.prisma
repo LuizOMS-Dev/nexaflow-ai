@@ -1587,3 +1587,26 @@ model TenantCost {
   @@index([tenantId, category])
 }
 
+// ===================== FINANCEIRO DA PLATAFORMA (SUPERADMIN) =====================
+
+/// Custos operacionais da plataforma NexaFlow (Superadmin)
+model PlatformOperationalCost {
+  id          String   @id @default(cuid())
+  name        String
+  /// INFRASTRUCTURE | WHATSAPP | AI | EMAIL | DATABASE | SUPPORT | OTHER
+  category    String   @default("INFRASTRUCTURE")
+  /// Custo mensal em BRL (Decimal)
+  amount      Decimal  @default(0)
+  /// MONTHLY | ANNUAL | ONE_TIME
+  recurrence  String   @default("MONTHLY")
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([category])
+}
+
+

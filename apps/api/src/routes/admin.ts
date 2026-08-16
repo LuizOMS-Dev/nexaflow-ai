@@ -28,6 +28,7 @@ import {
   computeNextDueDate,
 } from "../services/billing";
 import { getPlatformHealthDetailed } from "../services/platform-diagnostics";
+import { computePlatformFinancialMetrics } from "../services/financial-metrics";
 
 function cookieSecure() {
   return env.nodeEnv === "production";
@@ -635,6 +636,228 @@ export async function adminRoutes(app: FastifyInstance) {
       alerts,
       errors,
     };
+  });
+
+  /**
+   * Central Financeira do Superadmin (/admin/finance)
+   */
+  app.get("/admin/finance", async (request) => {
+    const q = z
+      .object({
+        days: z.coerce.number().int().min(1).max(365).optional().default(30),
+      })
+      .parse(request.query || {});
+
+    const days = q.days || 30;
+    const now = new Date();
+
+    const [
+      allTenantsRaw,
+      plans,
+      subscriptions,
+      costs,
+      recentPayments,
+      recentAuditLogs,
+    ] = await Promise.all([
+      prisma.tenant.findMany({
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.plan.findMany({
+        orderBy: { priceMonthly: "asc" },
+      }),
+      prisma.subscription.findMany({
+        include: { plan: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.platformOperationalCost.findMany({
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.payment.findMany({
+        orderBy: { paidAt: "desc" },
+        take: 50,
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          OR: [
+            { entity: "Subscription" },
+            { entity: "Plan" },
+            { entity: "PlatformOperationalCost" },
+            { action: { startsWith: "admin.subscription" } },
+            { action: { startsWith: "admin.plan" } },
+            { action: { startsWith: "admin.cost" } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          tenant: { select: { id: true, name: true } },
+        },
+      }),
+    ]);
+
+    const metrics = computePlatformFinancialMetrics({
+      tenants: allTenantsRaw,
+      plans,
+      subscriptions,
+      costs,
+      now,
+    });
+
+    const monthlyHistoryMap = new Map<string, number>();
+    for (const p of recentPayments) {
+      const d = new Date(p.paidAt);
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      monthlyHistoryMap.set(k, (monthlyHistoryMap.get(k) || 0) + Number(p.amount || 0));
+    }
+    const historyEntries = Array.from(monthlyHistoryMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-12)
+      .map(([month, value]) => ({ month, value }));
+
+    const recentFinancialActivity = recentAuditLogs.map((log) => ({
+      id: log.id,
+      action: log.action,
+      entity: log.entity,
+      userName: log.user?.name || log.user?.email || "Superadmin",
+      tenantName: log.tenant?.name || null,
+      createdAt: log.createdAt,
+    }));
+
+    return {
+      periodDays: days,
+      ...metrics,
+      history: {
+        hasEnoughHistory: historyEntries.length >= 2,
+        entries: historyEntries,
+      },
+      recentFinancialActivity,
+      costsCount: costs.length,
+      note: "MRR e ARR estimados a partir de contratos ativos (Subscription.priceMonthly). Não representam caixa recebido.",
+    };
+  });
+
+  /**
+   * Custos Operacionais da Plataforma (Superadmin)
+   */
+  app.get("/admin/finance/costs", async () => {
+    const costs = await prisma.platformOperationalCost.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return costs.map((c) => ({
+      id: c.id,
+      name: c.name,
+      category: c.category,
+      amount: Number(c.amount),
+      recurrence: c.recurrence,
+      isActive: c.isActive,
+      notes: c.notes,
+      createdAt: c.createdAt,
+    }));
+  });
+
+  app.post("/admin/finance/costs", async (request) => {
+    const body = z
+      .object({
+        name: z.string().min(2, "Nome é obrigatório"),
+        category: z.enum(["INFRASTRUCTURE", "WHATSAPP", "AI", "EMAIL", "DATABASE", "SUPPORT", "OTHER"]).default("INFRASTRUCTURE"),
+        amount: z.number().positive("O valor deve ser maior que zero"),
+        recurrence: z.enum(["MONTHLY", "ANNUAL", "ONE_TIME"]).default("MONTHLY"),
+        notes: z.string().optional().nullable(),
+      })
+      .parse(request.body);
+
+    const cost = await prisma.platformOperationalCost.create({
+      data: {
+        name: body.name,
+        category: body.category,
+        amount: body.amount,
+        recurrence: body.recurrence,
+        isActive: true,
+        notes: body.notes || null,
+        createdById: request.user.sub,
+      },
+    });
+
+    await audit({
+      userId: request.user.sub,
+      action: "admin.cost.create",
+      entity: "PlatformOperationalCost",
+      entityId: cost.id,
+      metadata: { name: cost.name, amount: body.amount },
+    });
+
+    return {
+      ...cost,
+      amount: Number(cost.amount),
+    };
+  });
+
+  app.patch("/admin/finance/costs/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        name: z.string().min(2).optional(),
+        category: z.enum(["INFRASTRUCTURE", "WHATSAPP", "AI", "EMAIL", "DATABASE", "SUPPORT", "OTHER"]).optional(),
+        amount: z.number().positive().optional(),
+        recurrence: z.enum(["MONTHLY", "ANNUAL", "ONE_TIME"]).optional(),
+        isActive: z.boolean().optional(),
+        notes: z.string().optional().nullable(),
+      })
+      .parse(request.body);
+
+    const existing = assertFound(
+      await prisma.platformOperationalCost.findUnique({
+        where: { id },
+      })
+    );
+
+    const updated = await prisma.platformOperationalCost.update({
+      where: { id },
+      data: {
+        name: body.name ?? existing.name,
+        category: body.category ?? existing.category,
+        amount: body.amount !== undefined ? body.amount : existing.amount,
+        recurrence: body.recurrence ?? existing.recurrence,
+        isActive: body.isActive !== undefined ? body.isActive : existing.isActive,
+        notes: body.notes !== undefined ? body.notes : existing.notes,
+      },
+    });
+
+    await audit({
+      userId: request.user.sub,
+      action: "admin.cost.update",
+      entity: "PlatformOperationalCost",
+      entityId: updated.id,
+    });
+
+    return {
+      ...updated,
+      amount: Number(updated.amount),
+    };
+  });
+
+  app.delete("/admin/finance/costs/:id", async (request) => {
+    const { id } = request.params as { id: string };
+
+    const existing = assertFound(
+      await prisma.platformOperationalCost.findUnique({
+        where: { id },
+      })
+    );
+
+    await prisma.platformOperationalCost.delete({
+      where: { id },
+    });
+
+    await audit({
+      userId: request.user.sub,
+      action: "admin.cost.delete",
+      entity: "PlatformOperationalCost",
+      entityId: existing.id,
+    });
+
+    return { ok: true };
   });
 
   app.get("/admin/tenants", async (request) => {
