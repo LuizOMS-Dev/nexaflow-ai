@@ -5,6 +5,7 @@ import { pluralizePt } from "./utils";
 describe("Audit Labels & Formatters", () => {
   describe("humanizeAuditAction", () => {
     it("humaniza eventos exatos conhecidos", () => {
+      expect(humanizeAuditAction("auth.login")).toBe("Login administrativo realizado");
       expect(humanizeAuditAction("auth.logout")).toBe("Logout administrativo realizado");
       expect(humanizeAuditAction("admin.impersonate")).toBe("Acesso como empresa iniciado");
       expect(humanizeAuditAction("admin.impersonate.stop")).toBe("Acesso como empresa encerrado");

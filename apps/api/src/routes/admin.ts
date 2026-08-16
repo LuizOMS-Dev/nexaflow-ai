@@ -536,16 +536,24 @@ export async function adminRoutes(app: FastifyInstance) {
     // Formata atividades administrativas recentes de forma legível
     const recentActivity = recentAuditLogs.map((log) => {
       let description = log.action;
-      if (log.action === "tenant.create" || log.action === "tenant.created") {
+      if (log.action === "tenant.create" || log.action === "tenant.created" || log.action === "admin.tenant.create") {
         description = `Empresa ${log.tenant?.name || log.entityId || ""} criada`;
+      } else if (log.action === "auth.logout") {
+        description = "Logout administrativo realizado";
+      } else if (log.action === "admin.impersonate") {
+        description = "Acesso como empresa iniciado";
+      } else if (log.action === "admin.impersonate.stop") {
+        description = "Acesso como empresa encerrado";
+      } else if (log.action === "tenant.onboarding.completed") {
+        description = "Configuração da empresa concluída";
+      } else if (log.action.includes("2fa") || log.action.includes("mfa")) {
+        description = "Autenticação em duas etapas ativada";
       } else if (log.action.includes("status")) {
         description = `Status de ${log.tenant?.name || "empresa"} atualizado`;
       } else if (log.action.includes("plan")) {
         description = `Plano de ${log.tenant?.name || "empresa"} alterado`;
-      } else if (log.action.includes("2fa")) {
-        description = `Segurança 2FA atualizada para ${log.user?.name || log.user?.email || "usuário"}`;
       } else if (log.action.includes("login")) {
-        description = `Login administrativo realizado (${log.user?.email || "admin"})`;
+        description = `Login administrativo realizado`;
       }
       return {
         id: log.id,

@@ -390,14 +390,20 @@ export default function AdminOverviewPage() {
           )}
 
           {fin && !fin.costsAvailable ? (
-            <div className="mt-3.5 flex items-center justify-between gap-2.5 rounded-lg border border-amber-500/15 bg-amber-500/[0.03] p-2.5 px-3 text-[11.5px] text-amber-800 dark:text-amber-300/80">
-              <div className="flex items-center gap-2 min-w-0">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                <span className="truncate">
-                  <strong className="font-medium text-amber-900 dark:text-amber-200">Custos operacionais incompletos:</strong> Indicadores de margem serão calculados após configurar os custos.
-                </span>
+            <div className="mt-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.03] p-2.5 px-3 text-[11.5px] text-amber-800 dark:text-amber-300/80">
+              <div className="flex items-start sm:items-center gap-2 min-w-0">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5 sm:mt-0" />
+                <div className="leading-snug">
+                  <strong className="font-semibold text-amber-900 dark:text-amber-200">
+                    Custos operacionais incompletos:
+                  </strong>{" "}
+                  <span>Configure os custos para calcular indicadores de margem.</span>
+                </div>
               </div>
-              <Link href="/admin/finance" className="shrink-0 font-semibold text-amber-900 dark:text-amber-200 hover:underline">
+              <Link
+                href="/admin/finance"
+                className="shrink-0 pl-5.5 sm:pl-0 font-semibold text-amber-900 dark:text-amber-200 hover:underline inline-flex items-center gap-1"
+              >
                 Configurar custos →
               </Link>
             </div>

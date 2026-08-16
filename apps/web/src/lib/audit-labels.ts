@@ -4,7 +4,7 @@
  */
 
 const EXACT: Record<string, string> = {
-  "auth.login": "Login realizado",
+  "auth.login": "Login administrativo realizado",
   "auth.logout": "Logout administrativo realizado",
   "auth.login.failed": "Falha de login",
   "auth.mfa.enabled": "Autenticação em duas etapas ativada",
