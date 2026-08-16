@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Rocket,
   Shield,
   UserPlus,
   Users,
@@ -55,6 +56,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: "/admin/audit", label: "Auditoria", icon: Shield },
       { href: "/admin/system", label: "Sistema", icon: Activity },
+      { href: "/admin/deploy", label: "Deploy", icon: Rocket },
     ],
   },
 ];

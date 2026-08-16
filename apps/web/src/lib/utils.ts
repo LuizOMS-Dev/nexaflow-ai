@@ -20,6 +20,19 @@ export function formatDate(value?: string | Date | null) {
   }).format(new Date(value));
 }
 
+export function formatRelativeTime(date?: string | Date | null) {
+  if (!date) return "—";
+  const now = Date.now();
+  const diff = Math.max(0, Math.floor((now - new Date(date).getTime()) / 1000));
+  if (diff < 60) return "alguns segundos";
+  const minutes = Math.floor(diff / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `${days} d`;
+}
+
 export function initials(name?: string) {
   if (!name) return "?";
   return name

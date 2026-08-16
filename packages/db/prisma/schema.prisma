@@ -348,6 +348,7 @@ model User {
   passwordResets        PasswordResetToken[]
   securityEvents        SecurityEvent[]      @relation("SecurityEventUser")
   mfaChallenges         MfaChallenge[]
+  deployments           Deployment[]
   releaseSeen           UserReleaseSeen[]
   contactsResponsible   Contact[]            @relation("ContactResponsible")
 }
@@ -1611,6 +1612,35 @@ model PlatformOperationalCost {
 
   @@index([isActive])
   @@index([category])
+}
+
+/// Registro de implantações automatizadas (Deploy GitHub -> EasyPanel)
+model Deployment {
+  id              String    @id @default(cuid())
+  environment     String    @default("production")
+  branch          String    @default("main")
+  commitSha       String
+  commitShortSha  String
+  commitMessage   String
+  commitAuthor    String?
+  startedById     String
+  startedBy       User      @relation(fields: [startedById], references: [id], onDelete: Cascade)
+  status          String    @default("PENDING") // PENDING | PREPARING | BUILDING | DEPLOYING | VALIDATING | COMPLETED | FAILED
+  services        String[]  @default(["nexaflow"])
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  durationSeconds Int?
+  errorSummary    String?
+  logs            String?   @db.Text
+  healthCheckedAt DateTime?
+  healthStatus    String?   // HEALTHY | UNHEALTHY | SKIPPED
+  isRollback      Boolean   @default(false)
+  rollbackFromSha String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([environment, createdAt])
+  @@index([status])
 }
 
 

@@ -347,6 +347,8 @@ export async function buildApp() {
   await app.register(whatsappRoutes);
   await app.register(impersonationStopRoutes);
   await app.register(adminRoutes);
+  const { adminDeployRoutes } = await import("./routes/admin-deploy");
+  await app.register(adminDeployRoutes);
   // Assistente NexaFlow (ajuda da plataforma — separado dos agentes do tenant)
   const { nexaflowAssistantRoutes } = await import("./routes/nexaflow-assistant");
   await app.register(nexaflowAssistantRoutes);
