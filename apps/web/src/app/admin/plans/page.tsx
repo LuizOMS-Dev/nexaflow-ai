@@ -718,9 +718,13 @@ export default function AdminPlansPage() {
                 >
                   {/* Top: Header e Limites do Card */}
                   <div className="flex-1 flex flex-col">
-                    {/* Header: Linha Superior com Mais Popular à esquerda & Disponível à direita */}
+                    {/* Header: Linha Superior com Disponível à esquerda & Mais Popular à direita */}
                     <div className="min-h-[50px] flex flex-col justify-start">
                       <div className="flex items-center justify-between gap-2 h-5 mb-1">
+                        <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
+                          {plan.isActive ? "Disponível" : "Indisponível"}
+                        </StatusBadge>
+
                         <div className="h-5 flex items-center">
                           {isPopular ? (
                             <span className="inline-flex items-center gap-1 rounded-md bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
@@ -731,10 +735,6 @@ export default function AdminPlansPage() {
                             <span className="invisible text-[10px] select-none" aria-hidden="true">·</span>
                           )}
                         </div>
-
-                        <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
-                          {plan.isActive ? "Disponível" : "Indisponível"}
-                        </StatusBadge>
                       </div>
 
                       <h3 className="text-[16px] font-bold text-white tracking-tight truncate mt-0.5">
