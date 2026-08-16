@@ -4,9 +4,11 @@ import type {
   AuditList,
   CompanyDetail,
   CompanyList,
+  ConvertLeadInput,
   Overview,
   PlanRow,
   SalesLead,
+  SalesLeadList,
   UserList,
 } from "./types";
 
@@ -82,10 +84,24 @@ export const platformAdminApi = {
     return api<AuditList>(`/admin/logs?${q.toString()}`);
   },
 
-  leads: () => api<SalesLead[]>("/admin/sales-leads"),
+  leads: (params: Record<string, string | number | undefined> = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "" && v !== "ALL") q.set(k, String(v));
+    }
+    return api<SalesLeadList>(`/admin/sales-leads?${q.toString()}`);
+  },
+
+  lead: (id: string) => api<SalesLead>(`/admin/sales-leads/${id}`),
 
   patchLead: (id: string, status: string) =>
-    api(`/admin/sales-leads/${id}`, { method: "PATCH", json: { status } }),
+    api<SalesLead>(`/admin/sales-leads/${id}`, { method: "PATCH", json: { status } }),
+
+  convertLead: (id: string, body: ConvertLeadInput) =>
+    api<{ company: { id: string; name: string; slug: string }; lead: SalesLead }>(
+      `/admin/sales-leads/${id}/convert`,
+      { method: "POST", json: body }
+    ),
 
   accessPolicy: () => api<AccessPolicy>("/admin/access-policy"),
 

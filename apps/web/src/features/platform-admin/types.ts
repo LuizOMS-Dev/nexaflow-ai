@@ -235,17 +235,63 @@ export type AuditList = {
   nextCursor: string | null;
 };
 
+export type SalesLeadStatus =
+  | "NEW"
+  | "CONTACTED"
+  | "QUALIFIED"
+  | "CONVERTED"
+  | "WON"
+  | "LOST"
+  | "SPAM";
+
 export type SalesLead = {
   id: string;
   name: string;
   email: string;
   phone?: string | null;
-  companyName?: string | null;
+  companyName: string;
   teamSize?: string | null;
   message?: string | null;
   source?: string | null;
-  status: string;
+  status: SalesLeadStatus;
+  convertedTenantId?: string | null;
+  convertedTenant?: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    createdAt?: string;
+  } | null;
   createdAt: string;
+  updatedAt?: string;
+};
+
+export type SalesLeadSummary = {
+  total: number;
+  new: number;
+  inPipeline: number;
+  converted: number;
+  lost: number;
+  spam: number;
+};
+
+export type SalesLeadList = {
+  items: SalesLead[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  summary: SalesLeadSummary;
+};
+
+export type ConvertLeadInput = {
+  name?: string;
+  slug?: string;
+  planId?: string;
+  adminEmail?: string;
+  adminName?: string;
+  adminPassword?: string;
+  forceSimilarName?: boolean;
 };
 
 export type CompanyAction =

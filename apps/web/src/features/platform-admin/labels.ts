@@ -33,10 +33,25 @@ export const ROLE_LABEL: Record<string, string> = {
 };
 
 export function statusTone(code?: string): "ok" | "warn" | "danger" | "muted" | "info" {
-  if (code === "ACTIVE" || code === "IN_GOOD_STANDING") return "ok";
-  if (code === "TRIAL" || code === "DUE_SOON" || code === "DUE_TODAY" || code === "INVITED") return "info";
-  if (code === "SUSPENDED" || code === "PAYMENT_PENDING") return "warn";
-  if (code === "BLOCKED" || code === "OVERDUE" || code === "DISABLED" || code === "PENDING_DELETION") {
+  if (code === "ACTIVE" || code === "IN_GOOD_STANDING" || code === "CONVERTED" || code === "WON") return "ok";
+  if (
+    code === "TRIAL" ||
+    code === "DUE_SOON" ||
+    code === "DUE_TODAY" ||
+    code === "INVITED" ||
+    code === "NEW" ||
+    code === "CONTACTED"
+  ) {
+    return "info";
+  }
+  if (code === "SUSPENDED" || code === "PAYMENT_PENDING" || code === "QUALIFIED") return "warn";
+  if (
+    code === "BLOCKED" ||
+    code === "OVERDUE" ||
+    code === "DISABLED" ||
+    code === "PENDING_DELETION" ||
+    code === "SPAM"
+  ) {
     return "danger";
   }
   return "muted";
@@ -46,7 +61,8 @@ export const LEAD_STATUS_LABEL: Record<string, string> = {
   NEW: "Novo",
   CONTACTED: "Contatado",
   QUALIFIED: "Qualificado",
-  WON: "Ganho",
+  CONVERTED: "Convertido",
+  WON: "Convertido",
   LOST: "Perdido",
   SPAM: "Spam",
 };

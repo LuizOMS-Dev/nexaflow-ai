@@ -4,6 +4,13 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { env } from "../lib/env";
 import { sendMail } from "../services/security/mail";
+import {
+  listSalesLeads,
+  getSalesLead,
+  updateSalesLeadStatus,
+  convertSalesLeadToCompany,
+  SALES_LEAD_STATUSES,
+} from "../services/platform-admin/leads";
 
 const demoRequestSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -17,7 +24,17 @@ const demoRequestSchema = z.object({
 });
 
 const salesLeadStatusSchema = z.object({
-  status: z.enum(["NEW", "CONTACTED", "QUALIFIED", "WON", "LOST", "SPAM"]),
+  status: z.enum(SALES_LEAD_STATUSES),
+});
+
+const convertLeadSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  slug: z.string().trim().min(2).max(80).optional(),
+  planId: z.string().min(1).optional(),
+  adminEmail: z.string().trim().email().max(160).optional(),
+  adminName: z.string().trim().min(2).max(120).optional(),
+  adminPassword: z.string().min(8).max(128).optional(),
+  forceSimilarName: z.boolean().optional(),
 });
 
 function featureFlags(value: Prisma.JsonValue | null): Record<string, unknown> {
@@ -154,24 +171,26 @@ export async function marketingRoutes(app: FastifyInstance) {
   app.get(
     "/admin/sales-leads",
     { preHandler: app.requireSuperadmin },
-    async () => {
-      return prisma.salesLead.findMany({
-        take: 200,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          companyName: true,
-          teamSize: true,
-          message: true,
-          source: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+    async (request) => {
+      const q = z
+        .object({
+          page: z.coerce.number().int().min(1).default(1),
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          search: z.string().optional(),
+          status: z.string().optional(),
+        })
+        .parse(request.query || {});
+
+      return listSalesLeads(q);
+    }
+  );
+
+  app.get(
+    "/admin/sales-leads/:id",
+    { preHandler: app.requireSuperadmin },
+    async (request) => {
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+      return getSalesLead(id);
     }
   );
 
@@ -181,10 +200,22 @@ export async function marketingRoutes(app: FastifyInstance) {
     async (request) => {
       const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
       const { status } = salesLeadStatusSchema.parse(request.body);
-      return prisma.salesLead.update({
-        where: { id },
-        data: { status },
-        select: { id: true, status: true, updatedAt: true },
+      return updateSalesLeadStatus(id, status, {
+        sub: request.user.sub,
+        ip: request.ip,
+      });
+    }
+  );
+
+  app.post(
+    "/admin/sales-leads/:id/convert",
+    { preHandler: app.requireSuperadmin },
+    async (request) => {
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+      const body = convertLeadSchema.parse(request.body || {});
+      return convertSalesLeadToCompany(id, body, {
+        sub: request.user.sub,
+        ip: request.ip,
       });
     }
   );

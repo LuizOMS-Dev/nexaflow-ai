@@ -203,16 +203,22 @@ export function Field({
   label,
   children,
   hint,
+  error,
 }: {
   label: string;
   children: ReactNode;
   hint?: string;
+  error?: string;
 }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12px] font-medium text-white/55">{label}</span>
       {children}
-      {hint ? <span className="mt-1 block text-[11px] text-white/35">{hint}</span> : null}
+      {error ? (
+        <span className="mt-1 block text-[11px] font-medium text-red-400">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-[11px] text-white/35">{hint}</span>
+      ) : null}
     </label>
   );
 }
