@@ -426,24 +426,48 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    */
   const computeFloatingUserMenuPos = useCallback((btn: HTMLElement) => {
     const r = btn.getBoundingClientRect();
+    const aside = btn.closest("aside") || btn.closest(".nf-sidebar");
+    const asideRect = aside ? aside.getBoundingClientRect() : null;
+    const isSidebarCollapsed =
+      aside?.classList.contains("nf-sidebar-collapsed") ||
+      aside?.getAttribute("data-collapsed") === "true" ||
+      (asideRect && asideRect.width < 100);
+
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const sideOffset = 8;
-    const padding = 12;
-    const width = Math.min(272, Math.max(260, vw - padding * 2));
-    const estHeight = 320;
+    const padding = 10;
+    const estHeight = 330;
 
-    let left = Math.max(padding, r.left);
+    let left: number;
+    let width: number;
+
+    if (asideRect && !isSidebarCollapsed && asideRect.width >= 160) {
+      // Sidebar expandida: borda esquerda e direita perfeitamente alinhadas com a largura útil da sidebar
+      const inset = 8;
+      left = asideRect.left + inset;
+      width = Math.max(180, asideRect.width - inset * 2);
+    } else if (asideRect && isSidebarCollapsed) {
+      // Sidebar recolhida: abre flutuando ao lado direito
+      left = Math.min(vw - 250, asideRect.right + sideOffset);
+      width = Math.min(235, vw - left - padding);
+    } else {
+      // Fallback
+      width = Math.min(240, Math.max(200, r.width));
+      left = Math.max(padding, Math.min(r.left, vw - width - padding));
+    }
+
     if (left + width > vw - padding) {
       left = Math.max(padding, vw - width - padding);
     }
+    if (left < padding) left = padding;
 
     const spaceAbove = r.top - sideOffset - padding;
     const spaceBelow = vh - r.bottom - sideOffset - padding;
 
     let top: number | undefined;
     let bottom: number | undefined;
-    let maxHeight = 380;
+    let maxHeight = 400;
 
     if (spaceAbove >= Math.min(estHeight, 220) || spaceAbove >= spaceBelow) {
       bottom = vh - r.top + sideOffset;

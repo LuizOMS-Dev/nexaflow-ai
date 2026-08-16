@@ -2,11 +2,12 @@
 
 import type { Ref } from "react";
 import {
+  Check,
   LogOut,
   Monitor,
   Moon,
-  Settings,
   ShieldAlert,
+  SlidersHorizontal,
   Sun,
   User,
 } from "lucide-react";
@@ -24,9 +25,12 @@ export type TenantUserMenuUser = {
 };
 
 /**
- * Menu suspenso de conta (Área do Tenant e Admin).
- * Design Linear/Stripe: Topo com identidade completa (Nome, E-mail, Cargo),
- * Ações diretas, Segmented control de Tema (Sistema / Claro / Escuro) e Sair com destaque suave.
+ * Menu popover do usuário no rodapé da sidebar (Tenant e Superadmin).
+ * Estrutura:
+ * 1. Identidade (Nome, E-mail, Cargo) - sem avatar duplicado
+ * 2. Navegação (Minha conta, Preferências)
+ * 3. Aparência (Lista vertical: Sistema, Claro, Escuro com check)
+ * 4. Sair (Logout discreto em vermelho)
  */
 export function TenantUserMenu({
   user,
@@ -57,27 +61,33 @@ export function TenantUserMenu({
 }) {
   const role = user.roleBadge || "Membro";
 
+  const themeOptions = [
+    { id: "system" as const, label: "Sistema", Icon: Monitor },
+    { id: "light" as const, label: "Claro", Icon: Sun },
+    { id: "dark" as const, label: "Escuro", Icon: Moon },
+  ];
+
   return (
     <div
       ref={panelRef}
       role="menu"
       aria-label="Menu da conta"
       className={cn(
-        "flex w-full min-w-[260px] max-w-[280px] flex-col overflow-hidden rounded-2xl",
-        "border border-black/[0.08] bg-white text-ink shadow-2xl shadow-black/15",
-        "dark:border-white/[0.09] dark:bg-[#12141c] dark:text-zinc-200 dark:shadow-black/70",
-        "backdrop-blur-md transition-all duration-150 ease-out",
+        "flex w-full flex-col overflow-hidden rounded-2xl",
+        "border border-black/[0.08] bg-white/95 text-ink shadow-2xl shadow-black/15",
+        "dark:border-white/[0.09] dark:bg-[#12141c]/95 dark:text-zinc-200 dark:shadow-black/70",
+        "backdrop-blur-md transition-all duration-150 ease-out select-none",
         className
       )}
       style={{
-        maxHeight: maxHeight ?? 380,
+        maxHeight: maxHeight ?? 420,
       }}
     >
-      {/* ── 1. CABEÇALHO DO POPOVER: Identidade (Nome + E-mail + Badge discreto) ── */}
-      <div className="p-3.5 pb-3 border-b border-black/[0.06] dark:border-white/[0.07] bg-black/[0.015] dark:bg-white/[0.02]">
-        <div className="flex flex-col gap-1 min-w-0">
+      {/* ── 1. IDENTIDADE DO USUÁRIO (SEM AVATAR DUPLICADO) ── */}
+      <div className="p-3 pb-2.5">
+        <div className="flex flex-col gap-0.5 min-w-0">
           <p
-            className="truncate text-[13.5px] font-bold text-ink dark:text-white tracking-tight"
+            className="truncate text-[13px] font-semibold text-ink dark:text-white tracking-tight"
             title={user.name}
           >
             {user.name}
@@ -85,7 +95,7 @@ export function TenantUserMenu({
 
           {user.email ? (
             <p
-              className="truncate text-[11.5px] text-ink-muted dark:text-zinc-400"
+              className="truncate text-[11px] text-ink-muted dark:text-zinc-400"
               title={user.email}
             >
               {user.email}
@@ -93,7 +103,7 @@ export function TenantUserMenu({
           ) : null}
 
           <div className="pt-1">
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/[0.06] dark:bg-violet-500/[0.1] border border-violet-500/15 px-2 py-0.5 text-[10.5px] font-medium text-violet-700/90 dark:text-violet-300/90">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-violet-500/[0.06] dark:bg-violet-500/[0.1] border border-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-700/90 dark:text-violet-300/90">
               <span className="h-1.5 w-1.5 rounded-full bg-violet-500/60 dark:bg-violet-400/70" />
               {role}
             </span>
@@ -101,25 +111,26 @@ export function TenantUserMenu({
         </div>
       </div>
 
-      {/* ── 2. AÇÕES PRINCIPAIS ── */}
-      <div className="p-1.5 space-y-0.5" role="group" aria-label="Navegação da conta">
+      {/* ── 2. NAVEGAÇÃO: Minha conta e Preferências ── */}
+      <div className="h-px bg-black/[0.06] dark:bg-white/[0.07]" />
+      <div className="p-1 space-y-0.5" role="group" aria-label="Ações da conta">
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-ink-secondary hover:bg-violet-500/[0.06] hover:text-ink dark:text-zinc-300 dark:hover:bg-violet-500/[0.12] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
+          className="flex h-8.5 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[12px] font-medium text-zinc-700 hover:bg-black/[0.04] hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40 cursor-pointer"
           onClick={onAccount}
         >
-          <User className="h-4 w-4 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
+          <User className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
           <span className="min-w-0 flex-1 truncate">Minha conta</span>
         </button>
 
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-ink-secondary hover:bg-violet-500/[0.06] hover:text-ink dark:text-zinc-300 dark:hover:bg-violet-500/[0.12] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40"
+          className="flex h-8.5 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[12px] font-medium text-zinc-700 hover:bg-black/[0.04] hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40 cursor-pointer"
           onClick={onPreferences || onAccount}
         >
-          <Settings className="h-4 w-4 shrink-0 text-ink-muted dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
+          <SlidersHorizontal className="h-4 w-4 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
           <span className="min-w-0 flex-1 truncate">Preferências</span>
         </button>
 
@@ -127,7 +138,7 @@ export function TenantUserMenu({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-400/10 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/30"
+            className="flex h-8.5 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[12px] font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-400/10 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/30 cursor-pointer"
             onClick={onEndImpersonation}
           >
             <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" strokeWidth={1.75} aria-hidden />
@@ -136,76 +147,67 @@ export function TenantUserMenu({
         ) : null}
       </div>
 
-      {/* ── 3. APARÊNCIA / TEMA (Segmented Control: Sistema / Claro / Escuro) ── */}
+      {/* ── 3. APARÊNCIA (LISTA VERTICAL: Sistema, Claro, Escuro) ── */}
       {onSetTheme ? (
         <>
           <div className="h-px bg-black/[0.06] dark:bg-white/[0.07]" />
-          <div className="p-2">
-            <div className="flex items-center justify-between px-1 pb-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted dark:text-zinc-400">
-                Aparência
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-1 rounded-xl border border-black/[0.06] bg-black/[0.03] p-1 dark:border-white/[0.08] dark:bg-white/[0.04]">
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-all",
-                  theme === "system"
-                    ? "bg-white text-ink shadow-xs dark:bg-[#1f222e] dark:text-white"
-                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-                )}
-                onClick={() => onSetTheme("system")}
-                title="Sincronizar com o sistema operacional"
-              >
-                <Monitor className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                <span>Sistema</span>
-              </button>
-
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-all",
-                  theme === "light"
-                    ? "bg-white text-ink shadow-xs dark:bg-[#1f222e] dark:text-white"
-                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-                )}
-                onClick={() => onSetTheme("light")}
-                title="Modo claro"
-              >
-                <Sun className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                <span>Claro</span>
-              </button>
-
-              <button
-                type="button"
-                className={cn(
-                  "flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium transition-all",
-                  theme === "dark"
-                    ? "bg-white text-ink shadow-xs dark:bg-[#1f222e] dark:text-white"
-                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-                )}
-                onClick={() => onSetTheme("dark")}
-                title="Modo escuro"
-              >
-                <Moon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
-                <span>Escuro</span>
-              </button>
-            </div>
+          <div className="p-1 space-y-0.5" role="group" aria-label="Aparência da interface">
+            <p className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-ink-faint dark:text-zinc-500 select-none">
+              Aparência
+            </p>
+            {themeOptions.map(({ id, label, Icon }) => {
+              const isSelected = theme === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={isSelected}
+                  onClick={() => onSetTheme(id)}
+                  className={cn(
+                    "flex h-8 w-full items-center justify-between gap-2.5 rounded-xl px-2.5 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40 cursor-pointer",
+                    isSelected
+                      ? "bg-violet-500/[0.08] text-violet-950 font-semibold dark:bg-violet-500/[0.12] dark:text-violet-200"
+                      : "text-zinc-600 hover:bg-black/[0.03] hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-200"
+                  )}
+                  title={`Tema ${label}`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Icon
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 transition-colors",
+                        isSelected
+                          ? "text-violet-600 dark:text-violet-400 opacity-100"
+                          : "opacity-60"
+                      )}
+                      strokeWidth={isSelected ? 2 : 1.75}
+                    />
+                    <span className="truncate">{label}</span>
+                  </div>
+                  {isSelected ? (
+                    <Check
+                      className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 shrink-0"
+                      strokeWidth={2.5}
+                      aria-hidden
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </>
       ) : null}
 
-      {/* ── 4. RODAPÉ: Sair ── */}
+      {/* ── 4. SAIR (LOGOUT) ── */}
       <div className="h-px bg-black/[0.06] dark:bg-white/[0.07]" />
-      <div className="p-1.5">
+      <div className="p-1">
         <button
           type="button"
           role="menuitem"
-          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-500/15 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/30"
+          className="flex h-8.5 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[12px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 dark:hover:bg-rose-500/15 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400/30 cursor-pointer"
           onClick={onLogout}
         >
-          <LogOut className="h-4 w-4 shrink-0 text-red-500 dark:text-red-400" strokeWidth={1.75} aria-hidden />
+          <LogOut className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400" strokeWidth={1.75} aria-hidden />
           <span>Sair</span>
         </button>
       </div>
