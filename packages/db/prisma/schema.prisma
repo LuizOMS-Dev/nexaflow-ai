@@ -103,6 +103,7 @@ enum SalesLeadStatus {
   NEW
   CONTACTED
   QUALIFIED
+  CONVERTED
   WON
   LOST
   SPAM
@@ -259,6 +260,7 @@ model Tenant {
   aiConfig            TenantAiConfig?
   charges             TenantCharge[]
   costs               TenantCost[]
+  convertedLeads      SalesLead[]         @relation("ConvertedSalesLeads")
 }
 
 /// Configuração de provedor de IA por empresa (BYOK).
@@ -1377,13 +1379,16 @@ model SalesLead {
   teamSize    String?
   message     String?
   source      String          @default("website")
-  status      SalesLeadStatus @default(NEW)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  status            SalesLeadStatus @default(NEW)
+  convertedTenantId String?
+  convertedTenant   Tenant?         @relation("ConvertedSalesLeads", fields: [convertedTenantId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([status, createdAt])
   @@index([email])
   @@index([createdAt])
+  @@index([convertedTenantId])
 }
 
 /// Consumo de IA por tenant (créditos mensais)

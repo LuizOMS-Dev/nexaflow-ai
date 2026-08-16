@@ -794,20 +794,20 @@ export default function AdminFinancePage() {
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-3 gap-3 text-center border-b border-white/[0.06] pb-3">
               <div>
-                <span className="text-[11px] font-medium text-gray-500 uppercase">Ativos</span>
+                <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Ativos</span>
                 <p className="mt-0.5 text-[17px] font-bold text-white tabular-nums">
                   {data.trials.total}
                 </p>
               </div>
               <div>
-                <span className="text-[11px] font-medium text-gray-500 uppercase">Vencem em 7 dias</span>
-                <p className={cn("mt-0.5 text-[17px] font-bold tabular-nums", data.trials.expiringIn7Days > 0 ? "text-amber-300" : "text-gray-400")}>
+                <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">Vencem em 7 dias</span>
+                <p className="mt-0.5 text-[17px] font-bold text-amber-400 tabular-nums">
                   {data.trials.expiringIn7Days}
                 </p>
               </div>
               <div>
-                <span className="text-[11px] font-medium text-gray-500 uppercase">Vencidos</span>
-                <p className={cn("mt-0.5 text-[17px] font-bold tabular-nums", data.trials.expired > 0 ? "text-red-400" : "text-gray-400")}>
+                <span className="text-[11px] font-semibold text-red-500 uppercase tracking-wider">Vencidos</span>
+                <p className="mt-0.5 text-[17px] font-bold text-red-500 tabular-nums">
                   {data.trials.expired}
                 </p>
               </div>

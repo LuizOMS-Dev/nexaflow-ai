@@ -15,7 +15,10 @@ describe("team invite + accept", () => {
     await app.ready();
     const suffix = Date.now().toString(36);
     const passwordHash = await hashPassword("Test@Pass12345");
-    const plan = await prisma.plan.findFirst();
+    const plan =
+      (await prisma.plan.findFirst({ where: { maxUsers: { gte: 5 }, isActive: true } })) ||
+      (await prisma.plan.findFirst({ where: { isActive: true } })) ||
+      (await prisma.plan.findFirst());
     const tenant = await prisma.tenant.create({
       data: {
         name: `Invite Co ${suffix}`,
@@ -23,6 +26,20 @@ describe("team invite + accept", () => {
         planId: plan?.id,
         status: "ACTIVE",
         settings: testTenantSettings({ suite: "invite" }),
+        ...(plan
+          ? {
+              subscriptions: {
+                create: {
+                  planId: plan.id,
+                  billingStatus: "ACTIVE",
+                  billingCycle: "MONTHLY",
+                  priceMonthly: 99,
+                  billingDueDay: 10,
+                  currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                },
+              },
+            }
+          : {}),
       },
     });
     tenantId = tenant.id;
