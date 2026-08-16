@@ -48,6 +48,7 @@ export default function AccountSecurityPage() {
   const [mfaError, setMfaError] = useState<string | null>(null);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [backupCodesAck, setBackupCodesAck] = useState(false);
+  const [copiedCodes, setCopiedCodes] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [disableOpen, setDisableOpen] = useState(false);
   const [mfaDisable, setMfaDisable] = useState({ password: "", code: "" });
@@ -190,6 +191,18 @@ export default function AccountSecurityPage() {
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
     toast({ kind: "success", title: "Chave manual copiada para a área de transferência." });
+  }
+
+  function handleCopyBackupCodes() {
+    if (!backupCodes || backupCodes.length === 0) return;
+    navigator.clipboard.writeText(backupCodes.join("\n"));
+    setCopiedCodes(true);
+    setTimeout(() => setCopiedCodes(false), 2000);
+    toast({
+      kind: "success",
+      title: "Códigos copiados",
+      description: "Todos os códigos de emergência foram copiados para a área de transferência.",
+    });
   }
 
   function handleDownloadBackupCodes() {
@@ -567,52 +580,97 @@ export default function AccountSecurityPage() {
         open={Boolean(backupCodes && backupCodes.length > 0)}
         onClose={() => {}}
         title="Códigos de recuperação de emergência"
+        description="Guarde estes códigos em um local seguro antes de continuar."
         size="md"
+        preventBackdropClose
+        icon={<KeyRound className="h-5 w-5 text-violet-600 dark:text-violet-400" />}
+        tone="violet"
       >
-        <div className="space-y-4 text-xs text-ink-muted dark:text-zinc-300">
-          <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20 text-amber-800 dark:text-amber-300 leading-relaxed">
-            <strong>Importante:</strong> Guarde estes códigos em local seguro. Cada código permite acessar a conta caso você perca o celular ou app autenticador.
+        <div className="space-y-4 pt-1">
+          {/* Banner de alerta âmbar refinado */}
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-3.5 text-amber-900 dark:text-amber-200">
+            <ShieldAlert className="h-4.5 w-4.5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" strokeWidth={2} />
+            <p className="text-[12px] leading-relaxed">
+              <strong className="font-semibold text-amber-950 dark:text-amber-100">Importante:</strong>{" "}
+              Estes códigos permitem recuperar o acesso à sua conta caso você perca o celular ou aplicativo autenticador. Cada código só pode ser usado uma única vez.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 p-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] font-mono text-center text-xs font-semibold text-ink dark:text-zinc-100">
-            {backupCodes?.map((code, i) => (
-              <div key={i} className="py-1 px-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.03] select-all">
-                {code}
-              </div>
-            ))}
+          {/* Grid elegante dos códigos com numeração e tipografia mono */}
+          <div className="rounded-2xl border border-black/[0.06] bg-black/[0.02] p-3 dark:border-white/[0.06] dark:bg-white/[0.02]">
+            <div className="grid grid-cols-2 gap-2">
+              {backupCodes?.map((code, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-xl border border-black/[0.05] bg-white/80 px-3 py-2 text-[12.5px] font-semibold text-ink shadow-2xs dark:border-white/[0.07] dark:bg-white/[0.04] dark:text-zinc-100 select-all group hover:border-violet-500/30 transition-colors"
+                >
+                  <span className="font-mono text-[10px] font-normal text-ink-faint dark:text-zinc-500 select-none">
+                    #{String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="font-mono tracking-widest">{code}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Ações de cópia e download */}
+            <div className="mt-3 flex items-center justify-center gap-2 pt-2.5 border-t border-black/[0.05] dark:border-white/[0.06]">
+              <button
+                type="button"
+                className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
+                onClick={handleCopyBackupCodes}
+              >
+                {copiedCodes ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-500" strokeWidth={2.5} />
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Copiados!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5 text-zinc-400" />
+                    <span>Copiar todos</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
+                onClick={handleDownloadBackupCodes}
+              >
+                <Download className="h-3.5 w-3.5 text-zinc-400" />
+                <span>Baixar arquivo .txt</span>
+              </button>
+            </div>
           </div>
 
-          <div className="flex justify-center">
-            <button
-              type="button"
-              className="btn-secondary h-8 px-3 text-xs font-medium gap-1.5"
-              onClick={handleDownloadBackupCodes}
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Baixar arquivo .txt</span>
-            </button>
-          </div>
-
-          <label className="flex items-start gap-2.5 cursor-pointer pt-2">
+          {/* Card de consentimento com checkbox */}
+          <label className="flex items-start gap-3 rounded-xl border border-black/[0.06] bg-black/[0.015] p-3 cursor-pointer hover:bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.02] dark:hover:bg-white/[0.04] transition-colors select-none">
             <input
               type="checkbox"
               checked={backupCodesAck}
               onChange={(e) => setBackupCodesAck(e.target.checked)}
-              className="h-4 w-4 rounded mt-0.5 accent-violet-600"
+              className="h-4 w-4 rounded mt-0.5 accent-violet-600 cursor-pointer shrink-0"
             />
-            <span className="text-[11.5px] font-medium text-ink dark:text-zinc-200">
-              Confirmo que salvei e guardei meus códigos de recuperação com segurança.
-            </span>
+            <div className="min-w-0 flex-1">
+              <span className="block text-[12px] font-semibold text-ink dark:text-zinc-100 leading-tight">
+                Confirmo que salvei e guardei meus códigos de recuperação
+              </span>
+              <span className="block text-[11px] text-ink-muted dark:text-zinc-400 mt-0.5 leading-snug">
+                Estes códigos não serão exibidos novamente após concluir esta etapa.
+              </span>
+            </div>
           </label>
 
-          <div className="flex justify-end pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
+          {/* Rodapé com botão concluir */}
+          <div className="flex justify-end pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
+              className="btn-primary h-9 px-5 text-xs font-semibold bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl shadow-md shadow-violet-600/20 active:scale-[0.985] transition-all flex items-center gap-1.5 cursor-pointer"
               disabled={!backupCodesAck}
               onClick={confirmBackupCodesAndContinue}
             >
-              Concluir e continuar
+              <span>Concluir e continuar</span>
+              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
             </button>
           </div>
         </div>
