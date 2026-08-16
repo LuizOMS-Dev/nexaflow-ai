@@ -471,12 +471,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       window.clearTimeout(userMenuCloseTimer.current);
       userMenuCloseTimer.current = null;
     }
-    setUserMenuPos(computeFloatingUserMenuPos(btn));
+    const pos = computeFloatingUserMenuPos(btn);
+    setUserMenuPos(pos);
     setUserMenuOpen(true);
     setUserMenuPresent(true);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => setUserMenuAnim(true));
-    });
+    setUserMenuAnim(true);
   }
 
   function closeUserMenu() {
@@ -1000,10 +999,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     createPortal(
       <div
         className={cn(
-          "nf-user-menu-floating-wrap fixed transition-all duration-150 ease-out",
-          userMenuAnim
-            ? "opacity-100 scale-100 translate-y-0"
-            : "opacity-0 scale-95 translate-y-1 pointer-events-none"
+          "nf-user-menu-floating-wrap fixed",
+          userMenuAnim && "is-open"
         )}
         style={{
           left: userMenuPos.left,

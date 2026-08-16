@@ -824,25 +824,22 @@ html.nf-panel-lock body {
     max-height: min(340px, 48vh);
   }
 
-  /* Floating (sidebar recolhida) */
+  /* Floating (sidebar recolhida e portal) */
   .nf-user-menu-floating-wrap {
     transform-origin: bottom left;
     opacity: 0;
-    transform: translate3d(-6px, 12px, 0) scale(0.94);
+    transform: translate3d(0, 6px, 0) scale(0.98);
     pointer-events: none;
     transition:
-      opacity var(--nf-um-dur-out) var(--nf-um-ease-out),
-      transform var(--nf-um-dur-out) var(--nf-um-ease-out);
+      opacity 180ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
     will-change: opacity, transform;
   }
 
   .nf-user-menu-floating-wrap.is-open {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-    pointer-events: auto;
-    transition:
-      opacity var(--nf-um-dur-in) var(--nf-um-ease),
-      transform var(--nf-um-dur-in) var(--nf-um-ease);
+    opacity: 1 !important;
+    transform: translate3d(0, 0, 0) scale(1) !important;
+    pointer-events: auto !important;
   }
 
   .nf-user-footer {
@@ -7217,9 +7214,9 @@ body:has(.nf-mod--inbox) .nf-nia-fab {
     transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .nf-user-menu-floating-wrap.is-open {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
+  pointer-events: auto !important;
 }
 
 @keyframes nf-menu-rise {
