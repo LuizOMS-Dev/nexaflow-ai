@@ -906,9 +906,70 @@ export default function AdminPlansPage() {
             ? "Crie uma cópia independente. O novo plano nasce indisponível para novas contratações."
             : "Defina preços de catálogo, limites técnicos e disponibilidade comercial."
         }
+        headerExtra={
+          isDirty ? (
+            <div className="flex items-center gap-2 animate-in fade-in duration-150">
+              <button
+                type="button"
+                onClick={requestCloseModal}
+                className="rounded-lg px-2.5 py-1 text-[11.5px] font-medium text-gray-400 hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const form = document.getElementById("plan-form-dialog") as HTMLFormElement | null;
+                  if (form) form.requestSubmit();
+                }}
+                disabled={createPlanMutation.isPending || updatePlanMutation.isPending}
+                className="rounded-lg bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
+              >
+                {createPlanMutation.isPending || updatePlanMutation.isPending
+                  ? "Salvando..."
+                  : modalMode === "create"
+                  ? "Criar plano"
+                  : modalMode === "duplicate"
+                  ? "Criar cópia"
+                  : "Salvar alterações"}
+              </button>
+            </div>
+          ) : undefined
+        }
         size="lg"
       >
-        <form onSubmit={handleFormSubmit} className="space-y-4.5">
+        <form id="plan-form-dialog" onSubmit={handleFormSubmit} className="space-y-4.5">
+          {/* Barra Flutuante de Ação Rápida no Topo do Formulário (aparece instantaneamente ao editar qualquer campo) */}
+          {isDirty && (
+            <div className="sticky -top-4 z-20 -mx-6 -mt-2 mb-3 px-6 py-2 bg-[#161a26]/95 backdrop-blur-md border-b border-violet-500/30 flex items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="flex items-center gap-2 text-[12px] text-violet-300">
+                <span className="h-2 w-2 rounded-full bg-violet-400 animate-pulse" />
+                <span className="font-medium">Alterações não salvas</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={requestCloseModal}
+                  className="rounded-md px-2.5 py-1 text-[11.5px] font-medium text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={createPlanMutation.isPending || updatePlanMutation.isPending}
+                  className="rounded-md bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  {createPlanMutation.isPending || updatePlanMutation.isPending
+                    ? "Salvando..."
+                    : modalMode === "create"
+                    ? "Criar plano"
+                    : modalMode === "duplicate"
+                    ? "Criar cópia"
+                    : "Salvar alterações"}
+                </button>
+              </div>
+            </div>
+          )}
           {/* Seção 1: Informações do Plano */}
           <div className="space-y-2.5">
             <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
