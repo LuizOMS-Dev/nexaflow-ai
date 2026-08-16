@@ -1312,12 +1312,30 @@ export default function AdminPlansPage() {
                 Limites do Produto
               </h4>
               <div
-                className="group relative flex items-center gap-1 text-[11px] text-violet-300/80 cursor-help"
+                className="group relative flex items-center gap-1.5 text-[11px] text-violet-300/90 cursor-pointer select-none"
                 tabIndex={0}
-                title="Alterações são aplicadas às empresas vinculadas que não possuem limites personalizados."
               >
-                <Info className="h-3 w-3 text-violet-400 shrink-0" />
-                <span>Limites dinâmicos</span>
+                <Info className="h-3.5 w-3.5 text-violet-400 shrink-0 transition-transform duration-150 group-hover:scale-110" />
+                <span className="border-b border-dashed border-violet-400/40 group-hover:border-violet-300 group-hover:text-white transition-colors">
+                  Limites dinâmicos
+                </span>
+
+                {/* Tooltip elegante flutuante com micro-animação */}
+                <div className="absolute right-0 top-full mt-2 w-80 z-50 rounded-xl border border-violet-500/30 bg-[#161a27] p-3.5 shadow-2xl shadow-black/80 backdrop-blur-xl opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 group-focus-within:opacity-100 group-focus-within:scale-100 transition-all duration-200 origin-top-right">
+                  <div className="flex items-start gap-2.5">
+                    <div className="h-2 w-2 rounded-full bg-violet-400 mt-1 shrink-0 animate-pulse" />
+                    <div className="space-y-1">
+                      <p className="text-[12px] font-bold text-white tracking-tight">
+                        Herança Dinâmica de Cotas
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-gray-300">
+                        Alterações nesses limites são aplicadas automaticamente a todas as empresas vinculadas a este plano que utilizam as cotas padrão de catálogo.
+                      </p>
+                    </div>
+                  </div>
+                  {/* Triângulo indicador discreto no topo */}
+                  <div className="absolute -top-1.5 right-6 h-3 w-3 rotate-45 border-l border-t border-violet-500/30 bg-[#161a27]" />
+                </div>
               </div>
             </div>
 
