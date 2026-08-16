@@ -92,7 +92,7 @@ export function defaultCompanyPlanId<T extends { id: string; slug?: string | nul
 
 /**
  * Label amigável no select de planos.
- * Free nunca vira "Gratuito · Gratuito · padrão".
+ * Formato padrão: 'Nome — Preço/mês' | 'Gratuito — Sem cobrança' | 'Enterprise — Sob consulta'
  */
 export function planSelectLabel(
   plan: {
@@ -101,7 +101,7 @@ export function planSelectLabel(
     priceMonthly?: number | string | null;
     priceOnRequest?: boolean | null;
   },
-  opts?: { asDefault?: boolean }
+  _opts?: { asDefault?: boolean }
 ): string {
   const slug = (plan.slug || "").toLowerCase();
   const isFree =
@@ -110,13 +110,10 @@ export function planSelectLabel(
     (Number(plan.priceMonthly) === 0 && !plan.priceOnRequest && slug !== "enterprise");
 
   if (isFree) {
-    // Plano de teste / entrada na plataforma
-    return opts?.asDefault
-      ? "Gratuito — teste da plataforma (padrão)"
-      : "Gratuito — teste da plataforma";
+    return "Gratuito — Sem cobrança";
   }
   if (plan.priceOnRequest || slug === "enterprise") {
-    return `${plan.name} · Sob consulta`;
+    return `${plan.name} — Sob consulta`;
   }
   const n = Number(plan.priceMonthly ?? 0);
   if (Number.isFinite(n) && n > 0) {
@@ -124,7 +121,7 @@ export function planSelectLabel(
       style: "currency",
       currency: "BRL",
     }).format(n);
-    return `${plan.name} · ${price}/mês`;
+    return `${plan.name} — ${price}/mês`;
   }
-  return plan.name;
+  return `${plan.name} — Sob consulta`;
 }

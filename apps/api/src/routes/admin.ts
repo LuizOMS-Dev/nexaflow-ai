@@ -775,7 +775,6 @@ export async function adminRoutes(app: FastifyInstance) {
             "ALL",
           ])
           .optional(),
-        /** Filtros financeiros / atalho UX */
         financial: z
           .enum([
             "ALL",
@@ -796,381 +795,32 @@ export async function adminRoutes(app: FastifyInstance) {
       })
       .parse(request.query || {});
 
-    const where: Record<string, unknown> = {};
-    if (q.status && q.status !== "ALL") where.status = q.status;
-    if (q.planId) where.planId = q.planId;
-    if (q.search?.trim()) {
-      const s = q.search.trim();
-      where.OR = [
-        { name: { contains: s, mode: "insensitive" } },
-        { slug: { contains: s.toLowerCase() } },
-        {
-          members: {
-            some: {
-              user: {
-                OR: [
-                  { email: { contains: s, mode: "insensitive" } },
-                  { name: { contains: s, mode: "insensitive" } },
-                ],
-              },
-            },
-          },
-        },
-      ];
-    }
-
-    const all = await prisma.tenant.findMany({
-      where,
-      include: {
-        plan: true,
-        _count: { select: { members: true, contacts: true, conversations: true } },
-        members: {
-          where: { role: "ADMIN", isActive: true },
-          take: 1,
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    const real = all.filter((t) => !isTestFixtureTenant(t));
-    const tenantIds = real.map((t) => t.id);
-    const subs = tenantIds.length
-      ? await prisma.subscription.findMany({
-          where: { tenantId: { in: tenantIds } },
-          include: { plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } } },
-        })
-      : [];
-    const subMap = new Map(subs.map((s) => [s.tenantId, s as SubRow]));
-
-    let enriched = real.map((t) => {
-      const billing = enrichTenantBilling(t, subMap.get(t.id));
-      const primaryAdmin = t.members[0]?.user || null;
-      const { members: _m, ...rest } = t;
-      return {
-        ...rest,
-        ...billing,
-        primaryAdmin,
-      };
-    });
-
-    if (q.financial && q.financial !== "ALL") {
-      if (q.financial === "NEEDS_ATTENTION") {
-        enriched = enriched.filter((t) => t.needsAttention);
-      } else {
-        enriched = enriched.filter((t) => t.financialStatus === q.financial);
-      }
-    }
-
-    // Resumo compacto (sobre o universo real filtrado só por status/plan/search, sem financial)
-    const summaryBase = real.map((t) =>
-      enrichTenantBilling(t, subMap.get(t.id))
-    );
-    const summary = {
-      total: real.length,
-      active: real.filter((t) => t.status === "ACTIVE").length,
-      overdue: summaryBase.filter((b) => b.financialStatus === "OVERDUE").length,
-      suspended: real.filter((t) => t.status === "SUSPENDED").length,
-      blocked: real.filter((t) => t.status === "BLOCKED").length,
-      trial: real.filter((t) => t.status === "TRIAL").length,
-      dueIn7Days: summaryBase.filter(
-        (b) =>
-          b.financialStatus === "DUE_SOON" ||
-          b.financialStatus === "DUE_TODAY"
-      ).length,
-      cancelled: real.filter(
-        (t) => t.status === "CANCELLED" || t.status === "PENDING_DELETION"
-      ).length,
-      needsAttention: summaryBase.filter((b) => b.needsAttention).length,
-    };
-
-    const total = enriched.length;
-    const start = (q.page - 1) * q.limit;
-    const items = enriched.slice(start, start + q.limit);
-
-    return {
-      items,
-      total,
-      page: q.page,
-      limit: q.limit,
-      totalPages: Math.max(1, Math.ceil(total / q.limit)),
-      summary,
-    };
+    const { listCompanies } = await import("../services/platform-admin/companies");
+    return listCompanies(q);
   });
 
   /** Detalhe completo da empresa (superadmin) */
   app.get("/admin/tenants/:id", async (request) => {
     const { id } = request.params as { id: string };
-    const tenant = assertFound(
-      await prisma.tenant.findUnique({
-        where: { id },
-        include: {
-          plan: true,
-          _count: {
-            select: {
-              members: true,
-              contacts: true,
-              conversations: true,
-              channels: true,
-              opportunities: true,
-              tasks: true,
-            },
-          },
-          members: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  avatarUrl: true,
-                  avatarType: true,
-                  avatarPresetId: true,
-                  avatarColor: true,
-                  isActive: true,
-                  lastLoginAt: true,
-                  createdAt: true,
-                },
-              },
-            },
-            orderBy: { createdAt: "asc" },
-          },
-        },
-      })
-    );
-
-    const [auditLogs, subscription, payments] = await Promise.all([
-      prisma.auditLog.findMany({
-        where: { tenantId: id },
-        include: {
-          user: { select: { id: true, name: true, email: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      }),
-      prisma.subscription.findUnique({
-        where: { tenantId: id },
-        include: {
-          plan: {
-            select: { id: true, name: true, priceMonthly: true, priceOnRequest: true },
-          },
-        },
-      }),
-      prisma.payment.findMany({
-        where: { tenantId: id },
-        orderBy: { paidAt: "desc" },
-        take: 50,
-      }),
-    ]);
-
-    const settings = tenantSettings(tenant.settings);
-    const billing = enrichTenantBilling(tenant, subscription as SubRow | null);
-
-    /** Cotas e consumo reais (usuários, agentes IA, créditos) — reutiliza entitlements */
-    const { getUsageSnapshot } = await import("../services/entitlements");
-    const usageSnapshot = await getUsageSnapshot(id);
-
-    return {
-      ...tenant,
-      ...billing,
-      profile: {
-        segment: (settings.segment as string) || null,
-        phone: (settings.phone as string) || null,
-        website: (settings.website as string) || null,
-        commercialEmail: (settings.commercialEmail as string) || null,
-        city: (settings.city as string) || null,
-        state: (settings.state as string) || null,
-        timezone: (settings.timezone as string) || "America/Sao_Paulo",
-        language: (settings.language as string) || "pt-BR",
-        onboardingCompleted: Boolean(settings.onboardingCompleted),
-      },
-      lifecycle: {
-        suspendedAt: (settings.suspendedAt as string) || null,
-        suspendReason: (settings.suspendReason as string) || null,
-        suspendedBy: (settings.suspendedBy as string) || null,
-        blockedAt: (settings.blockedAt as string) || null,
-        blockReason: (settings.blockReason as string) || null,
-        blockedBy: (settings.blockedBy as string) || null,
-        cancelledAt: (settings.cancelledAt as string) || null,
-        cancelReason: (settings.cancelReason as string) || null,
-        cancelledBy: (settings.cancelledBy as string) || null,
-        deletionRequestedAt: (settings.deletionRequestedAt as string) || null,
-        deletionRequestedBy: (settings.deletionRequestedBy as string) || null,
-        archivedAt: (settings.archivedAt as string) || null,
-        reactivatedAt: (settings.reactivatedAt as string) || null,
-      },
-      payments: payments.map((p) => ({
-        id: p.id,
-        amount: Number(p.amount),
-        paidAt: p.paidAt,
-        referencePeriod: p.referencePeriod,
-        method: p.method,
-        notes: p.notes,
-        createdBy: p.createdBy,
-        createdAt: p.createdAt,
-      })),
-      auditLogs,
-      /** Limites do plano + consumo (aba Uso no superadmin) */
-      limits: usageSnapshot.limits,
-      usage: usageSnapshot.usage,
-    };
+    const { getCompany } = await import("../services/platform-admin/companies");
+    return getCompany(id);
   });
 
   app.post("/admin/tenants", async (request) => {
     const body = z
       .object({
-        name: z.string().min(2).max(120),
+        name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(120),
         slug: z.string().optional(),
         planId: z.string().optional(),
-        adminEmail: z.string().email(),
-        adminName: z.string().min(2),
-        adminPassword: z.string().min(8).optional(),
+        adminEmail: z.string().email("E-mail inválido"),
+        adminName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+        adminPassword: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").optional(),
         forceSimilarName: z.boolean().optional(),
       })
       .parse(request.body);
 
-    const nameKey = normalizeNameKey(body.name);
-    const allTenants = await prisma.tenant.findMany({ select: { id: true, name: true } });
-    const similar = allTenants.filter((t) => normalizeNameKey(t.name) === nameKey);
-    if (similar.length && !body.forceSimilarName) {
-      throw new AppError(
-        `Já existe uma empresa com nome semelhante: ${similar.map((s) => s.name).join(", ")}`,
-        409,
-        "SIMILAR_TENANT_NAME"
-      );
-    }
-
-    const slug =
-      body.slug ||
-      body.name
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
-
-    if (await prisma.tenant.findUnique({ where: { slug } })) {
-      throw new AppError("Slug já existe", 409, "SLUG_TAKEN");
-    }
-
-    // Plano padrão: Gratuito (free). Fallback: Inicial (starter).
-    let planId = body.planId;
-    if (!planId) {
-      const free = await prisma.plan.findFirst({
-        where: { slug: "free" },
-      });
-      if (free) {
-        planId = free.id;
-      } else {
-        const starter = await prisma.plan.findFirst({
-          where: { slug: { in: ["starter", "initial"] } },
-        });
-        planId = starter?.id;
-      }
-    }
-
-    const email = body.adminEmail.toLowerCase().trim();
-    let user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      // Preferencial: se não houver senha, gera temporária (convite futuro)
-      const tempPassword =
-        body.adminPassword || `${randomBytes(18).toString("base64url")}Aa1!`;
-      user = await prisma.user.create({
-        data: {
-          email,
-          name: body.adminName,
-          passwordHash: await hashPassword(tempPassword),
-          status: body.adminPassword ? "ACTIVE" : "INVITED",
-        },
-      });
-    }
-
-    const tenant = await prisma.tenant.create({
-      data: {
-        name: body.name.trim(),
-        slug,
-        planId,
-        status: "ACTIVE",
-        // Empresa criada no Superadmin: perfil já definido — não forçar wizard de onboarding
-        settings: {
-          onboardingCompleted: true,
-          adminProvisioned: true,
-          provisionedAt: new Date().toISOString(),
-          timezone: "America/Sao_Paulo",
-          language: "pt-BR",
-        },
-        members: { create: { userId: user.id, role: "ADMIN" } },
-        pipelines: {
-          create: {
-            name: "Funil Comercial",
-            isDefault: true,
-            stages: {
-              create: [
-                { name: "Novos leads", position: 0, probability: 10, color: "#94a3b8" },
-                { name: "Qualificado", position: 1, probability: 40, color: "#3b82f6" },
-                { name: "Proposta", position: 2, probability: 70, color: "#f59e0b" },
-                { name: "Ganho", position: 3, probability: 100, color: "#22c55e", isWon: true },
-                { name: "Perdido", position: 4, probability: 0, color: "#ef4444", isLost: true },
-              ],
-            },
-          },
-        },
-        channels: {
-          // WEBCHAT não conta no limite de WhatsApp do plano
-          create: { type: "WEBCHAT", name: "Chat do site" },
-        },
-        aiAgents: {
-          create: {
-            name: "Assistente",
-            instructions: "Assistente comercial padrão. Responda em pt-BR. Não invente preços.",
-          },
-        },
-      },
-      include: { plan: true },
-    });
-
-    // Knowledge inicial da EMPRESA (Planos e preços em rascunho — sem Plan NexaFlow)
-    try {
-      const { provisionTenantKnowledge, ensureOptionalTrainingDocs } = await import(
-        "../services/knowledge-starter"
-      );
-      await provisionTenantKnowledge(tenant.id);
-      await ensureOptionalTrainingDocs(tenant.id);
-    } catch {
-      /* não bloqueia criação da empresa */
-    }
-
-    // Setup histórico: agente + funil padrão já criados (não o WhatsApp)
-    void import("../services/tenant-setup-checklist")
-      .then(async ({ markAgentCreated, markPipelineCreated }) => {
-        await markAgentCreated(tenant.id);
-        await markPipelineCreated(tenant.id);
-      })
-      .catch(() => null);
-
-    if (tenant.planId) {
-      const { ensureTenantSubscription } = await import("../services/entitlements");
-      await ensureTenantSubscription({
-        tenantId: tenant.id,
-        planId: tenant.planId,
-        billingStatus: "ACTIVE",
-        updateContractedPrice: true,
-      });
-    }
-
-    await audit({
-      userId: request.user.sub,
-      tenantId: tenant.id,
-      action: "admin.tenant.create",
-      entity: "tenant",
-      entityId: tenant.id,
-      metadata: { adminUserId: user.id },
-      ip: request.ip,
-    });
-
-    return tenant;
+    const { createCompany } = await import("../services/platform-admin/companies");
+    return createCompany(body, { sub: request.user.sub, ip: request.ip });
   });
 
   app.patch("/admin/tenants/:id", async (request) => {

@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
-import { api, isSuperadminMfaRequiredError } from "@/lib/api";
+import { api, ApiError, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/components/ui-toast";
@@ -256,7 +256,7 @@ export default function AdminPlansPage() {
   // Mutations
   const createPlanMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      api<Plan>("/admin/plans", { method: "POST", body: JSON.stringify(payload) }),
+      api<Plan>("/admin/plans", { method: "POST", json: payload }),
     onSuccess: (newPlan) => {
       toast.success(
         "Plano criado",
@@ -266,7 +266,9 @@ export default function AdminPlansPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
-      if (err.message?.includes("identificador")) {
+      if (err instanceof ApiError && err.fieldErrors) {
+        setFieldErrors(err.fieldErrors);
+      } else if (err.message?.includes("identificador")) {
         setFieldErrors((prev) => ({ ...prev, slug: "Este identificador já está sendo usado por outro plano." }));
       }
       toast.error(
@@ -278,7 +280,7 @@ export default function AdminPlansPage() {
 
   const updatePlanMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
-      api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+      api<Plan>(`/admin/plans/${id}`, { method: "PATCH", json: payload }),
     onSuccess: (updated) => {
       toast.success(
         "Alterações salvas",
@@ -288,9 +290,12 @@ export default function AdminPlansPage() {
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
+      if (err instanceof ApiError && err.fieldErrors) {
+        setFieldErrors(err.fieldErrors);
+      }
       toast.error(
-        "Não foi possível salvar o plano",
-        err.message || "Verifique a conexão e tente novamente."
+        "Não foi possível salvar as alterações",
+        err.message || "Verifique os dados informados e tente novamente."
       );
     },
   });
@@ -316,7 +321,7 @@ export default function AdminPlansPage() {
 
   const toggleArchiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
+      api<Plan>(`/admin/plans/${id}`, { method: "PATCH", json: { isActive } }),
     onSuccess: (_, variables) => {
       if (variables.isActive) {
         toast.success(
@@ -332,9 +337,11 @@ export default function AdminPlansPage() {
       setPlanToArchive(null);
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
-    onError: (err: any) => {
+    onError: (err: any, variables) => {
       toast.error(
-        "Não foi possível alterar status do plano",
+        variables.isActive
+          ? "Não foi possível restaurar o plano"
+          : "Não foi possível arquivar o plano",
         err.message || "Ocorreu um erro ao atualizar o plano."
       );
     },
@@ -595,7 +602,8 @@ export default function AdminPlansPage() {
     if (modalMode === "create" || modalMode === "duplicate") {
       createPlanMutation.mutate(payload);
     } else if (modalMode === "edit" && editingPlan) {
-      updatePlanMutation.mutate({ id: editingPlan.id, payload });
+      const { slug, ...editPayload } = payload;
+      updatePlanMutation.mutate({ id: editingPlan.id, payload: editPayload });
     }
   };
 
@@ -1290,13 +1298,25 @@ export default function AdminPlansPage() {
                   Usuários *
                 </label>
                 <input
+                  id="field-maxUsers"
                   type="text"
                   placeholder="1"
                   value={formData.maxUsers}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, maxUsers: formatIntegerInput(e.target.value) }))}
+                  onChange={(e) => {
+                    setFieldErrors((prev) => ({ ...prev, maxUsers: "" }));
+                    setFormData((prev) => ({ ...prev, maxUsers: formatIntegerInput(e.target.value) }));
+                  }}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums transition-colors",
+                    fieldErrors.maxUsers
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.maxUsers && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.maxUsers}</p>
+                )}
               </div>
 
               <div>
@@ -1304,13 +1324,25 @@ export default function AdminPlansPage() {
                   WhatsApp *
                 </label>
                 <input
+                  id="field-maxChannels"
                   type="text"
                   placeholder="1"
                   value={formData.maxChannels}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, maxChannels: formatIntegerInput(e.target.value) }))}
+                  onChange={(e) => {
+                    setFieldErrors((prev) => ({ ...prev, maxChannels: "" }));
+                    setFormData((prev) => ({ ...prev, maxChannels: formatIntegerInput(e.target.value) }));
+                  }}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums transition-colors",
+                    fieldErrors.maxChannels
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.maxChannels && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.maxChannels}</p>
+                )}
               </div>
 
               <div>
@@ -1318,13 +1350,25 @@ export default function AdminPlansPage() {
                   Agentes IA *
                 </label>
                 <input
+                  id="field-maxAgents"
                   type="text"
                   placeholder="1"
                   value={formData.maxAgents}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, maxAgents: formatIntegerInput(e.target.value) }))}
+                  onChange={(e) => {
+                    setFieldErrors((prev) => ({ ...prev, maxAgents: "" }));
+                    setFormData((prev) => ({ ...prev, maxAgents: formatIntegerInput(e.target.value) }));
+                  }}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums transition-colors",
+                    fieldErrors.maxAgents
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.maxAgents && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.maxAgents}</p>
+                )}
               </div>
 
               <div>
@@ -1332,13 +1376,25 @@ export default function AdminPlansPage() {
                   Contatos *
                 </label>
                 <input
+                  id="field-maxContacts"
                   type="text"
                   placeholder="500"
                   value={formData.maxContacts}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, maxContacts: formatIntegerInput(e.target.value) }))}
+                  onChange={(e) => {
+                    setFieldErrors((prev) => ({ ...prev, maxContacts: "" }));
+                    setFormData((prev) => ({ ...prev, maxContacts: formatIntegerInput(e.target.value) }));
+                  }}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums transition-colors",
+                    fieldErrors.maxContacts
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.maxContacts && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.maxContacts}</p>
+                )}
               </div>
 
               <div>
@@ -1346,13 +1402,25 @@ export default function AdminPlansPage() {
                   Fluxos *
                 </label>
                 <input
+                  id="field-maxActiveFlows"
                   type="text"
                   placeholder="5"
                   value={formData.maxActiveFlows}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, maxActiveFlows: formatIntegerInput(e.target.value) }))}
+                  onChange={(e) => {
+                    setFieldErrors((prev) => ({ ...prev, maxActiveFlows: "" }));
+                    setFormData((prev) => ({ ...prev, maxActiveFlows: formatIntegerInput(e.target.value) }));
+                  }}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums transition-colors",
+                    fieldErrors.maxActiveFlows
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.maxActiveFlows && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.maxActiveFlows}</p>
+                )}
               </div>
 
               <div>
@@ -1360,13 +1428,25 @@ export default function AdminPlansPage() {
                   Créditos IA / mês *
                 </label>
                 <input
+                  id="field-maxAiMessages"
                   type="text"
                   placeholder="100"
                   value={formData.maxAiMessages}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, maxAiMessages: formatIntegerInput(e.target.value) }))}
+                  onChange={(e) => {
+                    setFieldErrors((prev) => ({ ...prev, maxAiMessages: "" }));
+                    setFormData((prev) => ({ ...prev, maxAiMessages: formatIntegerInput(e.target.value) }));
+                  }}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[13px] text-white focus:outline-none tabular-nums transition-colors",
+                    fieldErrors.maxAiMessages
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.maxAiMessages && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.maxAiMessages}</p>
+                )}
               </div>
             </div>
           </div>

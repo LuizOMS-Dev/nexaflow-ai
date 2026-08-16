@@ -452,4 +452,175 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
       });
     }
   });
+
+  it("12. Contrato de Criação: Cria planos FIXED (com e sem desconto), FREE e SOB CONSULTA", async () => {
+    // 12.1 FIXED com desconto manual
+    const fixedRes = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Fixed Test ${suffix}`,
+        slug: `fixed-test-${suffix}`,
+        description: "Plano fixo com desconto anual de 15%",
+        priceMonthly: 299,
+        priceAnnual: 3049.8,
+        priceOnRequest: false,
+        maxUsers: 5,
+        maxChannels: 3,
+        maxContacts: 2500,
+        maxConversations: 10000,
+        maxAiMessages: 500,
+        sortOrder: 50,
+        isActive: true,
+        features: { maxAgents: 3, maxActiveFlows: 15 },
+      },
+    });
+    expect(fixedRes.statusCode).toBe(200);
+    const fixedPlan = fixedRes.json();
+    expect(fixedPlan.name).toBe(`Plano Fixed Test ${suffix}`);
+    expect(Number(fixedPlan.priceMonthly)).toBe(299);
+    expect(Number(fixedPlan.priceAnnual)).toBe(3049.8);
+    expect(fixedPlan.priceOnRequest).toBe(false);
+
+    // 12.2 SOB CONSULTA / ON_REQUEST
+    const quoteRes = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Enterprise Test ${suffix}`,
+        slug: `enterprise-test-${suffix}`,
+        description: "Plano customizado sob consulta",
+        priceMonthly: 0,
+        priceAnnual: null,
+        priceOnRequest: true,
+        maxUsers: 50,
+        maxChannels: 20,
+        maxContacts: 100000,
+        maxConversations: 50000,
+        maxAiMessages: 10000,
+        isActive: true,
+      },
+    });
+    expect(quoteRes.statusCode).toBe(200);
+    const quotePlan = quoteRes.json();
+    expect(quotePlan.priceOnRequest).toBe(true);
+    expect(Number(quotePlan.priceMonthly)).toBe(0);
+    expect(quotePlan.priceAnnual).toBeNull();
+
+    // Cleanup
+    await prisma.plan.deleteMany({
+      where: { id: { in: [fixedPlan.id, quotePlan.id] } },
+    });
+  });
+
+  it("13. Edição Completa: Atualiza nome, descrição, preço, limites, disponibilidade e ordem via PATCH", async () => {
+    // Cria plano base
+    const baseRes = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Editavel ${suffix}`,
+        slug: `editavel-${suffix}`,
+        priceMonthly: 199,
+        maxUsers: 2,
+        maxChannels: 1,
+        maxContacts: 1000,
+        maxConversations: 5000,
+        maxAiMessages: 200,
+        isActive: true,
+        sortOrder: 10,
+      },
+    });
+    expect(baseRes.statusCode).toBe(200);
+    const plan = baseRes.json();
+
+    // Edita todos os campos via PATCH
+    const patchRes = await app.inject({
+      method: "PATCH",
+      url: `/admin/plans/${plan.id}`,
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Editado com Sucesso ${suffix}`,
+        description: "Nova descrição comercial detalhada",
+        priceMonthly: 249,
+        priceAnnual: 2539.8,
+        maxUsers: 8,
+        maxChannels: 4,
+        maxContacts: 5000,
+        maxConversations: 20000,
+        maxAiMessages: 1000,
+        isActive: false,
+        sortOrder: 20,
+        features: { maxAgents: 5, maxActiveFlows: 25 },
+      },
+    });
+    expect(patchRes.statusCode).toBe(200);
+    const updated = patchRes.json();
+    expect(updated.name).toBe(`Plano Editado com Sucesso ${suffix}`);
+    expect(updated.description).toBe("Nova descrição comercial detalhada");
+    expect(Number(updated.priceMonthly)).toBe(249);
+    expect(Number(updated.priceAnnual)).toBe(2539.8);
+    expect(updated.maxUsers).toBe(8);
+    expect(updated.maxChannels).toBe(4);
+    expect(updated.maxContacts).toBe(5000);
+    expect(updated.isActive).toBe(false);
+    expect(updated.sortOrder).toBe(20);
+    expect((updated.features as any).maxAgents).toBe(5);
+
+    // Reativa disponibilidade
+    const reactivateRes = await app.inject({
+      method: "PATCH",
+      url: `/admin/plans/${plan.id}`,
+      headers: auth(superadminToken),
+      payload: { isActive: true },
+    });
+    expect(reactivateRes.statusCode).toBe(200);
+    expect(reactivateRes.json().isActive).toBe(true);
+
+    await prisma.plan.delete({ where: { id: plan.id } });
+  });
+
+  it("14. Validação & Erros Inline: Retorna VALIDATION_ERROR e mapa de fieldErrors estruturados", async () => {
+    // Tentativa com dados inválidos (nome curto, slug inválido com maiúsculas/espaços, limites negativos)
+    const invalidRes = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: "A",
+        slug: "Slug Invalido Com Espaco!",
+        priceMonthly: -50,
+        maxUsers: 0,
+      },
+    });
+    expect(invalidRes.statusCode).toBe(400);
+    const body = invalidRes.json();
+    expect(body.error).toBe("VALIDATION_ERROR");
+    expect(body.fieldErrors).toBeDefined();
+    expect(body.fieldErrors.name).toBeDefined();
+    expect(body.fieldErrors.slug).toBeDefined();
+    expect(body.fieldErrors.priceMonthly).toBeDefined();
+    expect(body.fieldErrors.maxUsers).toBeDefined();
+
+    // Tentativa com slug duplicado
+    const firstPlan = await prisma.plan.findFirst();
+    if (firstPlan) {
+      const dupRes = await app.inject({
+        method: "POST",
+        url: "/admin/plans",
+        headers: auth(superadminToken),
+        payload: {
+          name: "Plano Duplicado",
+          slug: firstPlan.slug,
+          priceMonthly: 100,
+        },
+      });
+      expect(dupRes.statusCode).toBe(400);
+      expect(dupRes.json().error).toBe("VALIDATION_ERROR");
+      expect(dupRes.json().message).toContain("identificador já está sendo usado");
+    }
+  });
 });

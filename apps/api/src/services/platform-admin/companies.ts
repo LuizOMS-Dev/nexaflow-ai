@@ -5,7 +5,7 @@ import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
 import { hashPassword, validatePasswordPolicy } from "../security/password";
 import { recordSecurityEvent } from "../security/security-event";
-import { advancePeriodAfterPayment } from "../billing";
+import { advancePeriodAfterPayment, computeNextDueDate } from "../billing";
 import { enrichTenantBilling, type SubscriptionRow } from "./billing-view";
 import { isTestFixtureTenant, normalizeNameKey, slugify, tenantSettings } from "./fixtures";
 
@@ -30,6 +30,8 @@ const FINANCIAL_FILTERS = [
   "SUSPENDED",
   "NEEDS_ATTENTION",
 ] as const;
+
+const JUNK_PLAN_SLUGS = new Set(["basic", "premium", "trial", "demo", "test", "initial"]);
 
 export type ListCompaniesQuery = {
   search?: string;
@@ -117,12 +119,16 @@ export async function listCompanies(q: ListCompaniesQuery) {
   }
 
   const summaryBase = real.map((t) => enrichTenantBilling(t, subMap.get(t.id)));
+  const suspendedCount = real.filter((t) => t.status === "SUSPENDED").length;
+  const blockedCount = real.filter((t) => t.status === "BLOCKED").length;
+
   const summary = {
     total: real.length,
     active: real.filter((t) => t.status === "ACTIVE").length,
     overdue: summaryBase.filter((b) => b.financialStatus === "OVERDUE").length,
-    suspended: real.filter((t) => t.status === "SUSPENDED").length,
-    blocked: real.filter((t) => t.status === "BLOCKED").length,
+    suspended: suspendedCount,
+    blocked: blockedCount,
+    suspendedBlocked: suspendedCount + blockedCount,
     trial: real.filter((t) => t.status === "TRIAL").length,
     dueIn7Days: summaryBase.filter(
       (b) => b.financialStatus === "DUE_SOON" || b.financialStatus === "DUE_TODAY"
@@ -266,7 +272,12 @@ export async function createCompany(
   },
   actor: { sub: string; ip?: string }
 ) {
-  const nameKey = normalizeNameKey(input.name);
+  const trimmedName = input.name.trim();
+  if (trimmedName.length < 2) {
+    throw new AppError("O nome da empresa deve ter pelo menos 2 caracteres.", 400, "INVALID_NAME");
+  }
+
+  const nameKey = normalizeNameKey(trimmedName);
   const similar = (
     await prisma.tenant.findMany({ select: { id: true, name: true } })
   ).filter((t) => normalizeNameKey(t.name) === nameKey);
@@ -278,113 +289,202 @@ export async function createCompany(
     );
   }
 
-  const slug = input.slug || slugify(input.name);
-  if (await prisma.tenant.findUnique({ where: { slug } })) {
-    throw new AppError("Este identificador já está em uso.", 409, "SLUG_TAKEN");
-  }
-
-  let planId = input.planId;
-  if (!planId) {
-    const free = await prisma.plan.findFirst({ where: { slug: "free" } });
-    planId = free?.id || (await prisma.plan.findFirst({ where: { slug: { in: ["starter", "initial"] } } }))?.id;
-  }
-
   const email = input.adminEmail.toLowerCase().trim();
-  let user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    if (input.adminPassword) {
-      const policy = validatePasswordPolicy(input.adminPassword);
-      if (policy) throw new AppError(policy, 400, "WEAK_PASSWORD");
-    }
-    const tempPassword = input.adminPassword || `${randomBytes(18).toString("base64url")}Aa1!`;
-    user = await prisma.user.create({
-      data: {
-        email,
-        name: input.adminName,
-        passwordHash: await hashPassword(tempPassword),
-        status: input.adminPassword ? "ACTIVE" : "INVITED",
-      },
-    });
+  if (!email || !email.includes("@")) {
+    throw new AppError("E-mail do administrador inválido.", 400, "INVALID_EMAIL");
   }
 
-  const tenant = await prisma.tenant.create({
-    data: {
-      name: input.name.trim(),
-      slug,
-      planId,
-      status: "ACTIVE",
-      settings: {
-        onboardingCompleted: true,
-        adminProvisioned: true,
-        provisionedAt: new Date().toISOString(),
-        timezone: "America/Sao_Paulo",
-        language: "pt-BR",
-      },
-      members: { create: { userId: user.id, role: "ADMIN" } },
-      pipelines: {
-        create: {
-          name: "Funil Comercial",
-          isDefault: true,
-          stages: {
-            create: [
-              { name: "Novos leads", position: 0, probability: 10, color: "#94a3b8" },
-              { name: "Qualificado", position: 1, probability: 40, color: "#3b82f6" },
-              { name: "Proposta", position: 2, probability: 70, color: "#f59e0b" },
-              { name: "Ganho", position: 3, probability: 100, color: "#22c55e", isWon: true },
-              { name: "Perdido", position: 4, probability: 0, color: "#ef4444", isLost: true },
-            ],
+  const adminName = input.adminName.trim();
+  if (adminName.length < 2) {
+    throw new AppError("Nome do administrador deve ter pelo menos 2 caracteres.", 400, "INVALID_ADMIN_NAME");
+  }
+
+  // Executa toda a criação em transação atômica
+  const created = await prisma.$transaction(async (tx) => {
+    // 1. Slug único
+    let slug = (input.slug || slugify(trimmedName)).trim().toLowerCase();
+    if (!slug) slug = `tenant-${randomBytes(4).toString("hex")}`;
+    
+    if (input.slug) {
+      const existingSlug = await tx.tenant.findUnique({ where: { slug } });
+      if (existingSlug) {
+        throw new AppError("Este identificador (slug) já está em uso.", 409, "SLUG_TAKEN");
+      }
+    } else {
+      // Auto-gerado: garante unicidade adicionando sufixo se necessário
+      const existingSlug = await tx.tenant.findUnique({ where: { slug } });
+      if (existingSlug) {
+        slug = `${slug}-${randomBytes(3).toString("hex")}`;
+      }
+    }
+
+    // 2. Validação do Plano
+    let plan = null;
+    if (input.planId) {
+      plan = await tx.plan.findUnique({ where: { id: input.planId } });
+      if (!plan || plan.isActive === false || JUNK_PLAN_SLUGS.has(plan.slug)) {
+        throw new AppError(
+          "O plano selecionado está inativo ou indisponível para novas contratações.",
+          400,
+          "PLAN_UNAVAILABLE"
+        );
+      }
+    } else {
+      // Default: Gratuito (free). Fallback: starter
+      plan =
+        (await tx.plan.findFirst({ where: { slug: "free", isActive: true } })) ||
+        (await tx.plan.findFirst({
+          where: { slug: { in: ["starter", "initial"] }, isActive: true },
+        })) ||
+        (await tx.plan.findFirst({ where: { isActive: true }, orderBy: { priceMonthly: "asc" } }));
+    }
+
+    // 3. Usuário Administrador
+    let user = await tx.user.findUnique({ where: { email } });
+    let isNewUser = false;
+    if (!user) {
+      isNewUser = true;
+      if (input.adminPassword) {
+        const policy = validatePasswordPolicy(input.adminPassword);
+        if (policy) throw new AppError(policy, 400, "WEAK_PASSWORD");
+      }
+      const tempPassword = input.adminPassword || `${randomBytes(18).toString("base64url")}Aa1!`;
+      user = await tx.user.create({
+        data: {
+          email,
+          name: adminName,
+          passwordHash: await hashPassword(tempPassword),
+          status: input.adminPassword ? "ACTIVE" : "INVITED",
+        },
+      });
+    }
+
+    // 4. Criação do Tenant
+    const tenant = await tx.tenant.create({
+      data: {
+        name: trimmedName,
+        slug,
+        planId: plan?.id || null,
+        status: "ACTIVE",
+        settings: {
+          onboardingCompleted: true,
+          adminProvisioned: true,
+          provisionedAt: new Date().toISOString(),
+          timezone: "America/Sao_Paulo",
+          language: "pt-BR",
+        },
+        members: {
+          create: {
+            userId: user.id,
+            role: "ADMIN",
+            isActive: true,
+          },
+        },
+        pipelines: {
+          create: {
+            name: "Funil Comercial",
+            isDefault: true,
+            stages: {
+              create: [
+                { name: "Novos leads", position: 0, probability: 10, color: "#94a3b8" },
+                { name: "Qualificado", position: 1, probability: 40, color: "#3b82f6" },
+                { name: "Proposta", position: 2, probability: 70, color: "#f59e0b" },
+                { name: "Ganho", position: 3, probability: 100, color: "#22c55e", isWon: true },
+                { name: "Perdido", position: 4, probability: 0, color: "#ef4444", isLost: true },
+              ],
+            },
+          },
+        },
+        channels: {
+          create: { type: "WEBCHAT", name: "Chat do site" },
+        },
+        aiAgents: {
+          create: {
+            name: "Assistente",
+            instructions: "Assistente comercial padrão. Responda em pt-BR. Não invente preços.",
           },
         },
       },
-      channels: { create: { type: "WEBCHAT", name: "Chat do site" } },
-      aiAgents: {
-        create: {
-          name: "Assistente",
-          instructions: "Assistente comercial padrão. Responda em pt-BR. Não invente preços.",
+      include: { plan: true },
+    });
+
+    // 5. Criação da Assinatura com Preço Contratado Congelado
+    let contractedPriceMonthly: number | null = null;
+    let contractedPriceAnnual: number | null = null;
+
+    if (plan) {
+      if (plan.slug === "free") {
+        contractedPriceMonthly = 0;
+        contractedPriceAnnual = 0;
+      } else if (plan.priceOnRequest || plan.slug === "enterprise") {
+        contractedPriceMonthly = null;
+        contractedPriceAnnual = null;
+      } else {
+        const catMonthly = Number(plan.priceMonthly || 0);
+        contractedPriceMonthly = catMonthly;
+        contractedPriceAnnual =
+          plan.priceAnnual != null
+            ? Number(plan.priceAnnual)
+            : Math.round(catMonthly * 12 * 100) / 100;
+      }
+
+      const billingDueDay = 10;
+      await tx.subscription.create({
+        data: {
+          tenantId: tenant.id,
+          planId: plan.id,
+          billingStatus: "ACTIVE",
+          billingCycle: "MONTHLY",
+          priceMonthly: contractedPriceMonthly,
+          priceAnnual: contractedPriceAnnual,
+          billingDueDay,
+          currentPeriodEnd: computeNextDueDate(billingDueDay),
         },
+      });
+    }
+
+    // 6. Registro de Auditoria Atômica
+    await tx.auditLog.create({
+      data: {
+        userId: actor.sub,
+        tenantId: tenant.id,
+        action: "admin.tenant.create",
+        entity: "tenant",
+        entityId: tenant.id,
+        metadata: {
+          adminUserId: user.id,
+          adminEmail: email,
+          isNewUser,
+          planId: plan?.id || null,
+          planSlug: plan?.slug || null,
+          contractedPriceMonthly,
+        },
+        ip: actor.ip || null,
       },
-    },
-    include: { plan: true },
+    });
+
+    return tenant;
   });
 
+  // Tarefas assíncronas complementares (não bloqueiam nem comprometem a transação)
   try {
     const { provisionTenantKnowledge, ensureOptionalTrainingDocs } = await import(
       "../knowledge-starter"
     );
-    await provisionTenantKnowledge(tenant.id);
-    await ensureOptionalTrainingDocs(tenant.id);
+    await provisionTenantKnowledge(created.id);
+    await ensureOptionalTrainingDocs(created.id);
   } catch {
     /* não bloqueia criação */
   }
 
   void import("../tenant-setup-checklist")
     .then(async ({ markAgentCreated, markPipelineCreated }) => {
-      await markAgentCreated(tenant.id);
-      await markPipelineCreated(tenant.id);
+      await markAgentCreated(created.id);
+      await markPipelineCreated(created.id);
     })
     .catch(() => null);
 
-  if (tenant.planId) {
-    const { ensureTenantSubscription } = await import("../entitlements");
-    await ensureTenantSubscription({
-      tenantId: tenant.id,
-      planId: tenant.planId,
-      billingStatus: "ACTIVE",
-      updateContractedPrice: true,
-    });
-  }
-
-  await audit({
-    userId: actor.sub,
-    tenantId: tenant.id,
-    action: "admin.tenant.create",
-    entity: "tenant",
-    entityId: tenant.id,
-    metadata: { adminUserId: user.id },
-    ip: actor.ip,
-  });
-
-  return tenant;
+  return created;
 }
 
 export type CompanyAction =

@@ -176,11 +176,21 @@ export async function buildApp() {
   app.setErrorHandler((error, request, reply) => {
     const requestId = request.id;
     if (error instanceof ZodError) {
+      const flattened = error.flatten();
+      const fieldErrors: Record<string, string> = {};
+      for (const [field, msgs] of Object.entries(flattened.fieldErrors)) {
+        if (msgs && msgs.length > 0) {
+          fieldErrors[field] = msgs[0];
+        }
+      }
+      const firstError =
+        Object.values(fieldErrors)[0] ||
+        (flattened.formErrors.length > 0 ? flattened.formErrors[0] : "Dados inválidos");
       return reply.status(400).send({
         error: "VALIDATION_ERROR",
-        message: "Dados inválidos",
+        message: firstError,
+        fieldErrors,
         requestId,
-        details: env.nodeEnv === "production" ? undefined : error.flatten(),
       });
     }
     if (error instanceof AppError) {

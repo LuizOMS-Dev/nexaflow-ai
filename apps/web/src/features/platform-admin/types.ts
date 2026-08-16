@@ -89,8 +89,10 @@ export type CompanyRow = {
   slug: string;
   status: TenantStatus;
   statusLabel?: string;
+  logoUrl?: string | null;
+  primaryColor?: string | null;
   createdAt: string;
-  plan?: { id: string; name: string; priceMonthly?: number | string } | null;
+  plan?: { id: string; name: string; slug?: string; priceMonthly?: number | string; priceOnRequest?: boolean } | null;
   _count?: { members: number; contacts: number; conversations: number };
   contractedPrice?: number | null;
   financialStatus?: FinancialStatus;
@@ -113,6 +115,7 @@ export type CompanyList = {
     overdue: number;
     suspended: number;
     blocked: number;
+    suspendedBlocked?: number;
     trial: number;
     dueIn7Days: number;
     cancelled: number;

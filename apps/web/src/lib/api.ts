@@ -40,17 +40,19 @@ export function getAccessToken() {
 export class ApiError extends Error {
   status: number;
   code?: string;
+  fieldErrors?: Record<string, string>;
   /** Presente em alguns 409 de domínio (ex.: CONTACT_PHONE_ALREADY_EXISTS). */
   contactId?: string;
   constructor(
     message: string,
     status: number,
     code?: string,
-    extras?: { contactId?: string }
+    extras?: { contactId?: string; fieldErrors?: Record<string, string> }
   ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.fieldErrors = extras?.fieldErrors;
     this.contactId = extras?.contactId;
   }
 }
@@ -109,17 +111,20 @@ export async function api<T = unknown>(
   const headers = new Headers(options.headers || {});
   const token = getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (options.json !== undefined) {
-    headers.set("Content-Type", "application/json");
-  }
-
   const method = (options.method || "GET").toUpperCase();
   const needsJsonBody = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
   let body: BodyInit | undefined | null =
     options.json !== undefined ? JSON.stringify(options.json) : options.body;
-  if (needsJsonBody && (body === undefined || body === null)) {
+
+  if (options.json !== undefined) {
     headers.set("Content-Type", "application/json");
-    body = "{}";
+  } else if (needsJsonBody) {
+    if (body === undefined || body === null) {
+      headers.set("Content-Type", "application/json");
+      body = "{}";
+    } else if (!headers.has("Content-Type") && !(body instanceof FormData)) {
+      headers.set("Content-Type", "application/json");
+    }
   }
 
   const timeoutMs = options.timeoutMs ?? 20000;
@@ -160,9 +165,11 @@ export async function api<T = unknown>(
       const body = data as {
         message?: string;
         error?: string;
+        fieldErrors?: Record<string, string>;
         contactId?: string;
       };
       throw new ApiError(body.message || "Erro na requisição", res.status, body.error, {
+        fieldErrors: body.fieldErrors,
         contactId: typeof body.contactId === "string" ? body.contactId : undefined,
       });
     }
