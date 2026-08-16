@@ -25,7 +25,7 @@ import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useToast } from "@/components/ui-toast";
-import { Modal, Skeleton } from "@/components/ui";
+import { Modal } from "@/components/ui";
 import {
   AdminEmptyState,
   AdminErrorState,
@@ -34,102 +34,23 @@ import {
   StatusBadge,
 } from "@/components/admin";
 
-type Plan = {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string | null;
-  priceMonthly: string | number;
-  priceAnnual?: string | number | null;
-  priceOnRequest?: boolean;
-  maxUsers: number;
-  maxChannels: number;
-  maxContacts: number;
-  maxConversations: number;
-  maxAiMessages: number;
-  badge?: string | null;
-  sortOrder?: number;
-  isActive: boolean;
-  features?: Record<string, unknown> | null;
-  _count?: { tenants: number };
-};
-
-type PlanFormState = {
-  name: string;
-  slug: string;
-  description: string;
-  priceType: "fixed" | "on_request" | "free";
-  priceMonthly: string;
-  priceAnnual: string;
-  maxUsers: string;
-  maxChannels: string;
-  maxAgents: string;
-  maxContacts: string;
-  maxActiveFlows: string;
-  maxAiMessages: string;
-  isActive: boolean;
-  badge: string;
-  sortOrder: string;
-};
-
-const PRICE_TYPE_OPTIONS = [
-  { value: "fixed", label: "Preço fixo comercial" },
-  { value: "on_request", label: "Sob consulta (Enterprise)" },
-  { value: "free", label: "Gratuito" },
-];
-
-const BADGE_OPTIONS = [
-  { value: "", label: "Nenhum" },
-  { value: "popular", label: "Mais popular" },
-  { value: "recommended", label: "Recomendado" },
-  { value: "best_value", label: "Melhor custo-benefício" },
-];
-
-const BADGE_LABEL: Record<string, string> = {
-  popular: "Mais popular",
-  recommended: "Recomendado",
-  best_value: "Melhor custo-benefício",
-};
-
-function formatBrlInput(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  const num = parseInt(digits, 10) / 100;
-  return new Intl.NumberFormat("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-
-function parseBrlInput(value: string): number {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return 0;
-  return parseInt(digits, 10) / 100;
-}
-
-function formatIntegerInput(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  const num = parseInt(digits, 10);
-  return num.toLocaleString("pt-BR");
-}
-
-function parseIntegerInput(value: string, fallback = 0): number {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return fallback;
-  return parseInt(digits, 10);
-}
-
-function slugify(name: string): string {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-}
+import {
+  type Plan,
+  type PlanFormState,
+  PRICE_TYPE_OPTIONS,
+  BADGE_OPTIONS,
+  BADGE_LABEL,
+  formatBrlInput,
+  parseBrlInput,
+  formatIntegerInput,
+  parseIntegerInput,
+  slugify,
+  getAnnualDiscountPercent,
+  calculateAnnualPriceWithDiscount,
+  calculateFullAnnualPrice,
+  emptyForm,
+  planToForm,
+} from "@/lib/plans";
 
 function CustomSelect({
   value,
@@ -223,54 +144,6 @@ function CustomSelect({
       )}
     </div>
   );
-}
-
-function emptyForm(): PlanFormState {
-  return {
-    name: "",
-    slug: "",
-    description: "",
-    priceType: "fixed",
-    priceMonthly: "",
-    priceAnnual: "",
-    maxUsers: "1",
-    maxChannels: "1",
-    maxAgents: "1",
-    maxContacts: "500",
-    maxActiveFlows: "5",
-    maxAiMessages: "100",
-    isActive: true,
-    badge: "",
-    sortOrder: "100",
-  };
-}
-
-function planToForm(p: Plan): PlanFormState {
-  const feats = (p.features || {}) as Record<string, unknown>;
-  const isEnterprise = Boolean(p.priceOnRequest) || p.slug === "enterprise";
-  const isFree = p.slug === "free" || Number(p.priceMonthly) === 0 && !isEnterprise;
-
-  let pType: "fixed" | "on_request" | "free" = "fixed";
-  if (isEnterprise) pType = "on_request";
-  else if (isFree) pType = "free";
-
-  return {
-    name: p.name,
-    slug: p.slug,
-    description: p.description || "",
-    priceType: pType,
-    priceMonthly: p.priceMonthly != null && Number(p.priceMonthly) > 0 ? formatBrlInput(Math.round(Number(p.priceMonthly) * 100).toString()) : "",
-    priceAnnual: p.priceAnnual != null && Number(p.priceAnnual) > 0 ? formatBrlInput(Math.round(Number(p.priceAnnual) * 100).toString()) : "",
-    maxUsers: p.maxUsers != null ? formatIntegerInput(p.maxUsers.toString()) : "1",
-    maxChannels: p.maxChannels != null ? formatIntegerInput(p.maxChannels.toString()) : "1",
-    maxAgents: feats.maxAgents != null ? formatIntegerInput(String(feats.maxAgents)) : "1",
-    maxContacts: p.maxContacts != null ? formatIntegerInput(p.maxContacts.toString()) : "500",
-    maxActiveFlows: feats.maxActiveFlows != null ? formatIntegerInput(String(feats.maxActiveFlows)) : "5",
-    maxAiMessages: p.maxAiMessages != null ? formatIntegerInput(p.maxAiMessages.toString()) : "100",
-    isActive: p.isActive,
-    badge: p.badge || "",
-    sortOrder: (p.sortOrder ?? 100).toString(),
-  };
 }
 
 export default function AdminPlansPage() {
@@ -466,24 +339,6 @@ export default function AdminPlansPage() {
     }
   };
 
-  const handleApplyDiscountSuggestion = (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    const monthly = parseBrlInput(formData.priceMonthly);
-    if (monthly <= 0) {
-      toast.error("Informe um preço mensal válido antes de calcular o desconto.");
-      return;
-    }
-    const suggested = Math.round(monthly * 12 * 0.85 * 100) / 100;
-    setFormData((prev) => ({
-      ...prev,
-      priceAnnual: formatBrlInput(Math.round(suggested * 100).toString()),
-    }));
-    toast.success(`Desconto de 15% aplicado: ${formatCurrency(suggested)}/ano`);
-  };
-
   if (user?.platformRole !== "SUPERADMIN") return null;
 
   if (isLoading) return <AdminPageSkeleton metrics={0} />;
@@ -573,6 +428,7 @@ export default function AdminPlansPage() {
             const isFree = plan.slug === "free" || Number(plan.priceMonthly) === 0 && !isEnterprise;
             const monthlyPrice = Number(plan.priceMonthly || 0);
             const annualPrice = plan.priceAnnual != null ? Number(plan.priceAnnual) : null;
+            const discountPct = getAnnualDiscountPercent(monthlyPrice, annualPrice);
             const feats = (plan.features || {}) as Record<string, unknown>;
             const maxAgents = feats.maxAgents != null ? Number(feats.maxAgents) : 1;
             const maxFlows = feats.maxActiveFlows != null ? Number(feats.maxActiveFlows) : 5;
@@ -592,7 +448,7 @@ export default function AdminPlansPage() {
                     : "border-white/[0.08] hover:border-white/[0.15]"
                 )}
               >
-                {/* Top: Header do Card (sem slug técnico) */}
+                {/* Top: Header do Card (sem slug técnico visível) */}
                 <div>
                   <div className="flex items-start justify-between gap-2 min-h-[32px]">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -636,9 +492,9 @@ export default function AdminPlansPage() {
                             <p className="text-[11.5px] text-gray-400 tabular-nums">
                               ou {formatCurrency(annualPrice)}/ano
                             </p>
-                            {monthlyPrice > 0 && annualPrice < monthlyPrice * 12 && (
+                            {discountPct > 0 && (
                               <span className="rounded bg-emerald-500/15 px-1.5 py-0.2 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
-                                {Math.round((1 - annualPrice / (monthlyPrice * 12)) * 100)}% OFF
+                                {discountPct}% OFF
                               </span>
                             )}
                           </div>
@@ -789,7 +645,7 @@ export default function AdminPlansPage() {
         </div>
       )}
 
-      {/* 3. MODAL UNIFICADO: PlanFormDialog (Criar / Editar / Duplicar) */}
+      {/* 3. MODAL UNIFICADO REFINADO: PlanFormDialog (Criar / Editar / Duplicar) */}
       <Modal
         open={modalMode !== null}
         onClose={requestCloseModal}
@@ -802,17 +658,17 @@ export default function AdminPlansPage() {
         }
         description={
           modalMode === "edit"
-            ? "Alterações no catálogo comercial não afetam os preços e contratos das empresas já assinantes."
+            ? "Alterações no catálogo não modificam preços contratados pelas empresas existentes."
             : modalMode === "duplicate"
-            ? "Crie uma cópia independente com novos limites e preços. O plano duplicado nasce indisponível por padrão."
+            ? "Crie uma cópia independente. O novo plano nasce indisponível para novas contratações."
             : "Defina preços de catálogo, limites técnicos e disponibilidade comercial."
         }
         size="lg"
       >
-        <form onSubmit={handleFormSubmit} className="space-y-5">
-          {/* Seção 1: Informações Comerciais */}
-          <div className="space-y-3">
-            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+        <form onSubmit={handleFormSubmit} className="space-y-4.5">
+          {/* Seção 1: Informações do Plano */}
+          <div className="space-y-2.5">
+            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
               Informações do Plano
             </h4>
 
@@ -867,9 +723,9 @@ export default function AdminPlansPage() {
             </div>
           </div>
 
-          {/* Seção 2: Precificação */}
-          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
-            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+          {/* Seção 2: Precificação de Catálogo */}
+          <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
+            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
               Precificação de Catálogo
             </h4>
 
@@ -883,6 +739,18 @@ export default function AdminPlansPage() {
                 options={PRICE_TYPE_OPTIONS}
               />
             </div>
+
+            {formData.priceType === "free" && (
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12px] text-gray-400">
+                Sem cobrança de catálogo comercial. As empresas cadastradas no plano gratuito não serão cobradas mensalmente.
+              </div>
+            )}
+
+            {formData.priceType === "on_request" && (
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12px] text-gray-400">
+                O valor e os termos comerciais serão definidos individualmente no contrato personalizado da empresa.
+              </div>
+            )}
 
             {formData.priceType === "fixed" && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -909,30 +777,52 @@ export default function AdminPlansPage() {
                   {(() => {
                     const parsedM = parseBrlInput(formData.priceMonthly);
                     const parsedA = parseBrlInput(formData.priceAnnual);
-                    const suggestedA = parsedM > 0 ? Math.round(parsedM * 12 * 0.85 * 100) / 100 : 0;
-                    const discountPct =
-                      parsedM > 0 && parsedA > 0 && parsedA < parsedM * 12
-                        ? Math.round((1 - parsedA / (parsedM * 12)) * 100)
-                        : 0;
+                    const discountPct = getAnnualDiscountPercent(parsedM, parsedA);
+                    const suggested15 = calculateAnnualPriceWithDiscount(parsedM, 15);
+                    const fullYear = calculateFullAnnualPrice(parsedM);
 
                     return (
                       <>
-                        <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1.5">
+                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
                           <label className="block text-[11.5px] font-medium text-gray-400">
                             Preço anual (R$)
                           </label>
                           {parsedM > 0 && (
-                            <button
-                              type="button"
-                              onClick={(e) => handleApplyDiscountSuggestion(e)}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/25 text-[11px] font-semibold transition-colors cursor-pointer"
-                              title="Calcular valor anual com 15% de desconto"
-                            >
-                              <Sparkles className="h-3 w-3 text-violet-400 shrink-0" />
-                              <span>
-                                Aplicar -15% · {formatCurrency(suggestedA)}/ano
-                              </span>
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              {discountPct > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      priceAnnual: formatBrlInput(Math.round(fullYear * 100).toString()),
+                                    }));
+                                    toast.info(`Desconto removido. Valor anual integral: ${formatCurrency(fullYear)}/ano`);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 text-[11px] font-medium transition-colors cursor-pointer"
+                                  title="Remover desconto e restaurar preço anual integral (mensal x 12)"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  Remover desconto
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      priceAnnual: formatBrlInput(Math.round(suggested15 * 100).toString()),
+                                    }));
+                                    toast.success(`Desconto de 15% aplicado: ${formatCurrency(suggested15)}/ano`);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/25 text-[11px] font-semibold transition-colors cursor-pointer"
+                                  title="Calcular valor anual com 15% de desconto"
+                                >
+                                  <Sparkles className="h-3 w-3 text-violet-400" />
+                                  Aplicar -15% · {formatCurrency(suggested15)}/ano
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                         <div className="relative">
@@ -960,10 +850,10 @@ export default function AdminPlansPage() {
             )}
           </div>
 
-          {/* Seção 3: Limites Oficiais */}
-          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
+          {/* Seção 3: Limites do Produto em 3 colunas */}
+          <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
             <div className="flex items-center justify-between">
-              <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+              <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
                 Limites do Produto
               </h4>
               {modalMode === "edit" && (
@@ -974,7 +864,7 @@ export default function AdminPlansPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 mb-1">
                   Usuários *
@@ -1062,8 +952,8 @@ export default function AdminPlansPage() {
           </div>
 
           {/* Seção 4: Exibição & Disponibilidade */}
-          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
-            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+          <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
+            <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
               Exibição & Disponibilidade
             </h4>
 
@@ -1093,10 +983,10 @@ export default function AdminPlansPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
               <div>
-                <p className="text-[13px] font-semibold text-white">Disponível para novas contratações</p>
-                <p className="text-[11.5px] text-gray-400">
+                <p className="text-[12.5px] font-semibold text-white">Disponível para novas contratações</p>
+                <p className="text-[11px] text-gray-400">
                   Novas empresas poderão visualizar e contratar este plano no catálogo comercial.
                 </p>
               </div>
