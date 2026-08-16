@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 export type SelectOption = {
   value: string;
   label: string;
+  /** Agrupamento visual de opções (ex.: "Brasil", "América Latina") */
+  group?: string;
   /** Linha secundária (ex.: telefone, e-mail) */
   description?: string;
   /** Avatar / ícone à esquerda (contato rico) */
@@ -88,7 +90,7 @@ function computeMenuWidth(params: {
 }
 
 /**
- * Select NexaFlow — substitui &lt;select&gt; nativo.
+ * Select NexaFlow — substitui <select> nativo.
  * Portal no body (sem clipping). Valores e onChange idênticos ao nativo.
  * Trigger compacto; menu com largura própria para texto completo.
  */
@@ -211,7 +213,6 @@ export function Select({
   }, [open, pos, options]);
 
   // Highlight inicial + close on outside click — só quando o menu abre
-  // (não reexecutar a cada mudança de `value` do formulário pai).
   useEffect(() => {
     if (!open) return;
     const idx = options.findIndex((o) => o.value === value && !o.disabled);
@@ -341,44 +342,53 @@ export function Select({
                 options.map((opt, i) => {
                   const isSelected = opt.value === value;
                   const isActive = i === highlight;
+                  const isGroupHeader = Boolean(
+                    opt.group && (i === 0 || options[i - 1]?.group !== opt.group)
+                  );
                   return (
-                    <div
-                      key={`${opt.value}-${i}`}
-                      id={`${listId}-opt-${i}`}
-                      role="option"
-                      data-idx={i}
-                      aria-selected={isSelected}
-                      aria-disabled={opt.disabled || undefined}
-                      className={cn(
-                        "nf-select-option",
-                        isSelected && "is-selected",
-                        isActive && "is-active",
-                        opt.disabled && "is-disabled"
-                      )}
-                      onMouseEnter={() => {
-                        if (!opt.disabled) setHighlight(i);
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        if (opt.disabled) return;
-                        commit(opt.value);
-                      }}
-                    >
-                      <span className="nf-select-option-check" aria-hidden>
-                        {isSelected ? <Check className="h-3.5 w-3.5" strokeWidth={2.25} /> : null}
-                      </span>
-                      {opt.leading ? (
-                        <span className="shrink-0 self-center">{opt.leading}</span>
+                    <div key={`${opt.value}-${i}`}>
+                      {isGroupHeader ? (
+                        <div className="px-2.5 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-[0.08em] text-violet-600 dark:text-violet-400 select-none border-t border-black/[0.04] dark:border-white/[0.06] first:border-t-0 first:pt-0.5">
+                          {opt.group}
+                        </div>
                       ) : null}
-                      <span className="nf-select-option-text min-w-0 flex-1">
-                        {/* Sem truncate no label — menu tem largura própria */}
-                        <span className="block whitespace-nowrap">{opt.label}</span>
-                        {opt.description ? (
-                          <span className="mt-0.5 block whitespace-nowrap text-[11px] text-ink-faint">
-                            {opt.description}
-                          </span>
+                      <div
+                        id={`${listId}-opt-${i}`}
+                        role="option"
+                        data-idx={i}
+                        aria-selected={isSelected}
+                        aria-disabled={opt.disabled || undefined}
+                        className={cn(
+                          "nf-select-option",
+                          isSelected && "is-selected",
+                          isActive && "is-active",
+                          opt.disabled && "is-disabled"
+                        )}
+                        onMouseEnter={() => {
+                          if (!opt.disabled) setHighlight(i);
+                        }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          if (opt.disabled) return;
+                          commit(opt.value);
+                        }}
+                      >
+                        <span className="nf-select-option-check" aria-hidden>
+                          {isSelected ? <Check className="h-3.5 w-3.5" strokeWidth={2.25} /> : null}
+                        </span>
+                        {opt.leading ? (
+                          <span className="shrink-0 self-center">{opt.leading}</span>
                         ) : null}
-                      </span>
+                        <span className="nf-select-option-text min-w-0 flex-1">
+                          {/* Sem truncate no label — menu tem largura própria */}
+                          <span className="block whitespace-nowrap">{opt.label}</span>
+                          {opt.description ? (
+                            <span className="mt-0.5 block whitespace-nowrap text-[11px] text-ink-faint">
+                              {opt.description}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
                     </div>
                   );
                 })

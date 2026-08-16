@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Spinner, useToast } from "@/components/ui";
+import { Select, Spinner, useToast, type SelectOption } from "@/components/ui";
 import { useAuth, type UserInfo } from "@/store/auth";
 import { getDetectedTimezone, TIMEZONE_OPTIONS } from "@/lib/user";
 import { applyUser, getRoleLabel } from "./account-utils";
@@ -30,6 +30,16 @@ export default function AccountProfilePage() {
     setPhone(user?.phone || "");
     setTimezone(user?.timezone || getDetectedTimezone() || "America/Sao_Paulo");
   }, [user?.name, user?.displayName, user?.phone, user?.timezone]);
+
+  const timezoneOptions: SelectOption[] = useMemo(
+    () =>
+      TIMEZONE_OPTIONS.map((opt) => ({
+        value: opt.value,
+        label: opt.label,
+        group: opt.group,
+      })),
+    []
+  );
 
   const profileMut = useMutation({
     mutationFn: () =>
@@ -77,9 +87,6 @@ export default function AccountProfilePage() {
     }
     profileMut.mutate();
   }
-
-  // Grupos de fusos horários para o optgroup
-  const timezoneGroups = Array.from(new Set(TIMEZONE_OPTIONS.map((o) => o.group)));
 
   return (
     <>
@@ -146,22 +153,13 @@ export default function AccountProfilePage() {
                 htmlFor="account-timezone"
                 hint="Utilizado para visualização de relatórios, atividades e sessões."
               >
-                <select
+                <Select
                   id="account-timezone"
                   value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="input h-9.5 w-full text-[13px] bg-[var(--surface-raised)]"
-                >
-                  {timezoneGroups.map((group) => (
-                    <optgroup key={group} label={group}>
-                      {TIMEZONE_OPTIONS.filter((opt) => opt.group === group).map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+                  onChange={setTimezone}
+                  options={timezoneOptions}
+                  placeholder="Selecione o fuso horário"
+                />
               </AccountField>
 
               {/* Linha 3: E-mail de acesso (largura total e bloqueado) */}

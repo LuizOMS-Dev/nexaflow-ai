@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Spinner, Switch, useToast } from "@/components/ui";
+import { Select, Spinner, Switch, useToast, type SelectOption } from "@/components/ui";
 import { useAuth, type UserInfo } from "@/store/auth";
 import { applyTheme, getStoredThemePreference, type ThemePreference } from "@/lib/theme";
 import { applyReduceMotion, isReduceMotionEffective } from "@/lib/motion";
@@ -96,6 +96,16 @@ export default function AccountPreferencesPage() {
     // Aplica reduceMotion ativo
     applyReduceMotion(Boolean(user?.preferences?.reduceMotion));
   }, [user?.preferences]);
+
+  const adminLandingOptions: SelectOption[] = useMemo(
+    () => ADMIN_LANDING_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+    []
+  );
+
+  const workspaceLandingOptions: SelectOption[] = useMemo(
+    () => WORKSPACE_LANDING_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+    []
+  );
 
   const baseline = useMemo(
     () => ({
@@ -303,33 +313,21 @@ export default function AccountPreferencesPage() {
 
           <div className="shrink-0 sm:w-64">
             {isSuperadmin ? (
-              <select
+              <Select
                 id="pref-admin-landing"
                 aria-label="Página inicial administrativa"
                 value={prefs.adminLandingPage}
-                onChange={(e) => setPrefs((p) => ({ ...p, adminLandingPage: e.target.value }))}
-                className="input h-9.5 w-full text-[13px] bg-[var(--surface-raised)]"
-              >
-                {ADMIN_LANDING_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setPrefs((p) => ({ ...p, adminLandingPage: val }))}
+                options={adminLandingOptions}
+              />
             ) : (
-              <select
+              <Select
                 id="pref-workspace-landing"
                 aria-label="Página inicial do workspace"
                 value={prefs.workspaceLandingPage}
-                onChange={(e) => setPrefs((p) => ({ ...p, workspaceLandingPage: e.target.value }))}
-                className="input h-9.5 w-full text-[13px] bg-[var(--surface-raised)]"
-              >
-                {WORKSPACE_LANDING_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setPrefs((p) => ({ ...p, workspaceLandingPage: val }))}
+                options={workspaceLandingOptions}
+              />
             )}
           </div>
         </div>
