@@ -257,6 +257,8 @@ model Tenant {
   agentTestRuns       AgentTestRun[]
   /// Config de provedor de IA do tenant (BYOK / padrão)
   aiConfig            TenantAiConfig?
+  charges             TenantCharge[]
+  costs               TenantCost[]
 }
 
 /// Configuração de provedor de IA por empresa (BYOK).
@@ -543,6 +545,7 @@ model Contact {
   notesList       Note[]
   memory          ContactMemory?
   scoreHistory    ContactScoreHistory[]
+  charges         TenantCharge[]
 
   @@index([tenantId])
   @@index([tenantId, phone])
@@ -809,6 +812,7 @@ model Opportunity {
   stage    PipelineStage        @relation(fields: [stageId], references: [id])
   contact  Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
   history  OpportunityHistory[]
+  charges  TenantCharge[]
 
   @@index([tenantId, pipelineId])
   @@index([stageId])
@@ -1528,3 +1532,58 @@ model UserReleaseSeen {
   @@index([userId])
   @@index([releaseId])
 }
+
+// ===================== FINANCEIRO DA EMPRESA (TENANT FINANCE) =====================
+
+/// Cobrança / Receita da empresa gerada para seus clientes/contatos
+model TenantCharge {
+  id            String       @id @default(cuid())
+  tenantId      String
+  contactId     String?
+  opportunityId String?
+  title         String
+  /// SUBSCRIPTION | SERVICE | PRODUCT | ONE_TIME | OTHER
+  category      String       @default("SUBSCRIPTION")
+  /// Valor da cobrança em BRL (Decimal preciso)
+  amount        Decimal      @default(0)
+  /// MONTHLY | ANNUAL | ONE_TIME | QUARTERLY
+  recurrence    String       @default("MONTHLY")
+  /// PENDING | PAID | OVERDUE | CANCELLED
+  status        String       @default("PENDING")
+  dueAt         DateTime
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact     Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, dueAt])
+  @@index([tenantId, contactId])
+  @@index([tenantId, createdAt])
+}
+
+/// Custos operacionais cadastrados pela empresa (equipe, anúncios, ferramentas, etc.)
+model TenantCost {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  /// TEAM | TOOLS | ADS | INFRASTRUCTURE | SUPPORT | OTHER
+  category   String   @default("TOOLS")
+  amount     Decimal  @default(0)
+  /// MONTHLY | ANNUAL | ONE_TIME
+  recurrence String   @default("MONTHLY")
+  isActive   Boolean  @default(true)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, category])
+}
+

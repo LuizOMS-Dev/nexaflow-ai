@@ -23,6 +23,7 @@ import { integrationRoutes } from "./routes/integrations";
 import { publicApiV1Routes } from "./routes/public-api-v1";
 import { contactRoutes } from "./routes/contacts";
 import { marketingRoutes } from "./routes/marketing";
+import { financeRoutes } from "./routes/finance";
 import { addClient, removeClient } from "./ws/hub";
 import { sanitizeRequestUrl } from "./lib/logger";
 
@@ -327,6 +328,7 @@ export async function buildApp() {
   await app.register(contactRoutes);
   await app.register(conversationRoutes);
   await app.register(crmRoutes);
+  await app.register(financeRoutes);
   await app.register(taskRoutes);
   await app.register(aiAgentRoutes);
   await app.register(agentAdvancedRoutes);

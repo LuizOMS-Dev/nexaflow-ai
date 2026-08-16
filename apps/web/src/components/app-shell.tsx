@@ -35,6 +35,7 @@ import {
   ChevronDown,
   Activity,
   UserPlus,
+  Wallet,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,7 @@ const tenantNavGroups = [
     items: [
       { href: "/app/contacts", label: "Contatos", icon: Users },
       { href: "/app/crm", label: "Funil", icon: Columns3 },
+      { href: "/app/finance", label: "Financeiro", icon: Wallet },
       { href: "/app/tasks", label: "Tarefas", icon: ListTodo },
       { href: "/app/campaigns", label: "Campanhas", icon: Megaphone },
     ],
