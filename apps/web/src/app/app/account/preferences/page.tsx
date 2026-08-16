@@ -254,7 +254,7 @@ export default function AccountPreferencesPage() {
                 type="button"
                 onClick={() => handleThemeChange(id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all",
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all duration-180 ease-out active:scale-[0.985]",
                   prefs.theme === id
                     ? "bg-white text-ink shadow-xs dark:bg-[#1f222e] dark:text-white"
                     : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"

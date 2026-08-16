@@ -4861,6 +4861,35 @@ html.dark .nf-date-input,
   }
 }
 
+/* Account / Minha Conta — transição fluida e rápida entre seções (opacity 0->1 + translateY 6px->0) */
+@keyframes nf-account-section-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.account-section-view {
+  animation: nf-account-section-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-section-view {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+[data-reduce-motion="true"] .account-section-view {
+  animation: none !important;
+  transform: none !important;
+}
+
 /*
  * Configurações desktop: menu lateral FIXO na coluna (não desce com o scroll).
  * Sticky falha se algum ancestral tiver transform/filter (ex.: animações de enter).

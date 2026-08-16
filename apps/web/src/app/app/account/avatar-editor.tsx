@@ -177,7 +177,7 @@ export function ProfileAvatarSection({
             <UserAvatar
               user={liveUser}
               size="lg"
-              className="!h-16 !w-16 !text-xl !rounded-2xl ring-2 ring-black/[0.04] dark:ring-white/[0.08]"
+              className="!h-16 !w-16 !text-xl !rounded-2xl ring-2 ring-black/[0.04] dark:ring-white/[0.08] transition-opacity duration-200"
             />
             {busy ? (
               <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 backdrop-blur-xs">
@@ -213,7 +213,7 @@ export function ProfileAvatarSection({
             trigger={
               <button
                 type="button"
-                className="btn-secondary h-8.5 px-3 text-xs font-medium gap-1.5"
+                className="btn-secondary h-8.5 px-3 text-xs font-medium gap-1.5 active:scale-[0.985] transition-all duration-150"
                 disabled={busy}
               >
                 <Camera className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -279,7 +279,7 @@ export function ProfileAvatarSection({
                 type="button"
                 onClick={() => setPickedPreset(preset.id)}
                 className={cn(
-                  "relative flex flex-col items-center rounded-xl p-2 transition-all border",
+                  "relative flex flex-col items-center rounded-xl p-2 transition-all duration-150 border active:scale-[0.98]",
                   selected
                     ? "border-violet-500 bg-violet-500/10 ring-2 ring-violet-500/30"
                     : "border-black/[0.06] hover:bg-black/[0.03] dark:border-white/[0.08] dark:hover:bg-white/[0.04]"
@@ -303,7 +303,7 @@ export function ProfileAvatarSection({
           </button>
           <button
             type="button"
-            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700 active:scale-[0.985] transition-all duration-150"
             disabled={!pickedPreset || presetMut.isPending}
             onClick={confirmPreset}
           >
@@ -323,7 +323,7 @@ export function ProfileAvatarSection({
                 type="button"
                 onClick={() => setPickedColor(c.hex)}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl border p-2 transition-all",
+                  "flex items-center gap-2 rounded-xl border p-2 transition-all duration-150 active:scale-[0.98]",
                   selected
                     ? "border-violet-500 bg-violet-500/10 ring-2 ring-violet-500/30"
                     : "border-black/[0.06] dark:border-white/[0.08]"
@@ -341,7 +341,7 @@ export function ProfileAvatarSection({
           </button>
           <button
             type="button"
-            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700"
+            className="btn-primary h-8 px-4 text-xs bg-violet-600 hover:bg-violet-700 active:scale-[0.985] transition-all duration-150"
             disabled={!pickedColor || initialsMut.isPending}
             onClick={confirmColor}
           >
@@ -354,4 +354,3 @@ export function ProfileAvatarSection({
 }
 
 export const AvatarEditor = ProfileAvatarSection;
-

@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Modal, Spinner, useToast } from "@/components/ui";
 import { AccountCard } from "../account-ui";
+import { parseUserAgent } from "@/lib/user-agent";
 
 type SessionRow = {
   id: string;
@@ -52,8 +53,6 @@ function formatHumanActivity(iso: string) {
   }
 }
 
-import { parseUserAgent } from "@/lib/user-agent";
-
 function parseDeviceInfo(label: string | null, ua: string | null) {
   const parsed = parseUserAgent(ua, label);
   const Icon = parsed.deviceType === "Tablet" ? Tablet : parsed.deviceType === "Smartphone" ? Smartphone : Laptop;
@@ -68,6 +67,7 @@ export default function AccountSessionsPage() {
   const { toast } = useToast();
   const [confirmRevokeOthersOpen, setConfirmRevokeOthersOpen] = useState(false);
   const [sessionToRevoke, setSessionToRevoke] = useState<SessionRow | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const sessionsQuery = useQuery({
     queryKey: ["auth-sessions"],
@@ -75,13 +75,18 @@ export default function AccountSessionsPage() {
   });
 
   const revokeOne = useMutation({
-    mutationFn: (id: string) => api(`/auth/sessions/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => {
+      setRevokingId(id);
+      return api(`/auth/sessions/${id}`, { method: "DELETE" });
+    },
     onSuccess: () => {
       setSessionToRevoke(null);
+      setRevokingId(null);
       toast({ kind: "success", title: "Sessão encerrada com sucesso." });
       void qc.invalidateQueries({ queryKey: ["auth-sessions"] });
     },
     onError: (e: Error) => {
+      setRevokingId(null);
       toast({ kind: "error", title: "Não foi possível encerrar a sessão", description: e.message });
     },
   });
@@ -114,7 +119,7 @@ export default function AccountSessionsPage() {
           otherCount > 0 ? (
             <button
               type="button"
-              className="btn-secondary h-8 px-3 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+              className="btn-secondary h-8 px-3 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 active:scale-[0.985] transition-all duration-150"
               onClick={() => setConfirmRevokeOthersOpen(true)}
             >
               Encerrar outras sessões ({otherCount})
@@ -135,19 +140,21 @@ export default function AccountSessionsPage() {
             <ul className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
               {list.map((s) => {
                 const { Icon, displayTitle } = parseDeviceInfo(s.deviceLabel, s.userAgent);
+                const isRevoking = revokingId === s.id;
                 return (
                   <li
                     key={s.id}
                     className={cn(
-                      "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-colors",
+                      "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all duration-200 ease-out",
                       list.length === 1 ? "p-4 sm:px-5 sm:py-4" : "p-5 sm:px-6",
                       s.isCurrent
                         ? "bg-violet-500/[0.02] dark:bg-violet-500/[0.03]"
-                        : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]"
+                        : "hover:bg-black/[0.01] dark:hover:bg-white/[0.015]",
+                      isRevoking && "opacity-0 translate-x-1.5 pointer-events-none"
                     )}
                   >
                     <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.03] text-zinc-600 dark:bg-white/[0.05] dark:text-zinc-300 shadow-xs">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.03] text-zinc-600 dark:bg-white/[0.05] dark:text-zinc-300 shadow-xs transition-colors duration-150">
                         <Icon className="h-4.5 w-4.5" strokeWidth={1.75} />
                       </div>
 
@@ -157,7 +164,7 @@ export default function AccountSessionsPage() {
                             {displayTitle}
                           </p>
                           {s.isCurrent ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 transition-colors">
                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                               Este dispositivo
                             </span>
@@ -176,7 +183,7 @@ export default function AccountSessionsPage() {
                       <div className="shrink-0 self-start sm:self-center">
                         <button
                           type="button"
-                          className="btn-secondary h-8 px-3 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 gap-1.5 border-rose-500/20"
+                          className="btn-secondary h-8 px-3 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 active:scale-[0.985] gap-1.5 border-rose-500/20 transition-all duration-150"
                           disabled={revokeOne.isPending}
                           onClick={() => setSessionToRevoke(s)}
                         >
@@ -207,14 +214,14 @@ export default function AccountSessionsPage() {
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs font-medium"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium active:scale-[0.985] transition-all duration-150"
               onClick={() => setSessionToRevoke(null)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 active:scale-[0.985] text-white transition-all duration-150"
               disabled={revokeOne.isPending}
               onClick={() => sessionToRevoke && revokeOne.mutate(sessionToRevoke.id)}
             >
@@ -239,14 +246,14 @@ export default function AccountSessionsPage() {
           <div className="flex justify-end gap-2 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3 text-xs font-medium"
+              className="btn-secondary h-8.5 px-3 text-xs font-medium active:scale-[0.985] transition-all duration-150"
               onClick={() => setConfirmRevokeOthersOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 text-white"
+              className="btn-primary h-8.5 px-4 text-xs font-medium bg-red-600 hover:bg-red-700 active:scale-[0.985] text-white transition-all duration-150"
               disabled={revokeOthers.isPending}
               onClick={() => revokeOthers.mutate()}
             >

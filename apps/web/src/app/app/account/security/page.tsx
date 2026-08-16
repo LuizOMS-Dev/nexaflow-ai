@@ -224,7 +224,7 @@ export default function AccountSecurityPage() {
           control={
             <button
               type="button"
-              className="btn-secondary h-8.5 px-3.5 text-xs font-medium"
+              className="btn-secondary h-8.5 px-3.5 text-xs font-medium active:scale-[0.985] transition-all duration-150"
               onClick={() => {
                 setPwd({ current: "", next: "", confirm: "" });
                 setPwdError(null);
@@ -251,14 +251,14 @@ export default function AccountSecurityPage() {
                   {mfaStatus.isLoading ? (
                     <Spinner className="h-4 w-4" />
                   ) : is2FAEnabled ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 dark:bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 transition-all duration-200">
                       <CheckCircle2 className="h-3 w-3" strokeWidth={2.5} />
                       Ativada
                     </span>
                   ) : (
                     <>
                       {/* Desativada em badge neutro/cinza para não competir com o alerta de superadmin */}
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] px-2.5 py-0.5 text-[11px] font-medium text-zinc-600 dark:text-zinc-300 transition-all duration-200">
                         <span className="h-1.5 w-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500" />
                         Desativada
                       </span>
@@ -287,7 +287,7 @@ export default function AccountSecurityPage() {
                 ) : (
                   <button
                     type="button"
-                    className="btn-secondary h-8.5 px-3.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                    className="btn-secondary h-8.5 px-3.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 active:scale-[0.985] transition-all duration-150"
                     onClick={() => {
                       setMfaDisable({ password: "", code: "" });
                       setDisableOpen(true);
@@ -299,7 +299,7 @@ export default function AccountSecurityPage() {
               ) : (
                 <button
                   type="button"
-                  className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white"
+                  className="btn-primary h-8.5 px-4 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:scale-[0.985] text-white transition-all duration-150"
                   disabled={mfaSetupMutation.isPending}
                   onClick={() => mfaSetupMutation.mutate()}
                 >

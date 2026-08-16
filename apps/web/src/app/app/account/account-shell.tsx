@@ -84,14 +84,17 @@ function renderNavLink(item: NavItem, pathname: string, mobile?: boolean) {
         href={item.href}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition-colors",
+          "inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition-all duration-180 ease-out",
           active
             ? "bg-violet-500/12 text-violet-700 font-semibold dark:bg-violet-500/20 dark:text-violet-200"
             : "text-zinc-600 hover:bg-black/[0.04] hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-zinc-200"
         )}
       >
         <Icon
-          className={cn("h-3.5 w-3.5", active ? "text-violet-600 dark:text-violet-300 opacity-100" : "opacity-70")}
+          className={cn(
+            "h-3.5 w-3.5 transition-all duration-180 ease-out",
+            active ? "text-violet-600 dark:text-violet-300 opacity-100" : "opacity-70"
+          )}
           strokeWidth={active ? 2 : 1.75}
         />
         {item.label}
@@ -105,7 +108,7 @@ function renderNavLink(item: NavItem, pathname: string, mobile?: boolean) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-150",
+        "group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-180 ease-out",
         active
           ? "bg-violet-500/[0.08] text-violet-950 font-semibold dark:bg-violet-500/[0.12] dark:text-violet-100"
           : "text-zinc-600 hover:bg-black/[0.03] hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-200"
@@ -113,21 +116,21 @@ function renderNavLink(item: NavItem, pathname: string, mobile?: boolean) {
     >
       <span
         className={cn(
-          "absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-violet-600 dark:bg-violet-400 transition-all",
+          "absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-violet-600 dark:bg-violet-400 transition-all duration-200 ease-out",
           active ? "opacity-100 scale-y-100" : "opacity-0 scale-y-50"
         )}
         aria-hidden
       />
       <Icon
         className={cn(
-          "h-4 w-4 shrink-0 transition-colors",
+          "h-4 w-4 shrink-0 transition-all duration-180 ease-out",
           active
-            ? "text-violet-600 dark:text-violet-400 opacity-100"
-            : "text-zinc-500 dark:text-zinc-400 opacity-70 group-hover:opacity-100"
+            ? "text-violet-600 dark:text-violet-400 opacity-100 scale-[1.02]"
+            : "text-zinc-500 dark:text-zinc-400 opacity-70 group-hover:opacity-100 group-hover:text-zinc-800 dark:group-hover:text-zinc-200"
         )}
         strokeWidth={active ? 2 : 1.75}
       />
-      <span className={cn("text-[13px] leading-none tracking-tight", active ? "font-semibold" : "font-medium")}>
+      <span className={cn("text-[13px] leading-none tracking-tight transition-colors duration-180", active ? "font-semibold" : "font-medium")}>
         {item.label}
       </span>
     </Link>
@@ -195,7 +198,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <main className="settings-main relative min-w-0 w-full">
-          <div className="account-panel nf-settings-fade space-y-5">{children}</div>
+          <div key={pathname} className="account-panel account-section-view space-y-5">
+            {children}
+          </div>
         </main>
       </div>
     </TenantModule>
