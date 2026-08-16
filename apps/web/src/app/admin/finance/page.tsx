@@ -27,6 +27,7 @@ import { useAuth } from "@/store/auth";
 import { cn, formatCurrency, formatDate, pluralizePt } from "@/lib/utils";
 import { useToast } from "@/components/ui-toast";
 import { Modal, Skeleton } from "@/components/ui";
+import { Select, type SelectOption } from "@/components/ui-select";
 import {
   AdminErrorState,
   AdminPageHeader,
@@ -121,7 +122,7 @@ type PlatformCostItem = {
   createdAt: string;
 };
 
-const COST_CATEGORIES = [
+const COST_CATEGORIES: SelectOption[] = [
   { value: "INFRASTRUCTURE", label: "Servidores e Nuvem" },
   { value: "AI", label: "Inteligência Artificial" },
   { value: "WHATSAPP", label: "WhatsApp / WAHA" },
@@ -193,7 +194,7 @@ export default function AdminFinancePage() {
       notes?: string | null;
     }) => api<PlatformCostItem>("/admin/finance/costs", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      toast.success("Custo operacional adicionado!");
+      toast.success("Custo adicionado");
       setCostName("");
       setCostAmount("");
       setCostNotes("");
@@ -213,7 +214,7 @@ export default function AdminFinancePage() {
         body: JSON.stringify(payload),
       }),
     onSuccess: () => {
-      toast.success("Custo atualizado com sucesso!");
+      toast.success("Custo atualizado");
       setEditingCostId(null);
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
@@ -230,7 +231,12 @@ export default function AdminFinancePage() {
         method: "PATCH",
         body: JSON.stringify({ isActive }),
       }),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      if (variables.isActive) {
+        toast.success("Custo reativado");
+      } else {
+        toast.success("Custo desativado");
+      }
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
       queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
@@ -240,7 +246,7 @@ export default function AdminFinancePage() {
   const deleteCostMutation = useMutation({
     mutationFn: (id: string) => api(`/admin/finance/costs/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Custo removido!");
+      toast.success("Custo excluído");
       setCostToDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
@@ -746,11 +752,11 @@ export default function AdminFinancePage() {
         size="lg"
       >
         <div className="space-y-6">
-          {/* Formulário Espaçoso de Novo Custo */}
+          {/* Formulário Espaçoso de Novo Custo com Dropdown do Design System */}
           <form onSubmit={handleCreateCostSubmit} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3.5">
             <p className="text-[13px] font-semibold text-white">Adicionar Custo da Plataforma</p>
             
-            {/* Linha 1: Nome */}
+            {/* Linha 1: Nome do custo */}
             <div>
               <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Nome do custo *</label>
               <input
@@ -763,21 +769,17 @@ export default function AdminFinancePage() {
               />
             </div>
 
-            {/* Linha 2: Categoria e Valor */}
+            {/* Linha 2: Categoria (Dropdown Design System) e Valor mensal */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Categoria *</label>
-                <select
+                <Select
                   value={costCategory}
-                  onChange={(e) => setCostCategory(e.target.value)}
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none"
-                >
-                  {COST_CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCostCategory}
+                  options={COST_CATEGORIES}
+                  size="md"
+                  triggerClassName="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none"
+                />
               </div>
 
               <div>
@@ -817,7 +819,7 @@ export default function AdminFinancePage() {
               </p>
               {costs.length > 0 && (
                 <span className="text-[12.5px] font-bold tabular-nums text-white">
-                  Total mensal: <span className="text-amber-300">{formatCurrency(totalActiveCostsAmount)}</span>
+                  Total mensal ativo: <span className="text-amber-300">{formatCurrency(totalActiveCostsAmount)}</span>
                 </span>
               )}
             </div>
@@ -828,9 +830,12 @@ export default function AdminFinancePage() {
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : costs.length === 0 ? (
-              <p className="py-6 text-center text-[12.5px] text-gray-500">
-                Nenhum custo operacional cadastrado ainda.
-              </p>
+              <div className="py-6 px-4 text-center rounded-xl border border-white/[0.06] bg-white/[0.01]">
+                <p className="text-[13px] font-semibold text-gray-200">Nenhum custo operacional cadastrado</p>
+                <p className="mt-1 text-[11.5px] text-gray-500 max-w-sm mx-auto">
+                  Adicione o primeiro custo para começar a calcular resultado e margem estimados.
+                </p>
+              </div>
             ) : (
               <ul className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-white/[0.02]">
                 {costs.map((cost) => {
@@ -873,17 +878,13 @@ export default function AdminFinancePage() {
                             onChange={(e) => setEditName(e.target.value)}
                             className="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
                           />
-                          <select
+                          <Select
                             value={editCategory}
-                            onChange={(e) => setEditCategory(e.target.value)}
-                            className="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
-                          >
-                            {COST_CATEGORIES.map((c) => (
-                              <option key={c.value} value={c.value}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setEditCategory}
+                            options={COST_CATEGORIES}
+                            size="sm"
+                            triggerClassName="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
+                          />
                           <div className="flex gap-2">
                             <div className="relative w-full">
                               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400 pointer-events-none">

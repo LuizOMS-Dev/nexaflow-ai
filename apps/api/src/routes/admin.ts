@@ -660,7 +660,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const body = z
       .object({
         name: z.string().min(2, "Nome é obrigatório"),
-        category: z.enum(["INFRASTRUCTURE", "WHATSAPP", "AI", "EMAIL", "DATABASE", "SUPPORT", "OTHER"]).default("INFRASTRUCTURE"),
+        category: z.enum(["INFRASTRUCTURE", "WHATSAPP", "AI", "EMAIL", "DATABASE", "TOOLS", "SUPPORT", "OTHER"]).default("INFRASTRUCTURE"),
         amount: z.number().positive("O valor deve ser maior que zero"),
         recurrence: z.enum(["MONTHLY", "ANNUAL", "ONE_TIME"]).default("MONTHLY"),
         notes: z.string().optional().nullable(),
@@ -698,7 +698,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const body = z
       .object({
         name: z.string().min(2).optional(),
-        category: z.enum(["INFRASTRUCTURE", "WHATSAPP", "AI", "EMAIL", "DATABASE", "SUPPORT", "OTHER"]).optional(),
+        category: z.enum(["INFRASTRUCTURE", "WHATSAPP", "AI", "EMAIL", "DATABASE", "TOOLS", "SUPPORT", "OTHER"]).optional(),
         amount: z.number().positive().optional(),
         recurrence: z.enum(["MONTHLY", "ANNUAL", "ONE_TIME"]).optional(),
         isActive: z.boolean().optional(),
