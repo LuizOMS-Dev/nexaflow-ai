@@ -609,25 +609,29 @@ export default function AdminPlansPage() {
               >
                 {/* Top: Header e Limites do Card */}
                 <div className="flex-1 flex flex-col">
-                  <div className="flex items-start justify-between gap-2 min-h-[32px]">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="text-[16px] font-bold text-white tracking-tight">
+                  {/* Header com slot de badge reservado para alinhar perfeitamente todos os cards */}
+                  <div className="min-h-[50px] flex flex-col justify-start">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-[16px] font-bold text-white tracking-tight truncate">
                         {plan.name}
                       </h3>
-                      {badgeKey && BADGE_LABEL[badgeKey] && (
-                        <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
+                      <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
+                        {plan.isActive ? "Disponível" : "Indisponível"}
+                      </StatusBadge>
+                    </div>
+                    <div className="h-5 flex items-center mt-1">
+                      {badgeKey && BADGE_LABEL[badgeKey] ? (
+                        <span className="inline-flex items-center rounded-full bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
                           {BADGE_LABEL[badgeKey]}
                         </span>
+                      ) : (
+                        <span className="invisible text-[10px] py-0.5 select-none" aria-hidden="true">·</span>
                       )}
                     </div>
-
-                    <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
-                      {plan.isActive ? "Disponível" : "Indisponível"}
-                    </StatusBadge>
                   </div>
 
-                  {/* Preço Comercial com baseline consistente */}
-                  <div className="mt-3.5 pb-3 border-b border-white/[0.06] min-h-[56px] flex flex-col justify-end">
+                  {/* Preço Comercial com baseline e altura rigorosamente padronizadas */}
+                  <div className="mt-3 pb-3 border-b border-white/[0.06] h-[58px] flex flex-col justify-center">
                     {isEnterprise ? (
                       <div>
                         <span className="text-[20px] font-bold text-white">Sob consulta</span>
@@ -662,8 +666,8 @@ export default function AdminPlansPage() {
                     )}
                   </div>
 
-                  {/* Descrição com área previsível */}
-                  <p className="mt-3 text-[12px] text-gray-300 line-clamp-2 min-h-[36px] leading-relaxed">
+                  {/* Descrição com altura estritamente controlada */}
+                  <p className="mt-3 text-[12px] text-gray-300 line-clamp-2 h-[36px] leading-relaxed overflow-hidden">
                     {plan.description || "Plano comercial para atendimento e automação."}
                   </p>
 
@@ -731,8 +735,8 @@ export default function AdminPlansPage() {
                   </div>
                 </div>
 
-                {/* Bottom: Uso do Plano & Ações (Footer estrutural único ancorado no final) */}
-                <div className="mt-auto pt-4 border-t border-white/[0.06] space-y-2.5">
+                {/* Bottom: Uso do Plano & Ações (Footer estrutural único perfeitamente alinhado) */}
+                <div className="mt-4 pt-3.5 border-t border-white/[0.06] space-y-2.5">
                   {/* Quantidade de Empresas Utilizando */}
                   <div className="flex items-center gap-1.5 text-[11.5px] text-gray-400 h-5 whitespace-nowrap overflow-hidden">
                     <Building2 className="h-3.5 w-3.5 text-violet-400 shrink-0" />
