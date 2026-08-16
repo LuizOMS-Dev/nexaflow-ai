@@ -158,21 +158,14 @@ describe("Leads Comerciais da Administração (/admin/sales-leads) — Backend, 
     const bodyAll = resAll.json() as {
       items: Array<{ id: string; status: string; name: string }>;
       total: number;
-      summary: {
-        total: number;
-        new: number;
-        inPipeline: number;
-        converted: number;
-        lost: number;
-        spam: number;
-      };
+      page: number;
+      limit: number;
+      totalPages: number;
     };
 
-    expect(bodyAll.summary.total).toBeGreaterThanOrEqual(5);
-    expect(bodyAll.summary.new).toBeGreaterThanOrEqual(1);
-    expect(bodyAll.summary.inPipeline).toBeGreaterThanOrEqual(2); // CONTACTED + QUALIFIED
-    expect(bodyAll.summary.lost).toBeGreaterThanOrEqual(1);
-    expect(bodyAll.summary.spam).toBeGreaterThanOrEqual(1);
+    expect(bodyAll.total).toBeGreaterThanOrEqual(5);
+    expect(bodyAll.items.some((i) => i.id === leadNew.id)).toBe(true);
+    expect(bodyAll.totalPages).toBeGreaterThanOrEqual(1);
 
     // 2.2 Busca server-side por nome
     const resSearchName = await app.inject({
@@ -250,6 +243,34 @@ describe("Leads Comerciais da Administração (/admin/sales-leads) — Backend, 
       payload: { status: "CONVERTED" },
     });
     expect(directConvertRes.statusCode).toBe(400);
+
+    // 3.3 Status WON não existe mais no enum comercial — deve ser rejeitado
+    const wonRes = await app.inject({
+      method: "PATCH",
+      url: `/admin/sales-leads/${lead.id}`,
+      headers: {
+        authorization: `Bearer ${superadminToken}`,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload: { status: "WON" },
+    });
+    expect(wonRes.statusCode).toBe(400);
+    expect(wonRes.json().error).toBe("VALIDATION_ERROR");
+
+    // 3.4 CSRF: mutação com origin não autorizada é bloqueada
+    const csrfRes = await app.inject({
+      method: "PATCH",
+      url: `/admin/sales-leads/${lead.id}`,
+      headers: {
+        authorization: `Bearer ${superadminToken}`,
+        origin: "https://evil.example.com",
+        "content-type": "application/json",
+      },
+      payload: { status: "LOST" },
+    });
+    expect(csrfRes.statusCode).toBe(403);
+    expect(csrfRes.json().error).toBe("CSRF_ORIGIN_DENIED");
   });
 
   it("4. Conversão oficial e transacional em Empresa", async () => {
@@ -269,6 +290,15 @@ describe("Leads Comerciais da Administração (/admin/sales-leads) — Backend, 
         source: "website",
       },
     });
+
+    // KPIs antes da conversão (via endpoint /summary)
+    const summaryBefore = (
+      await app.inject({
+        method: "GET",
+        url: "/admin/sales-leads/summary",
+        headers: { authorization: `Bearer ${superadminToken}` },
+      })
+    ).json() as { inPipeline: number; converted: number };
 
     // Executa conversão
     const convertRes = await app.inject({
@@ -347,6 +377,17 @@ describe("Leads Comerciais da Administração (/admin/sales-leads) — Backend, 
       },
     });
     expect(reconvertRes.statusCode).toBe(409);
+
+    // 4.2 KPIs reagem à conversão: QUALIFIED sai do pipeline e vira CONVERTED
+    const summaryAfter = (
+      await app.inject({
+        method: "GET",
+        url: "/admin/sales-leads/summary",
+        headers: { authorization: `Bearer ${superadminToken}` },
+      })
+    ).json() as { inPipeline: number; converted: number };
+    expect(summaryAfter.converted - summaryBefore.converted).toBe(1);
+    expect(summaryAfter.inPipeline - summaryBefore.inPipeline).toBe(-1);
   });
 
   it("5. Falha durante conversão (ex: plano inexistente) mantém lead NÃO convertido", async () => {
@@ -381,5 +422,164 @@ describe("Leads Comerciais da Administração (/admin/sales-leads) — Backend, 
     });
     expect(checkLead.status).toBe("QUALIFIED");
     expect(checkLead.convertedTenantId).toBeNull();
+  });
+
+  it("6. /summary com groupBy: deltas exatos de pipeline, convertidos, perdidos e spam", async () => {
+    const getSummary = async () =>
+      (
+        await app.inject({
+          method: "GET",
+          url: "/admin/sales-leads/summary",
+          headers: { authorization: `Bearer ${superadminToken}` },
+        })
+      ).json() as {
+        total: number;
+        new: number;
+        inPipeline: number;
+        converted: number;
+        lost: number;
+        spam: number;
+      };
+
+    const base = await getSummary();
+
+    await prisma.salesLead.createMany({
+      data: [
+        { name: `KPI A ${suffix}`, email: `kpi-a-${suffix}@test.local`, companyName: `Kpi A Co ${suffix}`, status: "NEW" },
+        { name: `KPI B ${suffix}`, email: `kpi-b-${suffix}@test.local`, companyName: `Kpi B Co ${suffix}`, status: "CONTACTED" },
+        { name: `KPI C ${suffix}`, email: `kpi-c-${suffix}@test.local`, companyName: `Kpi C Co ${suffix}`, status: "QUALIFIED" },
+        { name: `KPI D ${suffix}`, email: `kpi-d-${suffix}@test.local`, companyName: `Kpi D Co ${suffix}`, status: "LOST" },
+        { name: `KPI E ${suffix}`, email: `kpi-e-${suffix}@test.local`, companyName: `Kpi E Co ${suffix}`, status: "SPAM" },
+      ],
+    });
+
+    const after = await getSummary();
+
+    // Deltas exatos: os status fora de NEW só mudam por ações deste próprio suite
+    expect(after.inPipeline - base.inPipeline).toBe(2); // CONTACTED + QUALIFIED
+    expect(after.converted - base.converted).toBe(0); // CONVERTED não é contado como WON
+    expect(after.lost - base.lost).toBe(1);
+    expect(after.spam - base.spam).toBe(1);
+    // total/new podem crescer com outras suítes rodando em paralelo
+    expect(after.total).toBeGreaterThanOrEqual(base.total + 5);
+    expect(after.new).toBeGreaterThanOrEqual(base.new + 1);
+
+    // O endpoint NUNCA expõe WON
+    expect(JSON.stringify(after)).not.toContain("WON");
+  });
+
+  it("7. Histórico de auditoria do lead via /:id/history", async () => {
+    const lead = await prisma.salesLead.create({
+      data: {
+        name: `Lead Hist ${suffix}`,
+        email: `hist-${suffix}@empresa-hist.test`,
+        companyName: `Hist Corp ${suffix}`,
+        status: "NEW",
+        source: "website",
+      },
+    });
+
+    for (const status of ["CONTACTED", "QUALIFIED"]) {
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/admin/sales-leads/${lead.id}`,
+        headers: {
+          authorization: `Bearer ${superadminToken}`,
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        payload: { status },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/admin/sales-leads/${lead.id}/history`,
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { items: Array<{ action: string; metadata: Record<string, unknown> }> };
+    expect(body.items.length).toBeGreaterThanOrEqual(2);
+    expect(body.items[0].action).toBe("admin.lead.update_status");
+    expect(body.items[0].metadata.leadId).toBe(lead.id);
+    expect(body.items[0].metadata.newStatus).toBe("QUALIFIED");
+    expect(
+      body.items.some(
+        (e) => e.metadata.oldStatus === "NEW" && e.metadata.newStatus === "CONTACTED"
+      )
+    ).toBe(true);
+
+    // Histórico de lead inexistente → 404
+    const missing = await app.inject({
+      method: "GET",
+      url: "/admin/sales-leads/inexistente-xyz/history",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it("8. Conversão com nome similar: 409 SIMILAR_TENANT_NAME, depois forceSimilarName", async () => {
+    // O teste 4 já criou a empresa `Nova Startup ${suffix}` — reutiliza o nome para forçar o conflito
+    const lead = await prisma.salesLead.create({
+      data: {
+        name: "Lead Duplicado",
+        email: `dup-${suffix}@empresa-dup.test`,
+        companyName: `Nova Startup ${suffix}`,
+        status: "QUALIFIED",
+        source: "website",
+      },
+    });
+
+    const payload = {
+      name: `Nova Startup ${suffix}`,
+      planId: undefined as string | undefined,
+      adminName: "Lead Duplicado",
+      adminEmail: `dup-${suffix}@empresa-dup.test`,
+      adminPassword: "Password@12345",
+    };
+    const freePlan =
+      (await prisma.plan.findFirst({ where: { slug: "free", isActive: true } })) ||
+      (await prisma.plan.findFirst({ where: { isActive: true } }));
+    payload.planId = freePlan?.id;
+
+    const conflictRes = await app.inject({
+      method: "POST",
+      url: `/admin/sales-leads/${lead.id}/convert`,
+      headers: {
+        authorization: `Bearer ${superadminToken}`,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload,
+    });
+    expect(conflictRes.statusCode).toBe(409);
+    expect(conflictRes.json().error).toBe("SIMILAR_TENANT_NAME");
+
+    // Lead NÃO foi consumido pelo conflito
+    const leadStill = await prisma.salesLead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadStill.status).toBe("QUALIFIED");
+    expect(leadStill.convertedTenantId).toBeNull();
+
+    // Confirmação explícita (forceSimilarName) prossegue com criação transacional
+    const forcedRes = await app.inject({
+      method: "POST",
+      url: `/admin/sales-leads/${lead.id}/convert`,
+      headers: {
+        authorization: `Bearer ${superadminToken}`,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload: { ...payload, forceSimilarName: true },
+    });
+    expect(forcedRes.statusCode).toBe(200);
+    const forcedBody = forcedRes.json() as { company: { id: string }; lead: { status: string; convertedTenantId: string } };
+    createdTenantIds.push(forcedBody.company.id);
+    expect(forcedBody.lead.status).toBe("CONVERTED");
+    expect(forcedBody.lead.convertedTenantId).toBe(forcedBody.company.id);
+
+    const leadAfter = await prisma.salesLead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(leadAfter.status).toBe("CONVERTED");
+    expect(leadAfter.convertedTenantId).toBe(forcedBody.company.id);
   });
 });

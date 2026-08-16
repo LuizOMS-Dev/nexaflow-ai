@@ -104,7 +104,6 @@ enum SalesLeadStatus {
   CONTACTED
   QUALIFIED
   CONVERTED
-  WON
   LOST
   SPAM
 }

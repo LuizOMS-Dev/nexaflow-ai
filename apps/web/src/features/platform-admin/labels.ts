@@ -33,7 +33,7 @@ export const ROLE_LABEL: Record<string, string> = {
 };
 
 export function statusTone(code?: string): "ok" | "warn" | "danger" | "muted" | "info" {
-  if (code === "ACTIVE" || code === "IN_GOOD_STANDING" || code === "CONVERTED" || code === "WON") return "ok";
+  if (code === "ACTIVE" || code === "IN_GOOD_STANDING" || code === "CONVERTED") return "ok";
   if (
     code === "TRIAL" ||
     code === "DUE_SOON" ||
@@ -62,7 +62,6 @@ export const LEAD_STATUS_LABEL: Record<string, string> = {
   CONTACTED: "Contatado",
   QUALIFIED: "Qualificado",
   CONVERTED: "Convertido",
-  WON: "Convertido",
   LOST: "Perdido",
   SPAM: "Spam",
 };

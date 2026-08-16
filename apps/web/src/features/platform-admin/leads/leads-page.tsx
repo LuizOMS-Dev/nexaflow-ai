@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowUpRight,
   Building2,
   CheckCircle2,
@@ -88,6 +89,20 @@ function formatOrigin(source?: string | null): string {
   return source;
 }
 
+function historyEntryLabel(entry: { action: string; metadata?: Record<string, unknown> | null }): string {
+  if (entry.action === "admin.lead.convert") {
+    const companyName = entry.metadata?.companyName;
+    return companyName ? `Convertido em empresa: ${String(companyName)}` : "Convertido em empresa";
+  }
+  if (entry.action === "admin.lead.update_status") {
+    const next = entry.metadata?.newStatus;
+    return next
+      ? `Status atualizado para ${LEAD_STATUS_LABEL[String(next)] || String(next)}`
+      : "Status atualizado";
+  }
+  return entry.action.replace(/[._]/g, " ");
+}
+
 function LeadsInner() {
   const user = useAuth((s) => s.user);
   const router = useRouter();
@@ -149,11 +164,19 @@ function LeadsInner() {
     staleTime: 10_000,
   });
 
+  // KPIs independentes da listagem: falha aqui não derruba a página
+  const summary = useQuery({
+    queryKey: ["platform-leads-summary"],
+    queryFn: () => platformAdminApi.leadSummary(),
+    enabled: user?.platformRole === "SUPERADMIN",
+    staleTime: 10_000,
+  });
+
   const handleRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await list.refetch();
+      await Promise.all([list.refetch(), summary.refetch()]);
       toast({
         title: "Lista atualizada",
         description: "Os dados dos leads comerciais foram sincronizados.",
@@ -198,9 +221,10 @@ function LeadsInner() {
     );
   }
 
-  const { items, total, page, totalPages, summary } = list.data;
+  const { items, total, page, totalPages } = list.data;
   const hasActiveFilters = Boolean(filters.search || (filters.status && filters.status !== "ALL"));
-  const isGlobalEmpty = summary.total === 0 && !hasActiveFilters;
+  const isGlobalEmpty = (summary.data?.total ?? 0) === 0 && !hasActiveFilters;
+  const kpis = summary.data ?? null;
 
   return (
     <div>
@@ -223,30 +247,30 @@ function LeadsInner() {
         }
       />
 
-      {/* KPIs no topo */}
+      {/* KPIs no topo (independentes da listagem) */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           label="Total"
-          value={summary.total}
-          hint={summary.total === 1 ? "1 lead no total" : `${summary.total} leads no total`}
+          value={kpis ? kpis.total : "—"}
+          hint={kpis && kpis.total === 1 ? "1 lead no total" : kpis ? `${kpis.total} leads no total` : "Indisponível"}
         />
         <StatCard
           label="Novos"
-          value={summary.new}
-          tone={summary.new > 0 ? "ok" : "default"}
-          hint={summary.new === 1 ? "1 lead novo aguardando" : `${summary.new} leads novos`}
+          value={kpis ? kpis.new : "—"}
+          tone={kpis && kpis.new > 0 ? "ok" : "default"}
+          hint={kpis && kpis.new === 1 ? "1 lead novo aguardando" : kpis ? `${kpis.new} leads novos` : "Indisponível"}
         />
         <StatCard
           label="Em pipeline"
-          value={summary.inPipeline}
-          tone={summary.inPipeline > 0 ? "warn" : "default"}
-          hint="Contatados e qualificados"
+          value={kpis ? kpis.inPipeline : "—"}
+          tone={kpis && kpis.inPipeline > 0 ? "warn" : "default"}
+          hint={kpis ? "Contatados e qualificados" : "Indisponível"}
         />
         <StatCard
           label="Convertidos"
-          value={summary.converted}
-          tone={summary.converted > 0 ? "ok" : "default"}
-          hint="Convertidos em empresa"
+          value={kpis ? kpis.converted : "—"}
+          tone={kpis && kpis.converted > 0 ? "ok" : "default"}
+          hint={kpis ? "Convertidos em empresa" : "Indisponível"}
         />
       </div>
 
@@ -468,6 +492,7 @@ function LeadsInner() {
           onStatusUpdated={(updated) => {
             setSelectedLead(updated);
             void qc.invalidateQueries({ queryKey: ["platform-leads"] });
+            void qc.invalidateQueries({ queryKey: ["platform-leads-summary"] });
           }}
         />
       )}
@@ -481,6 +506,7 @@ function LeadsInner() {
             setConvertModalOpen(false);
             setSelectedLead(updatedLead);
             void qc.invalidateQueries({ queryKey: ["platform-leads"] });
+            void qc.invalidateQueries({ queryKey: ["platform-leads-summary"] });
             void qc.invalidateQueries({ queryKey: ["platform-companies"] });
           }}
         />
@@ -501,11 +527,18 @@ function ManageLeadModal({
   onStatusUpdated: (updated: SalesLead) => void;
 }) {
   const { toast } = useToast();
+  const qc = useQueryClient();
   const [selectedStatus, setSelectedStatus] = useState<string>(
-    lead.status === "CONVERTED" || lead.status === "WON" ? "QUALIFIED" : lead.status
+    lead.status === "CONVERTED" ? "QUALIFIED" : lead.status
   );
 
-  const isConverted = lead.status === "CONVERTED" || lead.status === "WON";
+  const isConverted = lead.status === "CONVERTED";
+
+  const history = useQuery({
+    queryKey: ["platform-lead-history", lead.id],
+    queryFn: () => platformAdminApi.leadHistory(lead.id),
+    staleTime: 10_000,
+  });
 
   const patchStatusMut = useMutation({
     mutationFn: (newStatus: string) => platformAdminApi.patchLead(lead.id, newStatus),
@@ -515,6 +548,7 @@ function ManageLeadModal({
         description: `O lead foi marcado como ${LEAD_STATUS_LABEL[updated.status] || updated.status}.`,
         kind: "success",
       });
+      void qc.invalidateQueries({ queryKey: ["platform-lead-history", lead.id] });
       onStatusUpdated(updated);
     },
     onError: (e) => {
@@ -671,6 +705,45 @@ function ManageLeadModal({
             )}
           </div>
         </div>
+
+        {/* Histórico Comercial */}
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-white/40 mb-3">
+            Histórico comercial
+          </p>
+          {history.isLoading ? (
+            <div className="space-y-2">
+              <div className="h-6 w-full animate-pulse rounded bg-white/[0.06]" />
+              <div className="h-6 w-2/3 animate-pulse rounded bg-white/[0.06]" />
+            </div>
+          ) : (
+            <ol className="relative space-y-3.5 before:absolute before:left-[5px] before:top-1 before:bottom-1 before:w-px before:bg-white/[0.08]">
+              <li className="relative pl-6">
+                <span className="absolute left-0 top-1 h-2.5 w-2.5 rounded-full border-2 border-white/30 bg-white/60" />
+                <p className="text-[12.5px] text-white/85">
+                  Lead recebido via {formatOrigin(lead.source)}
+                </p>
+                <p className="text-[11px] text-white/35">{formatDate(lead.createdAt)}</p>
+              </li>
+              {(history.data?.items ?? []).map((entry) => (
+                <li key={entry.id} className="relative pl-6">
+                  <span
+                    className={`absolute left-0 top-1 h-2.5 w-2.5 rounded-full border-2 ${
+                      entry.action === "admin.lead.convert"
+                        ? "border-emerald-400/60 bg-emerald-400/40"
+                        : "border-white/30 bg-white/60"
+                    }`}
+                  />
+                  <p className="text-[12.5px] text-white/85">{historyEntryLabel(entry)}</p>
+                  <p className="text-[11px] text-white/35">
+                    {formatDate(entry.createdAt)}
+                    {entry.user?.name ? ` · ${entry.user.name}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </div>
     </Modal>
   );
@@ -694,6 +767,7 @@ function ConvertLeadModal({
   const [planId, setPlanId] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [similarNameConflict, setSimilarNameConflict] = useState<string | null>(null);
 
   const plansQuery = useQuery({
     queryKey: ["platform-plans-commercial"],
@@ -727,9 +801,15 @@ function ConvertLeadModal({
         description: `A empresa ${data.company.name} foi criada com sucesso.`,
         kind: "success",
       });
+      setSimilarNameConflict(null);
       onSuccess(data.company, data.lead);
     },
     onError: (err) => {
+      if (err instanceof ApiError && err.code === "SIMILAR_TENANT_NAME") {
+        setGeneralError(null);
+        setSimilarNameConflict(err.message);
+        return;
+      }
       if (err instanceof ApiError) {
         if (err.fieldErrors && Object.keys(err.fieldErrors).length > 0) {
           setFieldErrors(err.fieldErrors);
@@ -744,10 +824,20 @@ function ConvertLeadModal({
     },
   });
 
+  const buildBody = (force = false): ConvertLeadInput => ({
+    name: name.trim(),
+    adminName: adminName.trim(),
+    adminEmail: adminEmail.trim(),
+    planId: planId || undefined,
+    adminPassword: adminPassword.trim() || undefined,
+    ...(force ? { forceSimilarName: true } : {}),
+  });
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setFieldErrors({});
     setGeneralError(null);
+    setSimilarNameConflict(null);
 
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = "Informe o nome da empresa.";
@@ -759,13 +849,12 @@ function ConvertLeadModal({
       return;
     }
 
-    convertMut.mutate({
-      name: name.trim(),
-      adminName: adminName.trim(),
-      adminEmail: adminEmail.trim(),
-      planId: planId || undefined,
-      adminPassword: adminPassword.trim() || undefined,
-    });
+    convertMut.mutate(buildBody());
+  };
+
+  const handleForceCreate = () => {
+    setGeneralError(null);
+    convertMut.mutate(buildBody(true));
   };
 
   return (
@@ -780,6 +869,34 @@ function ConvertLeadModal({
         {generalError && (
           <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-[12.5px] text-red-200">
             {generalError}
+          </div>
+        )}
+
+        {similarNameConflict && (
+          <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.08] p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+              <div>
+                <p className="text-[12.5px] font-medium text-amber-200">{similarNameConflict}</p>
+                <p className="mt-1 text-[11.5px] text-amber-200/60">
+                  A criação foi recusada para evitar empresas duplicadas. Se o nome for realmente
+                  distinto, confirme para prosseguir.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleForceCreate}
+              disabled={convertMut.isPending}
+              className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/20 px-3 text-[12px] font-medium text-amber-100 hover:bg-amber-500/30 disabled:opacity-50"
+            >
+              {convertMut.isPending ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5" />
+              )}
+              <span>Criar mesmo assim</span>
+            </button>
           </div>
         )}
 

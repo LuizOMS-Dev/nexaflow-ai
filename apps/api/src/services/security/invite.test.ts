@@ -26,23 +26,22 @@ describe("team invite + accept", () => {
         planId: plan?.id,
         status: "ACTIVE",
         settings: testTenantSettings({ suite: "invite" }),
-        ...(plan
-          ? {
-              subscriptions: {
-                create: {
-                  planId: plan.id,
-                  billingStatus: "ACTIVE",
-                  billingCycle: "MONTHLY",
-                  priceMonthly: 99,
-                  billingDueDay: 10,
-                  currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                },
-              },
-            }
-          : {}),
       },
     });
     tenantId = tenant.id;
+    if (plan) {
+      await prisma.subscription.create({
+        data: {
+          tenantId: tenant.id,
+          planId: plan.id,
+          billingStatus: "ACTIVE",
+          billingCycle: "MONTHLY",
+          priceMonthly: 99,
+          billingDueDay: 10,
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
     const admin = await prisma.user.create({
       data: {
         email: `inv-admin-${suffix}@test.local`,

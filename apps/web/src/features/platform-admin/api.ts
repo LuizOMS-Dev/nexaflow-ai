@@ -8,7 +8,9 @@ import type {
   Overview,
   PlanRow,
   SalesLead,
+  SalesLeadHistory,
   SalesLeadList,
+  SalesLeadSummary,
   UserList,
 } from "./types";
 
@@ -93,6 +95,10 @@ export const platformAdminApi = {
   },
 
   lead: (id: string) => api<SalesLead>(`/admin/sales-leads/${id}`),
+
+  leadSummary: () => api<SalesLeadSummary>("/admin/sales-leads/summary"),
+
+  leadHistory: (id: string) => api<SalesLeadHistory>(`/admin/sales-leads/${id}/history`),
 
   patchLead: (id: string, status: string) =>
     api<SalesLead>(`/admin/sales-leads/${id}`, { method: "PATCH", json: { status } }),

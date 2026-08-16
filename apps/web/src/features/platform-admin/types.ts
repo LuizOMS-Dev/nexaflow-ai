@@ -240,7 +240,6 @@ export type SalesLeadStatus =
   | "CONTACTED"
   | "QUALIFIED"
   | "CONVERTED"
-  | "WON"
   | "LOST"
   | "SPAM";
 
@@ -281,7 +280,28 @@ export type SalesLeadList = {
   page: number;
   limit: number;
   totalPages: number;
-  summary: SalesLeadSummary;
+};
+
+export type SalesLeadHistoryEntry = {
+  id: string;
+  action: string;
+  createdAt: string;
+  ip?: string | null;
+  metadata?: {
+    leadId?: string;
+    leadEmail?: string;
+    oldStatus?: string;
+    newStatus?: string;
+    companyId?: string;
+    companyName?: string;
+    actorSub?: string;
+    ip?: string;
+  } | null;
+  user?: { id: string; name: string; email: string } | null;
+};
+
+export type SalesLeadHistory = {
+  items: SalesLeadHistoryEntry[];
 };
 
 export type ConvertLeadInput = {

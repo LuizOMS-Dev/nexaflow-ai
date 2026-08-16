@@ -7,6 +7,8 @@ import { sendMail } from "../services/security/mail";
 import {
   listSalesLeads,
   getSalesLead,
+  getSalesLeadsSummary,
+  getSalesLeadHistory,
   updateSalesLeadStatus,
   convertSalesLeadToCompany,
   SALES_LEAD_STATUSES,
@@ -66,6 +68,18 @@ function escapeHtml(value: string): string {
     };
     return entities[char] || char;
   });
+}
+
+/**
+ * Normaliza telefone de formulário público: colapsa espaços e adiciona
+ * DDI brasileiro (+55) quando o número é nacional sem código de país.
+ */
+function normalizePhone(raw: string): string {
+  const trimmed = raw.trim().replace(/\s+/g, " ");
+  if (!trimmed || trimmed.startsWith("+")) return trimmed;
+  const digits = trimmed.replace(/\D/g, "");
+  if (/^\d{10,11}$/.test(digits)) return `+55 ${trimmed}`;
+  return trimmed;
 }
 
 export async function marketingRoutes(app: FastifyInstance) {
@@ -129,7 +143,7 @@ export async function marketingRoutes(app: FastifyInstance) {
         data: {
           name: body.name,
           email: body.email.toLowerCase(),
-          phone: body.phone || null,
+          phone: body.phone ? normalizePhone(body.phone) : null,
           companyName: body.companyName,
           teamSize: body.teamSize || null,
           message: body.message || null,
@@ -182,6 +196,23 @@ export async function marketingRoutes(app: FastifyInstance) {
         .parse(request.query || {});
 
       return listSalesLeads(q);
+    }
+  );
+
+  // Registrada ANTES de /:id para o segmento estático "summary" nunca ser engolido pelo parâmetro
+  app.get(
+    "/admin/sales-leads/summary",
+    { preHandler: app.requireSuperadmin },
+    async () => getSalesLeadsSummary()
+  );
+
+  // Histórico de auditoria do lead (mudanças de status + conversão)
+  app.get(
+    "/admin/sales-leads/:id/history",
+    { preHandler: app.requireSuperadmin },
+    async (request) => {
+      const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+      return getSalesLeadHistory(id);
     }
   );
 

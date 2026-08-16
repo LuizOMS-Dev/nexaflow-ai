@@ -10,6 +10,8 @@ describe("marketing routes", () => {
   const inactiveSlug = `qa-hidden-${suffix}`;
   const leadEmail = `qa-marketing-${suffix}@example.invalid`;
   const honeypotEmail = `qa-bot-${suffix}@example.invalid`;
+  const phoneEmail = `qa-phone-${suffix}@example.invalid`;
+  const burstEmailPrefix = `qa-burst-${suffix}`;
   const clientIp = `2001:db8:${Math.floor(Math.random() * 0xffff).toString(16)}:${Math.floor(
     Math.random() * 0xffff
   ).toString(16)}::1`;
@@ -46,7 +48,14 @@ describe("marketing routes", () => {
 
   afterAll(async () => {
     await prisma.salesLead
-      .deleteMany({ where: { email: { in: [leadEmail, honeypotEmail] } } })
+      .deleteMany({
+        where: {
+          OR: [
+            { email: { in: [leadEmail, honeypotEmail, phoneEmail] } },
+            { email: { startsWith: burstEmailPrefix } },
+          ],
+        },
+      })
       .catch(() => null);
     await prisma.plan
       .deleteMany({ where: { slug: { in: [activeSlug, inactiveSlug] } } })
@@ -134,6 +143,64 @@ describe("marketing routes", () => {
       source: "website",
       status: "NEW",
     });
+    // Telefone internacional com +55 já formatado permanece intacto
+    expect(saved.phone).toBe("+55 11 99999-0000");
+  });
+
+  it("normaliza telefone nacional adicionando DDI +55 no pedido público", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/public/demo-requests",
+      headers: { "x-forwarded-for": clientIp },
+      payload: {
+        name: "Telefone QA",
+        email: phoneEmail,
+        companyName: "Fixture de telefone",
+        phone: "  11  98888-7777 ",
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+
+    const saved = await prisma.salesLead.findFirstOrThrow({
+      where: { email: phoneEmail },
+    });
+    expect(saved.phone).toBe("+55 11 98888-7777");
+  });
+
+  it("limita pedidos de demonstração por IP (5/hora → 429)", async () => {
+    // IP exclusivo por execução para não colidir com rodadas anteriores do Redis
+    const ip = `10.99.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+    const headers = { "content-type": "application/json" };
+
+    for (let i = 0; i < 5; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/public/demo-requests",
+        remoteAddress: ip,
+        headers,
+        payload: {
+          name: `Burst QA ${i}`,
+          email: `${burstEmailPrefix}-${i}@example.invalid`,
+          companyName: "Fixture rate limit",
+        },
+      });
+      expect(res.statusCode).toBe(201);
+    }
+
+    const sixth = await app.inject({
+      method: "POST",
+      url: "/public/demo-requests",
+      remoteAddress: ip,
+      headers,
+      payload: {
+        name: "Burst QA 6",
+        email: `${burstEmailPrefix}-6@example.invalid`,
+        companyName: "Fixture rate limit",
+      },
+    });
+    expect(sixth.statusCode).toBe(429);
+    expect(sixth.json().error).toBe("RATE_LIMITED");
   });
 
   it("protege a fila administrativa sem sessão superadmin", async () => {

@@ -9,7 +9,6 @@ export const SALES_LEAD_STATUSES = [
   "CONTACTED",
   "QUALIFIED",
   "CONVERTED",
-  "WON",
   "LOST",
   "SPAM",
 ] as const;
@@ -29,11 +28,7 @@ export async function listSalesLeads(q: ListSalesLeadsQuery) {
   const where: Prisma.SalesLeadWhereInput = {};
 
   if (q.status && q.status !== "ALL") {
-    if (q.status === "CONVERTED" || q.status === "WON") {
-      where.status = { in: ["CONVERTED", "WON"] };
-    } else {
-      where.status = q.status as SalesLeadStatus;
-    }
+    where.status = q.status as SalesLeadStatus;
   }
 
   if (q.search?.trim()) {
@@ -46,18 +41,7 @@ export async function listSalesLeads(q: ListSalesLeadsQuery) {
     ];
   }
 
-  const [
-    items,
-    total,
-    totalCount,
-    newCount,
-    contactedCount,
-    qualifiedCount,
-    convertedCount,
-    wonCount,
-    lostCount,
-    spamCount,
-  ] = await Promise.all([
+  const [items, total] = await Promise.all([
     prisma.salesLead.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -87,18 +71,7 @@ export async function listSalesLeads(q: ListSalesLeadsQuery) {
       },
     }),
     prisma.salesLead.count({ where }),
-    prisma.salesLead.count(),
-    prisma.salesLead.count({ where: { status: "NEW" } }),
-    prisma.salesLead.count({ where: { status: "CONTACTED" } }),
-    prisma.salesLead.count({ where: { status: "QUALIFIED" } }),
-    prisma.salesLead.count({ where: { status: "CONVERTED" } }),
-    prisma.salesLead.count({ where: { status: "WON" } }),
-    prisma.salesLead.count({ where: { status: "LOST" } }),
-    prisma.salesLead.count({ where: { status: "SPAM" } }),
   ]);
-
-  const inPipeline = contactedCount + qualifiedCount;
-  const converted = convertedCount + wonCount;
 
   return {
     items,
@@ -106,15 +79,49 @@ export async function listSalesLeads(q: ListSalesLeadsQuery) {
     page,
     limit,
     totalPages: Math.max(1, Math.ceil(total / limit)),
-    summary: {
-      total: totalCount,
-      new: newCount,
-      inPipeline,
-      converted,
-      lost: lostCount,
-      spam: spamCount,
-    },
   };
+}
+
+export async function getSalesLeadsSummary() {
+  const groups = await prisma.salesLead.groupBy({
+    by: ["status"],
+    _count: { _all: true },
+  });
+
+  const byStatus = Object.fromEntries(groups.map((g) => [g.status, g._count._all]));
+
+  return {
+    total: groups.reduce((acc, g) => acc + g._count._all, 0),
+    new: byStatus.NEW ?? 0,
+    inPipeline: (byStatus.CONTACTED ?? 0) + (byStatus.QUALIFIED ?? 0),
+    converted: byStatus.CONVERTED ?? 0,
+    lost: byStatus.LOST ?? 0,
+    spam: byStatus.SPAM ?? 0,
+  };
+}
+
+export async function getSalesLeadHistory(id: string) {
+  assertFound(
+    await prisma.salesLead.findUnique({
+      where: { id },
+      select: { id: true },
+    }),
+    "Lead não encontrado."
+  );
+
+  const items = await prisma.auditLog.findMany({
+    where: {
+      metadata: { path: ["leadId"], equals: id },
+      action: { in: ["admin.lead.update_status", "admin.lead.convert"] },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  return { items };
 }
 
 export async function getSalesLead(id: string) {
@@ -154,7 +161,7 @@ export async function updateSalesLeadStatus(
     throw new AppError("Status de lead inválido.", 400, "INVALID_LEAD_STATUS");
   }
 
-  if (status === "CONVERTED" || status === "WON") {
+  if (status === "CONVERTED") {
     if (!lead.convertedTenantId) {
       throw new AppError(
         "Para converter o lead em empresa, utilize o fluxo de conversão.",
@@ -216,7 +223,7 @@ export async function convertSalesLeadToCompany(
     "Lead não encontrado."
   );
 
-  if (lead.status === "CONVERTED" || lead.status === "WON") {
+  if (lead.status === "CONVERTED") {
     throw new AppError("Este lead já foi convertido em empresa.", 409, "LEAD_ALREADY_CONVERTED");
   }
 
