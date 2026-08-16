@@ -271,27 +271,31 @@ export default function AdminDeployPage() {
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
-  if (overviewQuery.isLoading && !overviewQuery.data) {
-    return <AdminPageSkeleton metrics={4} />;
-  }
-
   if (overviewQuery.isError) {
     if (isSuperadminMfaRequiredError(overviewQuery.error)) return null;
     return (
       <AdminErrorState
         title="Não foi possível carregar o módulo de deploy"
-        description="Verifique a conexão e permissões do Superadmin."
+        description={
+          overviewQuery.error instanceof Error
+            ? overviewQuery.error.message
+            : "Verifique a conexão e permissões do Superadmin."
+        }
         onRetry={() => void overviewQuery.refetch()}
       />
     );
   }
 
-  const data = overviewQuery.data!;
-  const current = data.currentCommit;
-  const latest = data.latestGitHubCommit;
-  const active = data.activeDeployment;
-  const isUpToDate = data.status === "UP_TO_DATE";
-  const isUpdateAvailable = data.status === "UPDATE_AVAILABLE";
+  if (overviewQuery.isLoading || !overviewQuery.data) {
+    return <AdminPageSkeleton metrics={4} />;
+  }
+
+  const data = overviewQuery.data;
+  const current = data?.currentCommit ?? null;
+  const latest = data?.latestGitHubCommit ?? null;
+  const active = data?.activeDeployment ?? null;
+  const isUpToDate = data?.status === "UP_TO_DATE";
+  const isUpdateAvailable = data?.status === "UPDATE_AVAILABLE";
   const historyItems = historyQuery.data?.items || [];
   const totalPages = historyQuery.data?.totalPages || 1;
 
@@ -342,22 +346,22 @@ export default function AdminDeployPage() {
         />
         <MetricCard
           label="Repositório GitHub"
-          value={data.gitHub.branch}
-          hint={data.gitHub.connected ? data.gitHub.repo : data.gitHub.error || "Desconectado"}
+          value={data?.gitHub?.branch ?? "main"}
+          hint={data?.gitHub?.connected ? data.gitHub.repo : data?.gitHub?.error || "Desconectado"}
           icon={<GitBranch className="h-4 w-4" />}
-          tone={data.gitHub.connected ? "neutral" : "danger"}
+          tone={data?.gitHub?.connected ? "neutral" : "danger"}
           compact
         />
         <MetricCard
           label="EasyPanel"
-          value={data.easyPanel.connected ? "Conectado" : "Erro"}
+          value={data?.easyPanel?.connected ? "Conectado" : "Erro"}
           hint={
-            data.easyPanel.connected
+            data?.easyPanel?.connected
               ? `Serviço ${data.easyPanel.serviceName}`
-              : data.easyPanel.error || "Indisponível"
+              : data?.easyPanel?.error || "Indisponível"
           }
           icon={<Layers className="h-4 w-4" />}
-          tone={data.easyPanel.connected ? "success" : "danger"}
+          tone={data?.easyPanel?.connected ? "success" : "danger"}
           compact
         />
       </MetricGrid>
@@ -427,7 +431,7 @@ export default function AdminDeployPage() {
               {/* Último no GitHub */}
               <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3.5">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                  Último no GitHub ({data.gitHub.branch})
+                  Último no GitHub ({data?.gitHub?.branch ?? "main"})
                 </span>
                 <div className="mt-1.5 flex items-center gap-2">
                   <code className="rounded bg-white/[0.08] px-2 py-0.5 font-mono text-[13px] font-bold text-emerald-300">
@@ -464,7 +468,7 @@ export default function AdminDeployPage() {
                   "h-10 px-5 text-[13px] font-semibold",
                   isUpdateAvailable ? "admin-btn-primary" : "admin-btn-secondary"
                 )}
-                disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel.connected}
+                disabled={Boolean(active) || startDeployMut.isPending || !data?.easyPanel?.connected}
                 onClick={() => setConfirmOpen(true)}
               >
                 <Rocket className="h-4 w-4" />
@@ -663,7 +667,7 @@ export default function AdminDeployPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Branch:</span>
-              <span className="font-medium text-white">{data.gitHub.branch}</span>
+              <span className="font-medium text-white">{data?.gitHub?.branch ?? "main"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Commit:</span>
