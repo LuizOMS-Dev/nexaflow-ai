@@ -17,9 +17,11 @@ import {
   Trash2,
   ArrowRight,
   Sparkles,
-  RefreshCw,
   ExternalLink,
   ShieldAlert,
+  Edit2,
+  X,
+  Check,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
@@ -122,10 +124,10 @@ type PlatformCostItem = {
 };
 
 const COST_CATEGORIES = [
-  { value: "INFRASTRUCTURE", label: "Servidores & Nuvem (EasyPanel)" },
-  { value: "WHATSAPP", label: "WhatsApp Gateway & WAHA" },
-  { value: "AI", label: "Provedores de IA (OpenAI / Groq)" },
-  { value: "EMAIL", label: "Envio de E-mails Transacionais" },
+  { value: "INFRASTRUCTURE", label: "Servidores & Nuvem" },
+  { value: "WHATSAPP", label: "WhatsApp Gateway (WAHA)" },
+  { value: "AI", label: "Provedores de IA" },
+  { value: "EMAIL", label: "E-mail Transacional" },
   { value: "DATABASE", label: "Banco de Dados & Redis" },
   { value: "SUPPORT", label: "Ferramentas & Suporte" },
   { value: "OTHER", label: "Outros Custos Fixos" },
@@ -142,8 +144,16 @@ export default function AdminFinancePage() {
   const [costName, setCostName] = useState("");
   const [costCategory, setCostCategory] = useState("INFRASTRUCTURE");
   const [costAmount, setCostAmount] = useState("");
-  const [costRecurrence, setCostRecurrence] = useState("MONTHLY");
   const [costNotes, setCostNotes] = useState("");
+
+  // Edit cost state
+  const [editingCostId, setEditingCostId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState("INFRASTRUCTURE");
+  const [editAmount, setEditAmount] = useState("");
+
+  // Delete confirmation state
+  const [costToDeleteId, setCostToDeleteId] = useState<string | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin-finance"],
@@ -174,9 +184,28 @@ export default function AdminFinancePage() {
       setCostNotes("");
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Erro ao adicionar custo");
+    },
+  });
+
+  const updateCostMutation = useMutation({
+    mutationFn: (payload: { id: string; name?: string; category?: string; amount?: number; isActive?: boolean }) =>
+      api<PlatformCostItem>(`/admin/finance/costs/${payload.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      toast.success("Custo atualizado com sucesso!");
+      setEditingCostId(null);
+      queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao atualizar custo");
     },
   });
 
@@ -189,6 +218,7 @@ export default function AdminFinancePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
   });
 
@@ -196,24 +226,49 @@ export default function AdminFinancePage() {
     mutationFn: (id: string) => api(`/admin/finance/costs/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       toast.success("Custo removido!");
+      setCostToDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ["admin-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["admin-finance"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
     },
   });
 
   const handleCreateCostSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseFloat(costAmount.replace(",", "."));
+    const cleanStr = costAmount.replace(/[^\d.,]/g, "").replace(",", ".");
+    const amt = parseFloat(cleanStr);
     if (!costName.trim() || isNaN(amt) || amt <= 0) {
-      toast.error("Preencha o nome e um valor válido maior que zero.");
+      toast.error("Preencha o nome e um valor mensal válido maior que zero.");
       return;
     }
     createCostMutation.mutate({
       name: costName.trim(),
       category: costCategory,
       amount: amt,
-      recurrence: costRecurrence,
+      recurrence: "MONTHLY",
       notes: costNotes.trim() || null,
+    });
+  };
+
+  const handleStartEdit = (cost: PlatformCostItem) => {
+    setEditingCostId(cost.id);
+    setEditName(cost.name);
+    setEditCategory(cost.category);
+    setEditAmount(cost.amount.toString());
+  };
+
+  const handleSaveEditSubmit = (costId: string) => {
+    const cleanStr = editAmount.replace(/[^\d.,]/g, "").replace(",", ".");
+    const amt = parseFloat(cleanStr);
+    if (!editName.trim() || isNaN(amt) || amt <= 0) {
+      toast.error("Preencha o nome e um valor válido.");
+      return;
+    }
+    updateCostMutation.mutate({
+      id: costId,
+      name: editName.trim(),
+      category: editCategory,
+      amount: amt,
     });
   };
 
@@ -236,10 +291,14 @@ export default function AdminFinancePage() {
   const perf = data.performance;
   const byPlan = data.revenueByPlan || [];
   const maxPlanMrr = Math.max(1, ...byPlan.map((r) => r.mrr || 0));
+  const costs = costsList || [];
+  const totalActiveCostsAmount = costs
+    .filter((c) => c.isActive)
+    .reduce((acc, c) => acc + c.amount, 0);
 
   return (
     <div className="space-y-6">
-      {/* 1. Header Oficial com descrição refinada e acessos */}
+      {/* 1. Header Oficial */}
       <AdminPageHeader
         title="Financeiro"
         description="Acompanhe receita recorrente, contratos, custos e desempenho financeiro da plataforma."
@@ -262,7 +321,6 @@ export default function AdminFinancePage() {
 
       {/* 2. Top 4 KPIs Oficiais */}
       <MetricGrid cols={4}>
-        {/* KPI 1: MRR */}
         <MetricCard
           label="MRR"
           value={formatCurrency(s.mrr)}
@@ -272,7 +330,6 @@ export default function AdminFinancePage() {
           compact
         />
 
-        {/* KPI 2: ARR */}
         <MetricCard
           label="ARR"
           value={formatCurrency(s.arr)}
@@ -282,7 +339,6 @@ export default function AdminFinancePage() {
           compact
         />
 
-        {/* KPI 3: Ticket médio mensal */}
         <MetricCard
           label="Ticket médio mensal"
           value={formatCurrency(s.avgTicket)}
@@ -292,7 +348,6 @@ export default function AdminFinancePage() {
           compact
         />
 
-        {/* KPI 4: Empresas pagantes */}
         <MetricCard
           label="Empresas pagantes"
           value={s.paidSubscriptions}
@@ -353,7 +408,7 @@ export default function AdminFinancePage() {
             <div>
               <span className="text-[11px] font-medium text-gray-500 uppercase">Margem estimada</span>
               <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-violet-300">
-                {perf.estimatedMargin.toFixed(1)}%
+                {s.mrr > 0 ? `${perf.estimatedMargin.toFixed(1)}%` : "Indisponível"}
               </p>
             </div>
           </div>
@@ -367,7 +422,7 @@ export default function AdminFinancePage() {
                 Custos operacionais não configurados
               </p>
               <p className="text-[11.5px] text-amber-300/80">
-                Configure os custos da operação (servidor, IA, WAHA, banco) para calcular lucro e margem estimados.
+                Configure os custos da operação para calcular lucro e margem estimados.
               </p>
             </div>
           </div>
@@ -402,7 +457,7 @@ export default function AdminFinancePage() {
               <CreditCard className="h-8 w-8 text-gray-600 mb-2" />
               <p className="text-[13.5px] font-semibold text-gray-200">Ainda não há receita recorrente</p>
               <p className="mt-1 max-w-sm text-[12px] text-gray-400">
-                A distribuição por plano aparecerá quando houver assinaturas pagas ativas.
+                A distribuição por plano aparecerá quando houver assinaturas pagas.
               </p>
               <Link
                 href="/admin/plans"
@@ -509,9 +564,11 @@ export default function AdminFinancePage() {
       <AdminSection
         title="Assinaturas recentes"
         action={
-          <span className="text-[12px] text-gray-400">
-            {data.recentSubscriptions.length} exibidas
-          </span>
+          data.recentSubscriptions.length > 0 ? (
+            <span className="text-[12px] text-gray-400">
+              {data.recentSubscriptions.length} exibidas
+            </span>
+          ) : undefined
         }
         flush
       >
@@ -614,28 +671,50 @@ export default function AdminFinancePage() {
         {/* Atenção Financeira / Inadimplência */}
         <AdminSection title="Atenção financeira" flush>
           <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-red-400" />
-                <span className="text-[12.5px] font-medium text-white">Contratos em atraso</span>
+            {data.attention.overdueCount === 0 &&
+            data.attention.overdueMrrRisk === 0 &&
+            data.attention.inconsistentEnterpriseCount === 0 ? (
+              <div className="flex items-center gap-2.5 py-3">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <div>
+                  <p className="text-[12.5px] font-semibold text-white">
+                    Nenhuma pendência financeira crítica
+                  </p>
+                  <p className="text-[11.5px] text-gray-400">
+                    Todas as assinaturas e contratos estão em dia no momento.
+                  </p>
+                </div>
               </div>
-              <span className="font-semibold tabular-nums text-red-400 text-[13px]">
-                {data.attention.overdueCount} {pluralizePt(data.attention.overdueCount, "empresa", "empresas")}
-              </span>
-            </div>
+            ) : (
+              <>
+                {data.attention.overdueCount > 0 && (
+                  <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-red-400" />
+                      <span className="text-[12.5px] font-medium text-white">Contratos em atraso</span>
+                    </div>
+                    <span className="font-semibold tabular-nums text-red-400 text-[13px]">
+                      {data.attention.overdueCount} {pluralizePt(data.attention.overdueCount, "empresa", "empresas")}
+                    </span>
+                  </div>
+                )}
 
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
-              <span className="text-[12.5px] text-gray-300">MRR em risco de churn</span>
-              <span className="font-semibold tabular-nums text-amber-300 text-[13px]">
-                {formatCurrency(data.attention.overdueMrrRisk)}
-              </span>
-            </div>
+                {data.attention.overdueMrrRisk > 0 && (
+                  <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+                    <span className="text-[12.5px] text-gray-300">MRR em risco de churn</span>
+                    <span className="font-semibold tabular-nums text-amber-300 text-[13px]">
+                      {formatCurrency(data.attention.overdueMrrRisk)}
+                    </span>
+                  </div>
+                )}
 
-            {data.attention.inconsistentEnterpriseCount > 0 && (
-              <div className="flex items-center justify-between text-[12px] text-amber-300">
-                <span>Enterprise sem valor contratado acordado:</span>
-                <span className="font-bold">{data.attention.inconsistentEnterpriseCount}</span>
-              </div>
+                {data.attention.inconsistentEnterpriseCount > 0 && (
+                  <div className="flex items-center justify-between text-[12px] text-amber-300">
+                    <span>Enterprise sem valor contratado acordado:</span>
+                    <span className="font-bold">{data.attention.inconsistentEnterpriseCount}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </AdminSection>
@@ -644,115 +723,228 @@ export default function AdminFinancePage() {
       {/* MODAL: Custos Operacionais da Plataforma */}
       <Modal
         open={isCostsModalOpen}
-        onClose={() => setIsCostsModalOpen(false)}
+        onClose={() => {
+          setIsCostsModalOpen(false);
+          setEditingCostId(null);
+          setCostToDeleteId(null);
+        }}
         title="Custos Operacionais da Plataforma"
-        description="Configure os custos fixos mensais do NexaFlow (servidor, IA, banco, WAHA) para calcular o lucro estimado."
+        description="Configure os custos mensais da operação para calcular resultado e margem estimados."
         size="lg"
       >
-        <div className="space-y-5">
-          {/* Formulário para novo custo */}
-          <form onSubmit={handleCreateCostSubmit} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 space-y-3">
-            <p className="text-[12.5px] font-semibold text-white">Adicionar Custo da Plataforma</p>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
+        <div className="space-y-6">
+          {/* Formulário Espaçoso de Novo Custo */}
+          <form onSubmit={handleCreateCostSubmit} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3.5">
+            <p className="text-[13px] font-semibold text-white">Adicionar Custo da Plataforma</p>
+            
+            {/* Linha 1: Nome */}
+            <div>
+              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Nome do custo *</label>
               <input
                 type="text"
-                placeholder="Nome (ex: Servidor EasyPanel)"
+                placeholder="Ex: Servidor EasyPanel Cloud"
                 value={costName}
                 onChange={(e) => setCostName(e.target.value)}
                 required
-                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[12.5px] text-white focus:border-violet-500 focus:outline-none sm:col-span-2"
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none"
               />
-              <select
-                value={costCategory}
-                onChange={(e) => setCostCategory(e.target.value)}
-                className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] text-white focus:border-violet-500 focus:outline-none"
-              >
-                {COST_CATEGORIES.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-              <div className="flex gap-2">
+            </div>
+
+            {/* Linha 2: Categoria e Valor */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Categoria *</label>
+                <select
+                  value={costCategory}
+                  onChange={(e) => setCostCategory(e.target.value)}
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none"
+                >
+                  {COST_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">Valor mensal (R$) *</label>
                 <input
                   type="text"
-                  placeholder="R$ / mês"
+                  placeholder="350,00"
                   value={costAmount}
                   onChange={(e) => setCostAmount(e.target.value)}
                   required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12.5px] text-white focus:border-violet-500 focus:outline-none"
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none"
                 />
-                <button
-                  type="submit"
-                  disabled={createCostMutation.isPending}
-                  className="rounded-lg bg-violet-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 shrink-0"
-                >
-                  Adicionar
-                </button>
               </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="submit"
+                disabled={createCostMutation.isPending || !costName.trim() || !costAmount.trim()}
+                className="rounded-lg bg-violet-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
+              >
+                {createCostMutation.isPending ? "Adicionando..." : "Adicionar custo"}
+              </button>
             </div>
           </form>
 
           {/* Lista de custos cadastrados */}
           <div>
-            <p className="text-[12px] font-semibold uppercase tracking-wider text-gray-400 mb-2">
-              Custos Operacionais ({costsList?.length || 0})
-            </p>
+            <div className="flex items-center justify-between mb-2.5">
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+                Custos Cadastrados ({costs.length})
+              </p>
+              {costs.length > 0 && (
+                <span className="text-[12.5px] font-bold tabular-nums text-white">
+                  Total: <span className="text-amber-300">{formatCurrency(totalActiveCostsAmount)}</span>/mês
+                </span>
+              )}
+            </div>
+
             {isLoadingCosts ? (
               <div className="space-y-2">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
               </div>
-            ) : !costsList || costsList.length === 0 ? (
-              <p className="py-4 text-center text-[12px] text-gray-500">
+            ) : costs.length === 0 ? (
+              <p className="py-6 text-center text-[12.5px] text-gray-500">
                 Nenhum custo operacional cadastrado ainda.
               </p>
             ) : (
               <ul className="divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                {costsList.map((cost) => (
-                  <li key={cost.id} className="flex items-center justify-between p-3 text-[12.5px]">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={cn("font-medium", cost.isActive ? "text-white" : "text-gray-500 line-through")}>
-                          {cost.name}
-                        </span>
-                        <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10.5px] text-gray-400">
-                          {cost.category}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-500">Recorrência mensal</p>
-                    </div>
+                {costs.map((cost) => {
+                  const isEditing = editingCostId === cost.id;
+                  const isDeleting = costToDeleteId === cost.id;
 
-                    <div className="flex items-center gap-3">
-                      <span className={cn("font-bold tabular-nums", cost.isActive ? "text-amber-300" : "text-gray-600")}>
-                        {formatCurrency(cost.amount)}/mês
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleCostMutation.mutate({ id: cost.id, isActive: !cost.isActive })}
-                        className={cn(
-                          "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
-                          cost.isActive
-                            ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                            : "bg-gray-500/10 text-gray-400 hover:bg-gray-500/20"
-                        )}
-                      >
-                        {cost.isActive ? "Ativo" : "Pausado"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Excluir custo "${cost.name}"?`)) {
-                            deleteCostMutation.mutate(cost.id);
-                          }
-                        }}
-                        className="text-gray-500 hover:text-red-400 transition-colors p-1"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                  if (isDeleting) {
+                    return (
+                      <li key={cost.id} className="p-3.5 bg-red-500/[0.06] flex items-center justify-between">
+                        <span className="text-[12px] text-red-200 font-medium">
+                          Confirmar exclusão de "{cost.name}"?
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCostToDeleteId(null)}
+                            className="rounded-md px-2.5 py-1 text-[11.5px] font-medium text-gray-400 hover:text-white"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteCostMutation.mutate(cost.id)}
+                            className="rounded-md bg-red-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-red-500"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  }
+
+                  if (isEditing) {
+                    return (
+                      <li key={cost.id} className="p-3.5 space-y-2 bg-white/[0.04]">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
+                          />
+                          <select
+                            value={editCategory}
+                            onChange={(e) => setEditCategory(e.target.value)}
+                            className="rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
+                          >
+                            {COST_CATEGORIES.map((c) => (
+                              <option key={c.value} value={c.value}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(e.target.value)}
+                              className="w-full rounded-lg border border-white/[0.08] bg-white/[0.06] px-2.5 py-1.5 text-[12px] text-white focus:outline-none focus:border-violet-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditSubmit(cost.id)}
+                              className="rounded-lg bg-emerald-600 p-1.5 text-white hover:bg-emerald-500"
+                              title="Salvar"
+                            >
+                              <Check className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCostId(null)}
+                              className="rounded-lg bg-white/[0.08] p-1.5 text-gray-400 hover:text-white"
+                              title="Cancelar"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  }
+
+                  return (
+                    <li key={cost.id} className="flex items-center justify-between p-3 text-[12.5px] hover:bg-white/[0.01]">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={cn("font-medium", cost.isActive ? "text-white" : "text-gray-500 line-through")}>
+                            {cost.name}
+                          </span>
+                          <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10.5px] text-gray-400">
+                            {COST_CATEGORIES.find((c) => c.value === cost.category)?.label || cost.category}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">Recorrência mensal fixa</p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className={cn("font-bold tabular-nums", cost.isActive ? "text-amber-300" : "text-gray-600")}>
+                          {formatCurrency(cost.amount)}/mês
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleCostMutation.mutate({ id: cost.id, isActive: !cost.isActive })}
+                          className={cn(
+                            "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                            cost.isActive
+                              ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                              : "bg-gray-500/10 text-gray-400 hover:bg-gray-500/20"
+                          )}
+                        >
+                          {cost.isActive ? "Ativo" : "Pausado"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEdit(cost)}
+                          className="text-gray-500 hover:text-gray-200 transition-colors p-1"
+                          title="Editar custo"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCostToDeleteId(cost.id)}
+                          className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                          title="Excluir custo"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

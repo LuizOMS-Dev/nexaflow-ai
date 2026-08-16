@@ -165,4 +165,57 @@ describe("Financeiro do Superadmin (/admin/finance) — RBAC, Métricas & Custos
     });
     expect(deleteRes.statusCode).toBe(200);
   });
+
+  it("4. Consistência: ARR é estritamente MRR * 12 e ticket médio trata divisão por zero com segurança", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/finance",
+      headers: auth(superadminToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const { mrr, arr, avgTicket, paidSubscriptions } = body.summary;
+    expect(arr).toBe(mrr * 12);
+    if (paidSubscriptions > 0) {
+      expect(avgTicket).toBeCloseTo(mrr / paidSubscriptions, 2);
+    } else {
+      expect(avgTicket).toBe(0);
+    }
+  });
+
+  it("5. Performance: Lucro e margem estimados refletem MRR e custos ativos", async () => {
+    // Cria custo ativo temporário
+    const costRes = await app.inject({
+      method: "POST",
+      url: "/admin/finance/costs",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Infra IA Groq ${suffix}`,
+        category: "AI",
+        amount: 200,
+        recurrence: "MONTHLY",
+      },
+    });
+    expect(costRes.statusCode).toBe(200);
+    const cost = costRes.json();
+
+    const finRes = await app.inject({
+      method: "GET",
+      url: "/admin/finance",
+      headers: auth(superadminToken),
+    });
+    expect(finRes.statusCode).toBe(200);
+    const fin = finRes.json();
+    expect(fin.performance.costsConfigured).toBe(true);
+    expect(fin.performance.monthlyCosts).toBeGreaterThanOrEqual(200);
+    expect(fin.performance.estimatedProfit).toBe(fin.summary.mrr - fin.performance.monthlyCosts);
+
+    // Cleanup
+    await app.inject({
+      method: "DELETE",
+      url: `/admin/finance/costs/${cost.id}`,
+      headers: auth(superadminToken),
+    });
+  });
 });
+

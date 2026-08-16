@@ -210,6 +210,7 @@ export async function adminRoutes(app: FastifyInstance) {
       recentAuditLogs,
       errors,
       healthReport,
+      platformCosts,
     ] = await Promise.all([
       prisma.tenant.findMany({
         include: {
@@ -287,6 +288,7 @@ export async function adminRoutes(app: FastifyInstance) {
         take: 20,
       }),
       getPlatformHealthDetailed().catch(() => null),
+      prisma.platformOperationalCost.findMany({ orderBy: { createdAt: "desc" } }),
     ]);
 
     // Filtra fixtures de teste da listagem e contadores de empresas
@@ -304,135 +306,32 @@ export async function adminRoutes(app: FastifyInstance) {
       (t) => new Date(t.createdAt) >= prevSince && new Date(t.createdAt) < since
     ).length;
 
-    // MRR estimado: preço CONTRATADO da Subscription; senão catálogo.
-    // Não conta: trial, free, canceladas, suspensas, bloqueadas, exclusão, enterprise sem valor.
-    // PAST_DUE com valor contratado ainda entra no MRR (assinatura esperada).
-    let mrr = 0;
-    let paidSubscriptions = 0;
-    const revenueByPlan: Array<{
-      planId: string;
-      planName: string;
-      planSlug: string;
-      priceMonthly: number | null;
-      priceOnRequest: boolean;
-      priceLabel: string;
-      isActive: boolean;
-      tenants: number;
-      mrr: number;
-      sharePercentage: number;
-    }> = [];
-
-    const tenantById = new Map(realTenants.map((t) => [t.id, t]));
-
-    const mrrByPlanId = new Map<
-      string,
-      { planName: string; catalogPrice: number | null; tenants: number; mrr: number }
-    >();
-
-    const catalogPriceOf = (plan: {
-      priceMonthly: unknown;
-      priceOnRequest?: boolean | null;
-      slug?: string | null;
-    }): number | null => {
-      if (plan.priceOnRequest || plan.slug === "enterprise") return null;
-      const n = Number(plan.priceMonthly || 0);
-      if (!Number.isFinite(n) || n < 0) return null;
-      return n;
-    };
-
-    const priceLabelOf = (plan: {
-      priceMonthly: unknown;
-      priceOnRequest?: boolean | null;
-      slug?: string | null;
-      name?: string;
-    }): string => {
-      if (plan.priceOnRequest || plan.slug === "enterprise") return "Sob consulta";
-      if (plan.slug === "free") return "Gratuito";
-      const n = catalogPriceOf(plan);
-      if (n == null || n <= 0) return "Sob consulta";
-      return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
-    };
-
-    for (const sub of subscriptions) {
-      const tenant = tenantById.get(sub.tenantId);
-      // Somente empresas ACTIVE (não blocked/suspended/cancelled/trial operacional)
-      if (!tenant || tenant.status !== "ACTIVE") continue;
-      const plan = sub.plan || plans.find((p) => p.id === sub.planId || p.id === tenant.planId);
-      if (!plan || plan.slug === "free") continue;
-
-      const catalog = catalogPriceOf(plan);
-      const contracted =
-        sub.priceMonthly != null && Number.isFinite(Number(sub.priceMonthly))
-          ? Number(sub.priceMonthly)
-          : catalog;
-      // Enterprise sob consulta sem preço contratado: não inventa MRR
-      if (contracted == null || contracted <= 0) continue;
-
-      mrr += contracted;
-      paidSubscriptions += 1;
-      const cur = mrrByPlanId.get(plan.id) || {
-        planName: plan.name,
-        catalogPrice: catalog,
-        tenants: 0,
-        mrr: 0,
-      };
-      cur.tenants += 1;
-      cur.mrr += contracted;
-      mrrByPlanId.set(plan.id, cur);
-    }
-
-    // Fallback: tenants ACTIVE com plano pago e sem subscription
-    for (const t of realTenants) {
-      if (t.status !== "ACTIVE" || !t.planId) continue;
-      if (subscriptions.some((s) => s.tenantId === t.id)) continue;
-      const plan = plans.find((p) => p.id === t.planId);
-      if (!plan || plan.slug === "free") continue;
-      const catalog = catalogPriceOf(plan);
-      if (catalog == null || catalog <= 0) continue;
-      mrr += catalog;
-      paidSubscriptions += 1;
-      const cur = mrrByPlanId.get(plan.id) || {
-        planName: plan.name,
-        catalogPrice: catalog,
-        tenants: 0,
-        mrr: 0,
-      };
-      cur.tenants += 1;
-      cur.mrr += catalog;
-      mrrByPlanId.set(plan.id, cur);
-    }
-
-    // Receita por plano: catálogo real do banco (mesma fonte da página Planos)
-    for (const p of plans) {
-      if (p.slug === "free" && !p.isActive) {
-        const hasTenants = (p.tenants || []).filter((t) => !isTestFixtureTenant(t)).length > 0;
-        if (!hasTenants) continue;
-      }
-      const agg = mrrByPlanId.get(p.id);
-      const catalog = catalogPriceOf(p);
-      const planMrr = agg?.mrr ?? 0;
-      const sharePercentage = mrr > 0 ? Math.round((planMrr / mrr) * 100) : 0;
-
-      revenueByPlan.push({
-        planId: p.id,
-        planName: p.name,
-        planSlug: p.slug,
-        priceMonthly: catalog,
-        priceOnRequest: Boolean(p.priceOnRequest || p.slug === "enterprise"),
-        priceLabel: priceLabelOf(p),
-        isActive: p.isActive,
-        tenants: agg?.tenants ?? 0,
-        mrr: planMrr,
-        sharePercentage,
-      });
-    }
-
-    // Ordenar como catálogo comercial
-    revenueByPlan.sort((a, b) => {
-      const pa = plans.find((p) => p.id === a.planId);
-      const pb = plans.find((p) => p.id === b.planId);
-      return (pa?.sortOrder ?? 0) - (pb?.sortOrder ?? 0);
+    // Centralização de métricas financeiras (MRR, ARR, Ticket Médio, Receita por Plano)
+    const finMetrics = computePlatformFinancialMetrics({
+      tenants: allTenantsRaw,
+      plans,
+      subscriptions,
+      costs: platformCosts,
+      now: new Date(now),
     });
+
+    const mrr = finMetrics.summary.mrr;
+    const arr = finMetrics.summary.arr;
+    const avgTicket = finMetrics.summary.avgTicket;
+    const paidSubscriptions = finMetrics.summary.paidSubscriptions;
+
+    const revenueByPlan = finMetrics.revenueByPlan.map((r) => ({
+      planId: r.planId,
+      planName: r.planName,
+      planSlug: r.planSlug,
+      priceMonthly: r.catalogPrice,
+      priceOnRequest: r.catalogPrice == null,
+      priceLabel: r.priceLabel,
+      isActive: r.isActive,
+      tenants: r.tenants,
+      mrr: r.mrr,
+      sharePercentage: r.sharePercentage,
+    }));
 
     const plansWithRealCount = plans.map((p) => {
       const realCount = p.tenants.filter((t) => !isTestFixtureTenant(t)).length;
@@ -443,8 +342,6 @@ export async function adminRoutes(app: FastifyInstance) {
       };
     });
 
-    const avgTicket = paidSubscriptions > 0 ? mrr / paidSubscriptions : 0;
-    const arr = mrr * 12;
     const paidRatio = active > 0 ? Math.round((paidSubscriptions / active) * 100) : 0;
 
     // Billing snapshots para alertas reais (sem inventar)
@@ -609,8 +506,11 @@ export async function adminRoutes(app: FastifyInstance) {
         paidSubscriptions,
         paidRatio,
         revenueByPlan,
-        costsAvailable: false,
-        profitAvailable: false,
+        costsAvailable: finMetrics.performance.costsConfigured,
+        profitAvailable: finMetrics.performance.costsConfigured,
+        monthlyCosts: finMetrics.performance.monthlyCosts,
+        estimatedProfit: finMetrics.performance.estimatedProfit,
+        estimatedMargin: finMetrics.performance.estimatedMargin,
         /** MRR = valor contratado (Subscription.priceMonthly) de empresas ACTIVE — não é caixa */
         note: "MRR estimado com base no valor contratado das assinaturas de empresas ativas. Não representa pagamentos já recebidos. Alterar preço de catálogo não altera contratos existentes.",
       },
