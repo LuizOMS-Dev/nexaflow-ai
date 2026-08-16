@@ -221,9 +221,21 @@ export default function AdminCompaniesPage() {
     const t = setTimeout(() => {
       setDebouncedSearch(search);
       setPage(1);
+      const currentParam = searchParams.get("q") || searchParams.get("search") || "";
+      if (search.trim() !== currentParam.trim()) {
+        const next = new URLSearchParams(searchParams.toString());
+        if (search.trim()) {
+          next.set("q", search.trim());
+        } else {
+          next.delete("q");
+          next.delete("search");
+        }
+        next.delete("page");
+        router.replace(`/admin/companies?${next.toString()}`);
+      }
     }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, searchParams, router]);
 
   function setParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -809,6 +821,9 @@ function CreateCompanyModal({
     onSuccess: (res) => onCreated(res.id),
     onError: (e) => {
       if (e instanceof ApiError) {
+        if (e.fieldErrors && Object.keys(e.fieldErrors).length > 0) {
+          setFieldErrors((prev) => ({ ...prev, ...e.fieldErrors }));
+        }
         if (e.code === "SIMILAR_TENANT_NAME") {
           setForce(true);
           setFieldErrors((prev) => ({ ...prev, name: e.message }));

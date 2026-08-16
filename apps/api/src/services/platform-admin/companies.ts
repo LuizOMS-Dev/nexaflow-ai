@@ -66,7 +66,8 @@ export async function listCompanies(q: ListCompaniesQuery) {
     ];
   }
 
-  const all = await prisma.tenant.findMany({
+  // 1. Busca os tenants filtrados para a listagem
+  const filteredRaw = await prisma.tenant.findMany({
     where,
     select: {
       id: true,
@@ -91,19 +92,30 @@ export async function listCompanies(q: ListCompaniesQuery) {
     orderBy: { createdAt: "desc" },
   });
 
-  const real = all.filter((t) => !isTestFixtureTenant(t));
-  const tenantIds = real.map((t) => t.id);
-  const subs = tenantIds.length
-    ? await prisma.subscription.findMany({
-        where: { tenantId: { in: tenantIds } },
-        include: {
-          plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } },
-        },
-      })
-    : [];
-  const subMap = new Map(subs.map((s) => [s.tenantId, s as SubscriptionRow]));
+  const realFiltered = filteredRaw.filter((t) => !isTestFixtureTenant(t));
+  const filteredIds = realFiltered.map((t) => t.id);
 
-  let enriched = real.map((t) => {
+  // 2. Busca todas as assinaturas necessárias para enriquecer os filtrados e calcular KPIs globais
+  const allTenantsForSummary = await prisma.tenant.findMany({
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      planId: true,
+      settings: true,
+    },
+  });
+  const allReal = allTenantsForSummary.filter((t) => !isTestFixtureTenant(t));
+
+  const allSubs = await prisma.subscription.findMany({
+    include: {
+      plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } },
+    },
+  });
+  const subMap = new Map(allSubs.map((s) => [s.tenantId, s as SubscriptionRow]));
+
+  let enriched = realFiltered.map((t) => {
     const billing = enrichTenantBilling(t, subMap.get(t.id));
     const primaryAdmin = t.members[0]?.user || null;
     const { members: _m, settings: _s, ...rest } = t;
@@ -118,22 +130,23 @@ export async function listCompanies(q: ListCompaniesQuery) {
     }
   }
 
-  const summaryBase = real.map((t) => enrichTenantBilling(t, subMap.get(t.id)));
-  const suspendedCount = real.filter((t) => t.status === "SUSPENDED").length;
-  const blockedCount = real.filter((t) => t.status === "BLOCKED").length;
+  // 3. KPIs consolidados globais (sem distorção de filtros)
+  const summaryBase = allReal.map((t) => enrichTenantBilling(t, subMap.get(t.id)));
+  const suspendedCount = allReal.filter((t) => t.status === "SUSPENDED").length;
+  const blockedCount = allReal.filter((t) => t.status === "BLOCKED").length;
 
   const summary = {
-    total: real.length,
-    active: real.filter((t) => t.status === "ACTIVE").length,
+    total: allReal.length,
+    active: allReal.filter((t) => t.status === "ACTIVE").length,
     overdue: summaryBase.filter((b) => b.financialStatus === "OVERDUE").length,
     suspended: suspendedCount,
     blocked: blockedCount,
     suspendedBlocked: suspendedCount + blockedCount,
-    trial: real.filter((t) => t.status === "TRIAL").length,
+    trial: allReal.filter((t) => t.status === "TRIAL").length,
     dueIn7Days: summaryBase.filter(
       (b) => b.financialStatus === "DUE_SOON" || b.financialStatus === "DUE_TODAY"
     ).length,
-    cancelled: real.filter(
+    cancelled: allReal.filter(
       (t) => t.status === "CANCELLED" || t.status === "PENDING_DELETION"
     ).length,
     needsAttention: summaryBase.filter((b) => b.needsAttention).length,
