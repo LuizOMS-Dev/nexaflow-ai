@@ -244,4 +244,21 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
       expect(delFree.statusCode).toBe(400);
     }
   });
+
+  it("8. Desconto Anual: Backend calcula automaticamente 15% de desconto no preço anual quando não informado", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Desconto Anual ${suffix}`,
+        slug: `plano-anual-${suffix}`,
+        priceMonthly: 300, // 300 * 12 * 0.85 = 3060
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const plan = res.json();
+    expect(Number(plan.priceMonthly)).toBe(300);
+    expect(Number(plan.priceAnnual)).toBe(3060);
+  });
 });

@@ -454,15 +454,22 @@ export default function AdminPlansPage() {
     }
   };
 
-  const handleApplyDiscountSuggestion = () => {
+  const handleApplyDiscountSuggestion = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const monthly = parseBrlInput(formData.priceMonthly);
-    if (monthly <= 0) return;
+    if (monthly <= 0) {
+      toast.error("Informe um preço mensal válido antes de calcular o desconto.");
+      return;
+    }
     const suggested = Math.round(monthly * 12 * 0.85 * 100) / 100;
     setFormData((prev) => ({
       ...prev,
       priceAnnual: formatBrlInput(Math.round(suggested * 100).toString()),
     }));
-    toast.success("Sugestão de 15% de desconto aplicada!");
+    toast.success(`Desconto de 15% aplicado: ${formatCurrency(suggested)}/ano`);
   };
 
   if (user?.platformRole !== "SUPERADMIN") return null;
@@ -618,9 +625,16 @@ export default function AdminPlansPage() {
                           <span className="text-[12px] text-gray-400 font-medium">/mês</span>
                         </div>
                         {annualPrice != null && annualPrice > 0 && (
-                          <p className="text-[11.5px] text-gray-400 tabular-nums mt-0.5">
-                            ou {formatCurrency(annualPrice)}/ano
-                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <p className="text-[11.5px] text-gray-400 tabular-nums">
+                              ou {formatCurrency(annualPrice)}/ano
+                            </p>
+                            {monthlyPrice > 0 && annualPrice < monthlyPrice * 12 && (
+                              <span className="rounded bg-emerald-500/15 px-1.5 py-0.2 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
+                                {Math.round((1 - annualPrice / (monthlyPrice * 12)) * 100)}% OFF
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -885,32 +899,55 @@ export default function AdminPlansPage() {
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-[11.5px] font-medium text-gray-400">
-                      Preço anual (R$)
-                    </label>
-                    {parseBrlInput(formData.priceMonthly) > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleApplyDiscountSuggestion}
-                        className="text-[11px] font-medium text-violet-400 hover:text-violet-300 transition-colors"
-                      >
-                        Aplicar -15%
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
-                      R$
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="3.049,80"
-                      value={formData.priceAnnual}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, priceAnnual: formatBrlInput(e.target.value) }))}
-                      className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
-                    />
-                  </div>
+                  {(() => {
+                    const parsedM = parseBrlInput(formData.priceMonthly);
+                    const parsedA = parseBrlInput(formData.priceAnnual);
+                    const suggestedA = parsedM > 0 ? Math.round(parsedM * 12 * 0.85 * 100) / 100 : 0;
+                    const discountPct =
+                      parsedM > 0 && parsedA > 0 && parsedA < parsedM * 12
+                        ? Math.round((1 - parsedA / (parsedM * 12)) * 100)
+                        : 0;
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1.5">
+                          <label className="block text-[11.5px] font-medium text-gray-400">
+                            Preço anual (R$)
+                          </label>
+                          {parsedM > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleApplyDiscountSuggestion(e)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-violet-600/20 hover:bg-violet-600/35 text-violet-300 border border-violet-500/30 text-[11px] font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
+                              title="Calcular automaticamente com 15% de desconto anual"
+                            >
+                              <Sparkles className="h-3 w-3 text-violet-400 shrink-0" />
+                              <span>
+                                Aplicar 15% ({formatCurrency(suggestedA)}/ano)
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
+                            R$
+                          </span>
+                          <input
+                            type="text"
+                            placeholder={suggestedA > 0 ? formatBrlInput(Math.round(suggestedA * 100).toString()) : "3.049,80"}
+                            value={formData.priceAnnual}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, priceAnnual: formatBrlInput(e.target.value) }))}
+                            className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-20 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
+                          />
+                          {discountPct > 0 && (
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
+                              -{discountPct}% OFF
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
