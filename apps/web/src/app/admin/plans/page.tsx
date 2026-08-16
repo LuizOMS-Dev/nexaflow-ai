@@ -1,28 +1,35 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { useState, useRef, useEffect, useMemo, FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, CreditCard, Pencil, Plus, Archive } from "lucide-react";
+import {
+  Copy,
+  CreditCard,
+  Pencil,
+  Plus,
+  Archive,
+  RotateCcw,
+  Check,
+  ChevronDown,
+  Users,
+  MessageSquare,
+  Bot,
+  Contact,
+  Workflow,
+  Sparkles,
+  Building2,
+  AlertTriangle,
+} from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { cn, formatCurrency } from "@/lib/utils";
-import {
-  DialogFooter,
-  FormField,
-  FormSection,
-  Modal,
-  MoneyInput,
-  NumberInput,
-  Select,
-  Switch,
-  useToast,
-} from "@/components/ui";
+import { cn, formatCurrency, pluralizePt } from "@/lib/utils";
+import { useToast } from "@/components/ui-toast";
+import { Modal, Skeleton } from "@/components/ui";
 import {
   AdminEmptyState,
   AdminErrorState,
   AdminPageHeader,
   AdminPageSkeleton,
-  AdminSection,
   StatusBadge,
 } from "@/components/admin";
 
@@ -46,11 +53,11 @@ type Plan = {
   _count?: { tenants: number };
 };
 
-type PlanForm = {
+type PlanFormState = {
   name: string;
   slug: string;
   description: string;
-  priceType: "fixed" | "on_request";
+  priceType: "fixed" | "on_request" | "free";
   priceMonthly: string;
   priceAnnual: string;
   maxUsers: string;
@@ -65,11 +72,11 @@ type PlanForm = {
 };
 
 const PRICE_TYPE_OPTIONS = [
-  { value: "fixed", label: "Preço fixo" },
-  { value: "on_request", label: "Sob consulta" },
+  { value: "fixed", label: "Preço fixo comercial" },
+  { value: "on_request", label: "Sob consulta (Enterprise)" },
+  { value: "free", label: "Gratuito" },
 ];
 
-/** Valores internos de badge → rótulos humanos na UI */
 const BADGE_OPTIONS = [
   { value: "", label: "Nenhum" },
   { value: "popular", label: "Mais popular" },
@@ -83,29 +90,33 @@ const BADGE_LABEL: Record<string, string> = {
   best_value: "Melhor custo-benefício",
 };
 
-function limitLabel(n: number, isEnterprise: boolean): string {
-  if (isEnterprise || n >= 999) return "Personalizado";
-  return n.toLocaleString("pt-BR");
+function formatBrlInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10) / 100;
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
 }
 
-function featureNum(
-  feats: Record<string, unknown> | null | undefined,
-  key: string,
-  fallback: number
-) {
-  const n = Number(feats?.[key] ?? fallback);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
+function parseBrlInput(value: string): number {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return 0;
+  return parseInt(digits, 10) / 100;
 }
 
-function parseNonNegInt(raw: string, fallback: number): number {
-  if (raw.trim() === "") return fallback;
-  const n = Number(String(raw).replace(/\D/g, ""));
-  if (!Number.isFinite(n) || n < 0) return fallback;
-  return Math.trunc(n);
+function formatIntegerInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+  const num = parseInt(digits, 10);
+  return num.toLocaleString("pt-BR");
 }
 
-function annualFromMonthly(monthly: number): number {
-  return Math.round(monthly * 12 * 0.85 * 100) / 100;
+function parseIntegerInput(value: string, fallback = 0): number {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return fallback;
+  return parseInt(digits, 10);
 }
 
 function slugify(name: string): string {
@@ -118,858 +129,1012 @@ function slugify(name: string): string {
     .slice(0, 48);
 }
 
-function emptyForm(): PlanForm {
+function CustomSelect({
+  value,
+  onChange,
+  options,
+  size = "md",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: Array<{ value: string; label: string }>;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+          if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center justify-between rounded-lg border border-white/[0.08] bg-white/[0.04] text-white hover:bg-white/[0.06] focus:border-violet-500 focus:outline-none transition-colors",
+          size === "md" ? "px-3 py-2 text-[13px]" : "px-2.5 py-1.5 text-[12px]"
+        )}
+      >
+        <span className="truncate">{selected?.label || value}</span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-150",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 top-full z-[100] mt-1.5 w-full min-w-[220px] rounded-xl border border-white/[0.1] bg-[#161a26] p-1.5 shadow-2xl backdrop-blur-lg"
+        >
+          <div className="max-h-56 overflow-y-auto space-y-0.5 custom-scrollbar">
+            {options.map((opt) => {
+              const isSelected = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                    size === "md" ? "text-[12.5px]" : "text-[11.5px]",
+                    isSelected
+                      ? "bg-violet-600/20 text-violet-300 font-medium"
+                      : "text-gray-300 hover:bg-white/[0.06] hover:text-white"
+                  )}
+                >
+                  <span>{opt.label}</span>
+                  {isSelected && <Check className="h-3.5 w-3.5 text-violet-400 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function emptyForm(): PlanFormState {
   return {
     name: "",
     slug: "",
     description: "",
     priceType: "fixed",
-    priceMonthly: "",
-    priceAnnual: "",
-    maxUsers: "2",
-    maxChannels: "1",
-    maxAgents: "1",
-    maxContacts: "2000",
-    maxActiveFlows: "5",
-    maxAiMessages: "1000",
+    priceMonthly: "299,00",
+    priceAnnual: "3.049,80",
+    maxUsers: "5",
+    maxChannels: "2",
+    maxAgents: "3",
+    maxContacts: "5.000",
+    maxActiveFlows: "10",
+    maxAiMessages: "2.000",
     isActive: true,
     badge: "",
     sortOrder: "100",
   };
 }
 
-function planToForm(p: Plan): PlanForm {
+function planToForm(p: Plan): PlanFormState {
   const feats = (p.features || {}) as Record<string, unknown>;
-  const onRequest = Boolean(p.priceOnRequest) || p.slug === "enterprise";
+  const isEnterprise = Boolean(p.priceOnRequest) || p.slug === "enterprise";
+  const isFree = p.slug === "free" || Number(p.priceMonthly) === 0 && !isEnterprise;
+
+  let pType: "fixed" | "on_request" | "free" = "fixed";
+  if (isEnterprise) pType = "on_request";
+  else if (isFree) pType = "free";
+
   return {
     name: p.name,
     slug: p.slug,
     description: p.description || "",
-    priceType: onRequest ? "on_request" : "fixed",
-    priceMonthly:
-      p.priceMonthly != null && p.priceMonthly !== ""
-        ? String(Number(p.priceMonthly))
-        : "",
-    priceAnnual:
-      p.priceAnnual != null && p.priceAnnual !== ""
-        ? String(Number(p.priceAnnual))
-        : "",
-    maxUsers: String(p.maxUsers ?? 1),
-    maxChannels: String(p.maxChannels ?? 1),
-    maxAgents: String(featureNum(feats, "maxAgents", 1)),
-    maxContacts: String(p.maxContacts ?? 0),
-    maxActiveFlows: String(
-      featureNum(feats, "maxActiveFlows", featureNum(feats, "maxAutomations", 5))
-    ),
-    maxAiMessages: String(
-      featureNum(feats, "monthlyAiCredits", p.maxAiMessages ?? 0)
-    ),
+    priceType: pType,
+    priceMonthly: p.priceMonthly != null ? formatBrlInput(Math.round(Number(p.priceMonthly) * 100).toString()) : "",
+    priceAnnual: p.priceAnnual != null ? formatBrlInput(Math.round(Number(p.priceAnnual) * 100).toString()) : "",
+    maxUsers: p.maxUsers != null ? formatIntegerInput(p.maxUsers.toString()) : "1",
+    maxChannels: p.maxChannels != null ? formatIntegerInput(p.maxChannels.toString()) : "1",
+    maxAgents: feats.maxAgents != null ? formatIntegerInput(String(feats.maxAgents)) : "1",
+    maxContacts: p.maxContacts != null ? formatIntegerInput(p.maxContacts.toString()) : "500",
+    maxActiveFlows: feats.maxActiveFlows != null ? formatIntegerInput(String(feats.maxActiveFlows)) : "5",
+    maxAiMessages: p.maxAiMessages != null ? formatIntegerInput(p.maxAiMessages.toString()) : "100",
     isActive: p.isActive,
-    badge:
-      p.badge && BADGE_OPTIONS.some((o) => o.value === p.badge)
-        ? p.badge
-        : p.badge || "",
-    sortOrder: String(p.sortOrder ?? 0),
+    badge: p.badge || "",
+    sortOrder: (p.sortOrder ?? 100).toString(),
   };
 }
 
-type EditorMode = "create" | "edit" | "duplicate";
-
 export default function AdminPlansPage() {
   const user = useAuth((s) => s.user);
-  const qc = useQueryClient();
   const { toast } = useToast();
-  const [mode, setMode] = useState<EditorMode | null>(null);
-  const [edit, setEdit] = useState<Plan | null>(null);
-  const [form, setForm] = useState<PlanForm>(emptyForm);
-  const [fieldErrors, setFieldErrors] = useState<
-    Partial<Record<keyof PlanForm, string>>
-  >({});
+  const queryClient = useQueryClient();
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
+  const [modalMode, setModalMode] = useState<"create" | "edit" | "duplicate" | null>(null);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [formData, setFormData] = useState<PlanFormState>(emptyForm());
+  const [initialFormJson, setInitialFormJson] = useState<string>("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+
+  // Archive confirmation state
+  const [planToArchive, setPlanToArchive] = useState<Plan | null>(null);
+
+  const { data: plans = [], isLoading, error, refetch } = useQuery({
     queryKey: ["admin-plans"],
     queryFn: () => api<Plan[]>("/admin/plans"),
     enabled: user?.platformRole === "SUPERADMIN",
-    retry: false,
   });
 
-  const suggestedAnnual = useMemo(() => {
-    if (form.priceType !== "fixed") return null;
-    const m = Number(form.priceMonthly);
-    if (!Number.isFinite(m) || m <= 0) return null;
-    return annualFromMonthly(m);
-  }, [form.priceMonthly, form.priceType]);
+  const activePlans = useMemo(() => plans.filter((p) => p.isActive), [plans]);
+  const archivedPlans = useMemo(() => plans.filter((p) => !p.isActive), [plans]);
 
-  function buildPayload(forCreate: boolean) {
-    const errors: Partial<Record<keyof PlanForm, string>> = {};
-    if (!form.name.trim()) errors.name = "Informe o nome do plano.";
-
-    const slug = form.slug.trim() || slugify(form.name);
-    if (forCreate) {
-      if (!slug) errors.slug = "Informe o slug.";
-      else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-        errors.slug = "Use apenas minúsculas, números e hífens.";
-      }
-    }
-
-    const onRequest = form.priceType === "on_request";
-    let priceMonthly = 0;
-    let priceAnnual: number | null = null;
-
-    if (!onRequest) {
-      const m = Number(String(form.priceMonthly).replace(",", "."));
-      if (form.priceMonthly.trim() === "" || !Number.isFinite(m) || m < 0) {
-        errors.priceMonthly = "Informe um preço mensal válido.";
-      } else {
-        priceMonthly = Math.round(m * 100) / 100;
-      }
-      if (form.priceAnnual.trim()) {
-        const a = Number(String(form.priceAnnual).replace(",", "."));
-        if (!Number.isFinite(a) || a < 0) {
-          errors.priceAnnual = "Preço anual inválido.";
-        } else {
-          priceAnnual = Math.round(a * 100) / 100;
-        }
-      }
-    }
-
-    const maxUsers = parseNonNegInt(form.maxUsers, NaN);
-    const maxChannels = parseNonNegInt(form.maxChannels, NaN);
-    const maxAgents = parseNonNegInt(form.maxAgents, NaN);
-    const maxContacts = parseNonNegInt(form.maxContacts, NaN);
-    const maxActiveFlows = parseNonNegInt(form.maxActiveFlows, NaN);
-    const maxAiMessages = parseNonNegInt(form.maxAiMessages, NaN);
-    const sortOrder = parseNonNegInt(form.sortOrder, NaN);
-
-    if (!Number.isFinite(maxUsers) || maxUsers < 1) errors.maxUsers = "Mínimo 1.";
-    if (!Number.isFinite(maxChannels) || maxChannels < 1)
-      errors.maxChannels = "Mínimo 1.";
-    if (!Number.isFinite(maxAgents) || maxAgents < 0)
-      errors.maxAgents = "Valor inválido.";
-    if (!Number.isFinite(maxContacts) || maxContacts < 0)
-      errors.maxContacts = "Valor inválido.";
-    if (!Number.isFinite(maxActiveFlows) || maxActiveFlows < 0)
-      errors.maxActiveFlows = "Valor inválido.";
-    if (!Number.isFinite(maxAiMessages) || maxAiMessages < 0)
-      errors.maxAiMessages = "Valor inválido.";
-    if (!Number.isFinite(sortOrder) || sortOrder < 0)
-      errors.sortOrder = "Valor inválido.";
-
-    if (Object.keys(errors).length) {
-      setFieldErrors(errors);
-      throw new Error("Revise os campos destacados.");
-    }
-    setFieldErrors({});
-
-    const prevFeats =
-      edit?.features && typeof edit.features === "object"
-        ? { ...edit.features }
-        : ({} as Record<string, unknown>);
-
-    const features = {
-      ...prevFeats,
-      maxAgents,
-      maxActiveFlows,
-      monthlyAiCredits: maxAiMessages,
-    };
-
-    const badgeValue = form.badge.trim() || null;
-
-    return {
-      name: form.name.trim(),
-      slug,
-      description: form.description.trim() || null,
-      priceMonthly: onRequest ? 0 : priceMonthly,
-      priceAnnual: onRequest ? null : priceAnnual,
-      priceOnRequest: onRequest,
-      maxUsers,
-      maxChannels,
-      maxContacts,
-      maxAiMessages,
-      isActive: form.isActive,
-      badge: badgeValue,
-      sortOrder,
-      features,
-    };
-  }
-
-  const save = useMutation({
-    mutationFn: async () => {
-      if (mode === "create" || mode === "duplicate") {
-        const payload = buildPayload(true);
-        const created = await api<Plan>("/admin/plans", {
-          method: "POST",
-          json: {
-            name: payload.name,
-            slug: payload.slug,
-            description: payload.description || undefined,
-            priceMonthly: payload.priceMonthly,
-            priceAnnual: payload.priceAnnual,
-            priceOnRequest: payload.priceOnRequest,
-            maxUsers: payload.maxUsers,
-            maxChannels: payload.maxChannels,
-            maxContacts: payload.maxContacts,
-            maxAiMessages: payload.maxAiMessages,
-            badge: payload.badge,
-            sortOrder: payload.sortOrder,
-            features: payload.features,
-          },
-        });
-        // POST não aceita isActive; aplicar via PATCH quando inativo
-        if (created?.id && payload.isActive === false) {
-          return api(`/admin/plans/${created.id}`, {
-            method: "PATCH",
-            json: { isActive: false },
-          });
-        }
-        return created;
-      }
-      if (!edit) throw new Error("Plano inválido");
-      const payload = buildPayload(false);
-      return api(`/admin/plans/${edit.id}`, {
-        method: "PATCH",
-        json: {
-          name: payload.name,
-          description: payload.description,
-          priceMonthly: payload.priceMonthly,
-          priceAnnual: payload.priceAnnual,
-          priceOnRequest: payload.priceOnRequest,
-          maxUsers: payload.maxUsers,
-          maxChannels: payload.maxChannels,
-          maxContacts: payload.maxContacts,
-          maxAiMessages: payload.maxAiMessages,
-          isActive: payload.isActive,
-          badge: payload.badge,
-          sortOrder: payload.sortOrder,
-          features: payload.features,
-        },
-      });
-    },
+  // Mutations
+  const createPlanMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      api<Plan>("/admin/plans", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      const wasEdit = mode === "edit";
-      const created = mode === "create" || mode === "duplicate";
-      qc.invalidateQueries({ queryKey: ["admin-plans"] });
-      qc.invalidateQueries({ queryKey: ["admin-overview"] });
-      closeEditor();
-      toast({
-        kind: "success",
-        title: created ? "Plano criado" : "Plano atualizado",
-        description: wasEdit
-          ? "Preços contratados das empresas existentes foram preservados."
-          : "O catálogo foi atualizado.",
-      });
+      toast.success("Plano comercial criado com sucesso!");
+      closeModal();
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
-    onError: (e: Error) =>
-      toast({
-        kind: "error",
-        title: "Não foi possível salvar",
-        description: e.message,
-      }),
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao criar plano");
+    },
   });
 
-  const archive = useMutation({
-    mutationFn: (p: Plan) =>
-      api(`/admin/plans/${p.id}`, {
-        method: "PATCH",
-        json: { isActive: false },
-      }),
+  const updatePlanMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+      api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-plans"] });
-      qc.invalidateQueries({ queryKey: ["admin-overview"] });
-      toast({
-        kind: "success",
-        title: "Plano arquivado",
-        description: "Ele deixa de aparecer para novas contratações.",
-      });
+      toast.success("Plano atualizado com sucesso!");
+      closeModal();
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
-    onError: (e: Error) =>
-      toast({
-        kind: "error",
-        title: "Não foi possível arquivar",
-        description: e.message,
-      }),
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao atualizar plano");
+    },
   });
 
-  function closeEditor() {
-    if (save.isPending) return;
-    setMode(null);
-    setEdit(null);
-    setFieldErrors({});
-    setForm(emptyForm());
-  }
+  const duplicatePlanMutation = useMutation({
+    mutationFn: (id: string) =>
+      api<Plan>(`/admin/plans/${id}/duplicate`, { method: "POST" }),
+    onSuccess: () => {
+      toast.success("Plano duplicado com sucesso!");
+      closeModal();
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao duplicar plano");
+    },
+  });
 
-  function openCreate() {
-    setMode("create");
-    setEdit(null);
-    setForm(emptyForm());
-    setFieldErrors({});
-  }
+  const toggleArchiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
+    onSuccess: (_, variables) => {
+      toast.success(variables.isActive ? "Plano restaurado para o catálogo ativo!" : "Plano arquivado com sucesso!");
+      setPlanToArchive(null);
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao alterar status do plano");
+    },
+  });
 
-  function openEdit(p: Plan) {
-    setMode("edit");
-    setEdit(p);
-    setForm(planToForm(p));
-    setFieldErrors({});
-  }
+  const openCreateModal = () => {
+    const fresh = emptyForm();
+    setFormData(fresh);
+    setInitialFormJson(JSON.stringify(fresh));
+    setEditingPlan(null);
+    setSlugManuallyEdited(false);
+    setModalMode("create");
+  };
 
-  function openDuplicate(p: Plan) {
-    const base = planToForm(p);
-    setMode("duplicate");
-    setEdit(p);
-    setForm({
-      ...base,
-      name: `${p.name} (cópia)`,
-      slug: `${slugify(p.slug || p.name)}-copia`,
-      isActive: false,
-      sortOrder: String((p.sortOrder ?? 0) + 10),
-    });
-    setFieldErrors({});
-  }
+  const openEditModal = (p: Plan) => {
+    const f = planToForm(p);
+    setFormData(f);
+    setInitialFormJson(JSON.stringify(f));
+    setEditingPlan(p);
+    setSlugManuallyEdited(true);
+    setModalMode("edit");
+  };
 
-  function patchForm<K extends keyof PlanForm>(key: K, value: PlanForm[K]) {
-    setForm((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === "name" && (mode === "create" || mode === "duplicate")) {
-        // Auto-slug only if user hasn't customized far from previous auto value
-        const prevAuto = slugify(prev.name);
-        if (!prev.slug || prev.slug === prevAuto) {
-          next.slug = slugify(String(value));
-        }
+  const openDuplicateModal = (p: Plan) => {
+    const f = planToForm(p);
+    f.name = `${p.name} (cópia)`;
+    f.slug = `${p.slug}-copia`;
+    f.isActive = false;
+    f.badge = "";
+    f.sortOrder = ((p.sortOrder ?? 100) + 5).toString();
+    setFormData(f);
+    setInitialFormJson(JSON.stringify(f));
+    setEditingPlan(p);
+    setSlugManuallyEdited(true);
+    setModalMode("duplicate");
+  };
+
+  const closeModal = () => {
+    setModalMode(null);
+    setEditingPlan(null);
+    setSlugManuallyEdited(false);
+  };
+
+  const handleNameChange = (nameVal: string) => {
+    setFormData((prev) => {
+      const next = { ...prev, name: nameVal };
+      if (!slugManuallyEdited && modalMode === "create") {
+        next.slug = slugify(nameVal);
       }
       return next;
     });
-    setFieldErrors((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }
+  };
 
-  const badgeSelectOptions = useMemo(() => {
-    if (form.badge && !BADGE_OPTIONS.some((o) => o.value === form.badge)) {
-      return [...BADGE_OPTIONS, { value: form.badge, label: form.badge }];
+  const isDirty = useMemo(() => {
+    return JSON.stringify(formData) !== initialFormJson;
+  }, [formData, initialFormJson]);
+
+  const handleFormSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim()) {
+      toast.error("O nome do plano é obrigatório.");
+      return;
     }
-    return BADGE_OPTIONS;
-  }, [form.badge]);
+    if (!formData.slug.trim()) {
+      toast.error("O identificador (slug) do plano é obrigatório.");
+      return;
+    }
+
+    const isEnterprise = formData.priceType === "on_request";
+    const isFree = formData.priceType === "free";
+
+    let monthly = parseBrlInput(formData.priceMonthly);
+    let annual = parseBrlInput(formData.priceAnnual);
+
+    if (isEnterprise) {
+      monthly = 0;
+      annual = 0;
+    } else if (isFree) {
+      monthly = 0;
+      annual = 0;
+    }
+
+    const payload: Record<string, unknown> = {
+      name: formData.name.trim(),
+      slug: formData.slug.trim(),
+      description: formData.description.trim() || null,
+      priceOnRequest: isEnterprise,
+      priceMonthly: monthly,
+      priceAnnual: annual > 0 ? annual : null,
+      maxUsers: parseIntegerInput(formData.maxUsers, 1),
+      maxChannels: parseIntegerInput(formData.maxChannels, 1),
+      maxContacts: parseIntegerInput(formData.maxContacts, 500),
+      maxConversations: 10000,
+      maxAiMessages: parseIntegerInput(formData.maxAiMessages, 100),
+      badge: formData.badge.trim() || null,
+      sortOrder: parseInt(formData.sortOrder, 10) || 100,
+      isActive: formData.isActive,
+      features: {
+        maxAgents: parseIntegerInput(formData.maxAgents, 1),
+        maxActiveFlows: parseIntegerInput(formData.maxActiveFlows, 5),
+        monthlyAiCredits: parseIntegerInput(formData.maxAiMessages, 100),
+      },
+    };
+
+    if (modalMode === "create" || modalMode === "duplicate") {
+      createPlanMutation.mutate(payload);
+    } else if (modalMode === "edit" && editingPlan) {
+      updatePlanMutation.mutate({ id: editingPlan.id, payload });
+    }
+  };
+
+  const handleApplyDiscountSuggestion = () => {
+    const monthly = parseBrlInput(formData.priceMonthly);
+    if (monthly <= 0) return;
+    const suggested = Math.round(monthly * 12 * 0.85 * 100) / 100;
+    setFormData((prev) => ({
+      ...prev,
+      priceAnnual: formatBrlInput(Math.round(suggested * 100).toString()),
+    }));
+    toast.success("Sugestão de 15% de desconto aplicada!");
+  };
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
-  if (isLoading) return <AdminPageSkeleton metrics={3} />;
+  if (isLoading) return <AdminPageSkeleton metrics={0} />;
 
-  if (error) {
+  if (error || !plans) {
     if (isSuperadminMfaRequiredError(error)) return null;
     return (
       <AdminErrorState
-        title="Não foi possível carregar planos"
-        description="Tente novamente em instantes."
+        title="Não foi possível carregar os planos."
+        description="Verifique a conexão e tente novamente."
         onRetry={() => void refetch()}
       />
     );
   }
 
-  const allPlans = data || [];
-  const plans = allPlans
-    .filter(
-      (p) => p.isActive || (p._count?.tenants ?? 0) > 0 || p.slug === "free"
-    )
-    .slice()
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-
-  const isEnterpriseEdit =
-    edit?.slug === "enterprise" || form.priceType === "on_request";
-
-  const editorOpen = mode != null;
-  const editorTitle =
-    mode === "create"
-      ? "Novo plano"
-      : mode === "duplicate"
-        ? `Duplicar ${edit?.name || "plano"}`
-        : edit
-          ? `Editar ${edit.name}`
-          : "Editar plano";
+  const displayedPlans = activeTab === "active" ? activePlans : archivedPlans;
 
   return (
     <div className="space-y-6">
+      {/* 1. Header Oficial */}
       <AdminPageHeader
         title="Planos"
-        description="Catálogo comercial. Alterar preço não mexe em contratos existentes."
+        description="Gerencie o catálogo comercial, preços, limites e disponibilidade dos planos."
         actions={
-          <button type="button" className="admin-btn-primary" onClick={openCreate}>
-            <Plus className="h-3.5 w-3.5" />
-            Novo plano
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Tab Filter Ativos / Arquivados */}
+            <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("active")}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
+                  activeTab === "active"
+                    ? "bg-white/[0.1] text-white shadow-sm font-semibold"
+                    : "text-gray-400 hover:text-white"
+                )}
+              >
+                Ativos ({activePlans.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("archived")}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors",
+                  activeTab === "archived"
+                    ? "bg-white/[0.1] text-white shadow-sm font-semibold"
+                    : "text-gray-400 hover:text-white"
+                )}
+              >
+                Arquivados ({archivedPlans.length})
+              </button>
+            </div>
+
+            <button
+              onClick={openCreateModal}
+              className="admin-btn-primary inline-flex items-center gap-1.5 shadow-sm"
+            >
+              <Plus className="h-4 w-4" />
+              Novo plano
+            </button>
+          </div>
         }
       />
 
-      {plans.length === 0 ? (
-        <AdminSection>
-          <AdminEmptyState
-            icon={<CreditCard className="h-5 w-5" strokeWidth={1.5} />}
-            title="Nenhum plano no catálogo"
-            description="Use Novo plano acima para criar o primeiro item do catálogo."
-          />
-        </AdminSection>
+      {/* 2. Grid Inteligente de Planos */}
+      {displayedPlans.length === 0 ? (
+        <AdminEmptyState
+          title={activeTab === "active" ? "Nenhum plano disponível" : "Nenhum plano arquivado"}
+          description={
+            activeTab === "active"
+              ? "Crie um plano para começar a montar o catálogo comercial da plataforma."
+              : "Planos arquivados aparecerão aqui quando forem retirados do catálogo ativo."
+          }
+          action={
+            activeTab === "active" ? (
+              <button onClick={openCreateModal} className="admin-btn-primary inline-flex items-center gap-1.5">
+                <Plus className="h-4 w-4" />
+                Novo plano
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {plans.map((p) => {
-            const feats = (p.features || {}) as Record<string, unknown>;
-            const maxAgents = featureNum(feats, "maxAgents", 1);
-            const aiCredits = featureNum(
-              feats,
-              "monthlyAiCredits",
-              p.maxAiMessages
-            );
-            const monthly = Number(p.priceMonthly || 0);
-            const isEnterprise =
-              p.slug === "enterprise" || Boolean(p.priceOnRequest);
-            const isFree = p.slug === "free";
-            const isPopular = p.badge === "popular";
-            const badgeLabel = p.badge ? BADGE_LABEL[p.badge] || p.badge : null;
-            const annual =
-              p.priceAnnual != null && p.priceAnnual !== ""
-                ? Number(p.priceAnnual)
-                : !isEnterprise && monthly > 0
-                  ? annualFromMonthly(monthly)
-                  : null;
-            const tenants = p._count?.tenants ?? 0;
-            const canArchive = p.isActive && p.slug !== "free" && tenants === 0;
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {displayedPlans.map((plan) => {
+            const isEnterprise = Boolean(plan.priceOnRequest) || plan.slug === "enterprise";
+            const isFree = plan.slug === "free" || Number(plan.priceMonthly) === 0 && !isEnterprise;
+            const monthlyPrice = Number(plan.priceMonthly || 0);
+            const annualPrice = plan.priceAnnual != null ? Number(plan.priceAnnual) : null;
+            const feats = (plan.features || {}) as Record<string, unknown>;
+            const maxAgents = feats.maxAgents != null ? Number(feats.maxAgents) : 1;
+            const maxFlows = feats.maxActiveFlows != null ? Number(feats.maxActiveFlows) : 5;
+            const badgeKey = plan.badge || "";
+            const isPopular = badgeKey === "popular";
+            const tenantCount = plan._count?.tenants ?? 0;
 
             return (
-              <article
-                key={p.id}
+              <div
+                key={plan.id}
                 className={cn(
-                  "relative flex h-full flex-col rounded-xl border border-white/[0.07] bg-white/[0.025] p-4",
-                  "shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]",
-                  isPopular && "border-violet-400/25 bg-violet-500/[0.04]",
-                  isEnterprise &&
-                    "border-violet-400/20 bg-gradient-to-b from-violet-500/[0.07] to-transparent",
-                  !p.isActive && "opacity-75"
+                  "relative flex flex-col justify-between rounded-2xl border transition-all duration-200 p-5 bg-white/[0.02]",
+                  isPopular
+                    ? "border-violet-500/40 bg-gradient-to-b from-violet-950/20 via-white/[0.02] to-transparent shadow-lg shadow-violet-950/20"
+                    : isEnterprise
+                    ? "border-indigo-500/30 bg-gradient-to-b from-indigo-950/15 via-white/[0.02] to-transparent"
+                    : "border-white/[0.08] hover:border-white/[0.15]"
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <h2 className="truncate text-[14px] font-semibold tracking-tight text-white">
-                        {p.name}
-                      </h2>
-                      {badgeLabel ? (
-                        <StatusBadge tone="violet">{badgeLabel}</StatusBadge>
-                      ) : null}
-                    </div>
-                    <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.07em] text-gray-500">
-                      {p.slug}
-                    </p>
-                  </div>
-                  <StatusBadge tone={p.isActive ? "success" : "neutral"} dot>
-                    {p.isActive ? "Ativo" : "Inativo"}
-                  </StatusBadge>
-                </div>
-
-                <div className="mt-3 min-h-[2.75rem]">
-                  {isEnterprise ? (
+                {/* Top: Header do Card */}
+                <div>
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-[1.25rem] font-semibold tracking-tight text-white">
-                        Sob consulta
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        Comercial sob medida
-                      </p>
-                    </div>
-                  ) : isFree || monthly <= 0 ? (
-                    <div>
-                      <p className="text-[1.25rem] font-semibold tracking-tight text-white">
-                        Gratuito
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-gray-500">
-                        Entrada e teste
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-[1.35rem] font-semibold leading-none tracking-tight tabular-nums text-white">
-                        {formatCurrency(monthly)}
-                        <span className="ml-1 text-[11.5px] font-normal text-gray-500">
-                          /mês
-                        </span>
-                      </p>
-                      {annual != null ? (
-                        <p className="mt-1 text-[11.5px] text-gray-400">
-                          {formatCurrency(annual)}{" "}
-                          <span className="text-gray-600">anual</span>
-                        </p>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-
-                {p.description ? (
-                  <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-gray-500">
-                    {p.description}
-                  </p>
-                ) : (
-                  <div className="mt-2 h-[2.25rem]" aria-hidden />
-                )}
-
-                <div className="mt-3 flex-1 rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2">
-                  <dl className="grid grid-cols-2 gap-x-2 gap-y-2">
-                    {(
-                      [
-                        ["Usuários", limitLabel(p.maxUsers, isEnterprise)],
-                        ["WhatsApp", limitLabel(p.maxChannels, isEnterprise)],
-                        ["Agentes IA", limitLabel(maxAgents, isEnterprise)],
-                        ["Contatos", limitLabel(p.maxContacts, isEnterprise)],
-                        [
-                          "Créditos IA",
-                          isEnterprise
-                            ? "Personalizado"
-                            : aiCredits.toLocaleString("pt-BR"),
-                        ],
-                        ["Clientes", String(tenants)],
-                      ] as const
-                    ).map(([k, v]) => (
-                      <div key={k} className="min-w-0">
-                        <dt className="text-[9.5px] font-medium uppercase tracking-wide text-gray-500">
-                          {k}
-                        </dt>
-                        <dd className="mt-0.5 truncate text-[12px] font-semibold tabular-nums text-white/90">
-                          {v}
-                        </dd>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="text-[16px] font-bold text-white tracking-tight">
+                          {plan.name}
+                        </h3>
+                        {badgeKey && BADGE_LABEL[badgeKey] && (
+                          <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10.5px] font-semibold text-violet-300 border border-violet-500/30">
+                            {BADGE_LABEL[badgeKey]}
+                          </span>
+                        )}
                       </div>
-                    ))}
-                  </dl>
+                      <p className="mt-0.5 text-[11px] font-medium text-gray-500">
+                        {plan.slug}
+                      </p>
+                    </div>
+
+                    <StatusBadge tone={plan.isActive ? "success" : "neutral"}>
+                      {plan.isActive ? "Disponível" : "Indisponível"}
+                    </StatusBadge>
+                  </div>
+
+                  {/* Preço Comercial */}
+                  <div className="mt-4 pb-3 border-b border-white/[0.06]">
+                    {isEnterprise ? (
+                      <div>
+                        <span className="text-[20px] font-bold text-white">Sob consulta</span>
+                        <p className="text-[11.5px] text-gray-400 mt-0.5">Contrato customizado</p>
+                      </div>
+                    ) : isFree ? (
+                      <div>
+                        <span className="text-[22px] font-bold text-white">Gratuito</span>
+                        <p className="text-[11.5px] text-gray-400 mt-0.5">Sem cobrança mensal</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-[22px] font-extrabold text-white tabular-nums">
+                            {formatCurrency(monthlyPrice)}
+                          </span>
+                          <span className="text-[12px] text-gray-400 font-medium">/mês</span>
+                        </div>
+                        {annualPrice != null && annualPrice > 0 && (
+                          <p className="text-[11.5px] text-gray-400 tabular-nums mt-0.5">
+                            ou {formatCurrency(annualPrice)}/ano
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Descrição */}
+                  <p className="mt-3 text-[12px] text-gray-300 line-clamp-3 min-h-[36px]">
+                    {plan.description || "Plano comercial para atendimento e automação."}
+                  </p>
+
+                  {/* Grade de 6 Limites Oficiais */}
+                  <div className="mt-4 space-y-2 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3 text-[12px]">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-gray-400">
+                        <Users className="h-3.5 w-3.5 text-gray-500" />
+                        Usuários
+                      </span>
+                      <span className="font-semibold text-white tabular-nums">
+                        {isEnterprise ? "Personalizado" : plan.maxUsers.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-gray-400">
+                        <MessageSquare className="h-3.5 w-3.5 text-gray-500" />
+                        WhatsApp
+                      </span>
+                      <span className="font-semibold text-white tabular-nums">
+                        {isEnterprise ? "Personalizado" : plan.maxChannels.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-gray-400">
+                        <Bot className="h-3.5 w-3.5 text-gray-500" />
+                        Agentes IA
+                      </span>
+                      <span className="font-semibold text-white tabular-nums">
+                        {isEnterprise ? "Personalizado" : maxAgents.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-gray-400">
+                        <Contact className="h-3.5 w-3.5 text-gray-500" />
+                        Contatos
+                      </span>
+                      <span className="font-semibold text-white tabular-nums">
+                        {isEnterprise ? "Personalizado" : plan.maxContacts.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-gray-400">
+                        <Workflow className="h-3.5 w-3.5 text-gray-500" />
+                        Fluxos
+                      </span>
+                      <span className="font-semibold text-white tabular-nums">
+                        {isEnterprise ? "Personalizado" : maxFlows.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-gray-400">
+                        <Sparkles className="h-3.5 w-3.5 text-gray-500" />
+                        Créditos IA / mês
+                      </span>
+                      <span className="font-semibold text-white tabular-nums">
+                        {isEnterprise ? "Personalizado" : plan.maxAiMessages.toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] pt-3">
-                  <button
-                    type="button"
-                    className="admin-btn-secondary h-8 px-2.5 text-[12px]"
-                    onClick={() => openEdit(p)}
-                  >
-                    <Pencil className="h-3 w-3" />
-                    Editar
-                  </button>
-                  <button
-                    type="button"
-                    className="admin-btn-ghost h-8 px-2 text-[12px]"
-                    onClick={() => openDuplicate(p)}
-                    title="Duplicar plano"
-                  >
-                    <Copy className="h-3 w-3" />
-                    Duplicar
-                  </button>
-                  {canArchive ? (
-                    <button
-                      type="button"
-                      className="admin-btn-ghost h-8 px-2 text-[12px] text-gray-500 hover:text-amber-200"
-                      disabled={archive.isPending}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Arquivar o plano "${p.name}"? Ele deixa de aparecer para novas contratações.`
-                          )
-                        ) {
-                          void archive.mutateAsync(p).catch(() => {});
-                        }
-                      }}
-                      title="Arquivar plano"
-                    >
-                      <Archive className="h-3 w-3" />
-                      Arquivar
-                    </button>
-                  ) : null}
+                {/* Bottom: Uso do Plano & Ações */}
+                <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-3">
+                  {/* Quantidade de Empresas Utilizando (separado dos limites!) */}
+                  <div className="flex items-center gap-1.5 text-[11.5px] text-gray-400">
+                    <Building2 className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+                    <span>
+                      {tenantCount === 0
+                        ? "Nenhuma empresa utilizando"
+                        : `${tenantCount} ${pluralizePt(tenantCount, "empresa utilizando", "empresas utilizando")}`}
+                    </span>
+                  </div>
+
+                  {/* Ações do Card */}
+                  <div className="flex items-center justify-between gap-1.5">
+                    {plan.isActive ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(plan)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDuplicateModal(plan)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+                          title="Duplicar configurações do plano"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Duplicar
+                        </button>
+                        {plan.slug !== "free" && (
+                          <button
+                            type="button"
+                            onClick={() => setPlanToArchive(plan)}
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-medium text-gray-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                            title="Arquivar plano comercial"
+                          >
+                            <Archive className="h-3 w-3" />
+                            Arquivar
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => toggleArchiveMutation.mutate({ id: plan.id, isActive: true })}
+                          className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-[11.5px] font-semibold text-white hover:bg-violet-500 transition-colors shadow-sm"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Restaurar plano
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openDuplicateModal(plan)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-[11.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Duplicar
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </article>
+              </div>
             );
           })}
         </div>
       )}
 
+      {/* 3. MODAL UNIFICADO: PlanFormDialog (Criar / Editar / Duplicar) */}
       <Modal
-        open={editorOpen}
-        onClose={closeEditor}
-        title={editorTitle}
+        open={modalMode !== null}
+        onClose={closeModal}
+        title={
+          modalMode === "create"
+            ? "Novo Plano Comercial"
+            : modalMode === "edit"
+            ? `Editar Plano: ${editingPlan?.name}`
+            : `Duplicar Plano: ${editingPlan?.name}`
+        }
         description={
-          mode === "edit" && edit?.slug
-            ? edit.slug
-            : mode === "create" || mode === "duplicate"
-              ? "Novo item no catálogo comercial"
-              : undefined
+          modalMode === "edit"
+            ? "Alterações no catálogo comercial não afetam os preços e contratos das empresas já assinantes."
+            : modalMode === "duplicate"
+            ? "Crie uma cópia independente com novos limites e preços. O plano duplicado nasce indisponível por padrão."
+            : "Defina preços de catálogo, limites técnicos e disponibilidade comercial."
         }
         size="lg"
-        variant="contextual"
-        initialFocus="panel"
-        preventClose={save.isPending}
-        footer={
-          <DialogFooter>
+      >
+        <form onSubmit={handleFormSubmit} className="space-y-5">
+          {/* Seção 1: Informações Comerciais */}
+          <div className="space-y-3">
+            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+              Informações do Plano
+            </h4>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                  Nome comercial *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Profissional"
+                  value={formData.name}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                  Identificador (Slug) *
+                </label>
+                <input
+                  type="text"
+                  placeholder="pro"
+                  value={formData.slug}
+                  onChange={(e) => {
+                    setSlugManuallyEdited(true);
+                    setFormData((prev) => ({ ...prev, slug: slugify(e.target.value) }));
+                  }}
+                  disabled={modalMode === "edit"}
+                  required
+                  className={cn(
+                    "w-full rounded-lg border border-white/[0.08] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none",
+                    modalMode === "edit" ? "bg-white/[0.02] text-gray-400 cursor-not-allowed" : "bg-white/[0.04]"
+                  )}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                Descrição comercial
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Ex: Para empresas que buscam escalar o atendimento com IA e automações avançadas."
+                value={formData.description}
+                onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none resize-none"
+              />
+            </div>
+          </div>
+
+          {/* Seção 2: Precificação */}
+          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
+            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+              Precificação de Catálogo
+            </h4>
+
+            <div>
+              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                Tipo de preço *
+              </label>
+              <CustomSelect
+                value={formData.priceType}
+                onChange={(val) => setFormData((prev) => ({ ...prev, priceType: val as any }))}
+                options={PRICE_TYPE_OPTIONS}
+              />
+            </div>
+
+            {formData.priceType === "fixed" && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                    Preço mensal (R$) *
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
+                      R$
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="299,00"
+                      value={formData.priceMonthly}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, priceMonthly: formatBrlInput(e.target.value) }))}
+                      required
+                      className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11.5px] font-medium text-gray-400">
+                      Preço anual (R$)
+                    </label>
+                    {parseBrlInput(formData.priceMonthly) > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleApplyDiscountSuggestion}
+                        className="text-[11px] font-medium text-violet-400 hover:text-violet-300 transition-colors"
+                      >
+                        Aplicar -15%
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
+                      R$
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="3.049,80"
+                      value={formData.priceAnnual}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, priceAnnual: formatBrlInput(e.target.value) }))}
+                      className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Seção 3: Limites Oficiais */}
+          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
+            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+              Limites do Produto
+            </h4>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
+                  Usuários *
+                </label>
+                <input
+                  type="text"
+                  placeholder="5"
+                  value={formData.maxUsers}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, maxUsers: formatIntegerInput(e.target.value) }))}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
+                  WhatsApp *
+                </label>
+                <input
+                  type="text"
+                  placeholder="2"
+                  value={formData.maxChannels}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, maxChannels: formatIntegerInput(e.target.value) }))}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
+                  Agentes IA *
+                </label>
+                <input
+                  type="text"
+                  placeholder="3"
+                  value={formData.maxAgents}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, maxAgents: formatIntegerInput(e.target.value) }))}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
+                  Contatos *
+                </label>
+                <input
+                  type="text"
+                  placeholder="5.000"
+                  value={formData.maxContacts}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, maxContacts: formatIntegerInput(e.target.value) }))}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
+                  Fluxos *
+                </label>
+                <input
+                  type="text"
+                  placeholder="10"
+                  value={formData.maxActiveFlows}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, maxActiveFlows: formatIntegerInput(e.target.value) }))}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
+                  Créditos IA / mês *
+                </label>
+                <input
+                  type="text"
+                  placeholder="2.000"
+                  value={formData.maxAiMessages}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, maxAiMessages: formatIntegerInput(e.target.value) }))}
+                  required
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Seção 4: Exibição & Disponibilidade */}
+          <div className="space-y-3 pt-3 border-t border-white/[0.06]">
+            <h4 className="text-[12.5px] font-semibold uppercase tracking-wider text-gray-400">
+              Exibição & Disponibilidade
+            </h4>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                  Destaque comercial
+                </label>
+                <CustomSelect
+                  value={formData.badge}
+                  onChange={(val) => setFormData((prev) => ({ ...prev, badge: val }))}
+                  options={BADGE_OPTIONS}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                  Ordem de exibição
+                </label>
+                <input
+                  type="number"
+                  placeholder="100"
+                  value={formData.sortOrder}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, sortOrder: e.target.value }))}
+                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none tabular-nums"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
+              <div>
+                <p className="text-[13px] font-semibold text-white">Disponível para novas contratações</p>
+                <p className="text-[11.5px] text-gray-400">
+                  Novas empresas poderão visualizar e contratar este plano no catálogo comercial.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData((prev) => ({ ...prev, isActive: !prev.isActive }))}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  formData.isActive ? "bg-violet-600" : "bg-white/[0.1]"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                    formData.isActive ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Sticky Footer com Ações */}
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/[0.06]">
             <button
               type="button"
-              className="admin-btn-secondary h-9 px-3.5"
-              onClick={closeEditor}
-              disabled={save.isPending}
+              onClick={closeModal}
+              className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              form="nf-edit-plan"
-              className="admin-btn-primary h-9 px-4"
-              disabled={save.isPending}
+              disabled={
+                createPlanMutation.isPending ||
+                updatePlanMutation.isPending ||
+                (modalMode === "edit" && !isDirty)
+              }
+              className="rounded-lg bg-violet-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
             >
-              {save.isPending
-                ? "Salvando…"
-                : mode === "create" || mode === "duplicate"
-                  ? "Criar plano"
-                  : "Salvar alterações"}
+              {createPlanMutation.isPending || updatePlanMutation.isPending
+                ? "Salvando..."
+                : modalMode === "create"
+                ? "Criar plano"
+                : modalMode === "duplicate"
+                ? "Criar cópia"
+                : "Salvar alterações"}
             </button>
-          </DialogFooter>
-        }
+          </div>
+        </form>
+      </Modal>
+
+      {/* 4. MODAL: Confirmação de Arquivamento */}
+      <Modal
+        open={planToArchive !== null}
+        onClose={() => setPlanToArchive(null)}
+        title={`Arquivar plano "${planToArchive?.name}"?`}
+        description="O plano deixará de estar disponível para novas contratações no catálogo. Empresas que já utilizam este plano continuarão com seus contratos atuais sem nenhuma alteração."
+        size="md"
       >
-        <form
-          id="nf-edit-plan"
-          className="space-y-4"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
-            void save.mutateAsync().catch(() => {
-              /* toast no onError */
-            });
-          }}
-        >
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-[12.5px] font-medium text-white">
-                Plano disponível
-              </p>
-              <p className="text-[11px] leading-snug text-gray-500">
-                Novas empresas podem contratar este plano
-              </p>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3.5">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-[12px] text-amber-200/90 leading-relaxed">
+              Planos arquivados podem ser restaurados a qualquer momento pela aba{" "}
+              <strong>Arquivados</strong>. Nenhuma assinatura ou empresa vinculada será excluída.
             </div>
-            <Switch
-              id="plan-available"
-              size="sm"
-              checked={form.isActive}
-              onChange={(isActive) => patchForm("isActive", isActive)}
-              aria-label="Plano disponível"
-            />
           </div>
 
-          <FormSection title="Informações" surface>
-            <FormField label="Nome" required error={fieldErrors.name}>
-              <input
-                className="input"
-                value={form.name}
-                onChange={(e) => patchForm("name", e.target.value)}
-                required
-                autoComplete="off"
-              />
-            </FormField>
-            {(mode === "create" || mode === "duplicate") && (
-              <FormField
-                label="Slug"
-                required
-                error={fieldErrors.slug}
-                hint="Identificador único (minúsculas e hífens)."
-              >
-                <input
-                  className="input font-mono text-[13px]"
-                  value={form.slug}
-                  onChange={(e) =>
-                    patchForm(
-                      "slug",
-                      e.target.value.toLowerCase().replace(/\s+/g, "-")
-                    )
-                  }
-                  required
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </FormField>
-            )}
-            <FormField label="Descrição">
-              <textarea
-                className="input min-h-[56px]"
-                value={form.description}
-                onChange={(e) => patchForm("description", e.target.value)}
-                placeholder="Ex.: Para equipes em crescimento"
-              />
-            </FormField>
-          </FormSection>
-
-          <FormSection
-            title="Preço"
-            description="Alterar o preço não modifica contratos existentes."
-            surface
-          >
-            <FormField label="Tipo de preço">
-              <Select
-                value={form.priceType}
-                onChange={(v) =>
-                  patchForm(
-                    "priceType",
-                    v === "on_request" ? "on_request" : "fixed"
-                  )
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setPlanToArchive(null)}
+              className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (planToArchive) {
+                  toggleArchiveMutation.mutate({ id: planToArchive.id, isActive: false });
                 }
-                options={PRICE_TYPE_OPTIONS}
-                aria-label="Tipo de preço"
-              />
-            </FormField>
-
-            {form.priceType === "fixed" ? (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField
-                    label="Mensal"
-                    required
-                    error={fieldErrors.priceMonthly}
-                  >
-                    <MoneyInput
-                      id="plan-price-monthly"
-                      value={form.priceMonthly}
-                      onChange={(v) => patchForm("priceMonthly", v)}
-                      placeholder="99,00"
-                    />
-                  </FormField>
-                  <FormField
-                    label="Anual"
-                    error={fieldErrors.priceAnnual}
-                    hint={
-                      suggestedAnnual != null
-                        ? `Sugestão −15%: ${formatCurrency(suggestedAnnual)}`
-                        : undefined
-                    }
-                  >
-                    <MoneyInput
-                      id="plan-price-annual"
-                      value={form.priceAnnual}
-                      onChange={(v) => patchForm("priceAnnual", v)}
-                      placeholder="1.009,80"
-                    />
-                  </FormField>
-                </div>
-                {suggestedAnnual != null &&
-                (!form.priceAnnual.trim() ||
-                  Math.abs(Number(form.priceAnnual) - suggestedAnnual) >
-                    0.009) ? (
-                  <button
-                    type="button"
-                    className="text-[11px] font-medium text-violet-300 hover:underline"
-                    onClick={() =>
-                      patchForm("priceAnnual", String(suggestedAnnual))
-                    }
-                  >
-                    Usar anual sugerido ({formatCurrency(suggestedAnnual)})
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <p className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-[12px] leading-relaxed text-gray-400">
-                Catálogo mostra{" "}
-                <strong className="font-medium text-white">Sob consulta</strong>
-                . Não é tratado como gratuito.
-              </p>
-            )}
-          </FormSection>
-
-          <div className="border-t border-white/[0.06]" />
-
-          <FormSection
-            title="Limites"
-            description={
-              isEnterpriseEdit
-                ? "Valores de referência para Enterprise."
-                : undefined
-            }
-            surface
-          >
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              <FormField label="Usuários" error={fieldErrors.maxUsers}>
-                <NumberInput
-                  id="plan-max-users"
-                  value={form.maxUsers}
-                  onChange={(v) => patchForm("maxUsers", v)}
-                  min={1}
-                  placeholder="2"
-                />
-              </FormField>
-              <FormField label="WhatsApp" error={fieldErrors.maxChannels}>
-                <NumberInput
-                  id="plan-max-channels"
-                  value={form.maxChannels}
-                  onChange={(v) => patchForm("maxChannels", v)}
-                  min={1}
-                  placeholder="1"
-                />
-              </FormField>
-              <FormField label="Agentes IA" error={fieldErrors.maxAgents}>
-                <NumberInput
-                  id="plan-max-agents"
-                  value={form.maxAgents}
-                  onChange={(v) => patchForm("maxAgents", v)}
-                  min={0}
-                  placeholder="1"
-                />
-              </FormField>
-              <FormField label="Contatos" error={fieldErrors.maxContacts}>
-                <NumberInput
-                  id="plan-max-contacts"
-                  value={form.maxContacts}
-                  onChange={(v) => patchForm("maxContacts", v)}
-                  min={0}
-                  placeholder="2.000"
-                />
-              </FormField>
-              <FormField label="Fluxos" error={fieldErrors.maxActiveFlows}>
-                <NumberInput
-                  id="plan-max-flows"
-                  value={form.maxActiveFlows}
-                  onChange={(v) => patchForm("maxActiveFlows", v)}
-                  min={0}
-                  placeholder="5"
-                />
-              </FormField>
-              <FormField
-                label="Créditos IA / mês"
-                error={fieldErrors.maxAiMessages}
-              >
-                <NumberInput
-                  id="plan-max-ai"
-                  value={form.maxAiMessages}
-                  onChange={(v) => patchForm("maxAiMessages", v)}
-                  min={0}
-                  placeholder="1.000"
-                />
-              </FormField>
-            </div>
-          </FormSection>
-
-          <div className="border-t border-white/[0.06]" />
-
-          <FormSection title="Exibição" surface>
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              <FormField label="Destaque">
-                <Select
-                  value={form.badge}
-                  onChange={(v) => patchForm("badge", v)}
-                  options={badgeSelectOptions}
-                  aria-label="Destaque comercial"
-                />
-              </FormField>
-              <FormField
-                label="Ordem"
-                hint="Menor número aparece primeiro."
-                error={fieldErrors.sortOrder}
-              >
-                <NumberInput
-                  id="plan-sort-order"
-                  value={form.sortOrder}
-                  onChange={(v) => patchForm("sortOrder", v)}
-                  min={0}
-                  placeholder="10"
-                />
-              </FormField>
-            </div>
-          </FormSection>
-        </form>
+              }}
+              disabled={toggleArchiveMutation.isPending}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-amber-500 transition-colors shadow-sm"
+            >
+              {toggleArchiveMutation.isPending ? "Arquivando..." : "Arquivar plano"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

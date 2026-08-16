@@ -1778,33 +1778,45 @@ export async function adminRoutes(app: FastifyInstance) {
         commercial: z
           .union([z.literal("1"), z.literal("true"), z.literal("0"), z.literal("false")])
           .optional(),
+        archived: z
+          .union([z.literal("1"), z.literal("true"), z.literal("0"), z.literal("false")])
+          .optional(),
       })
       .parse(request.query || {});
 
     const activeOnly = q.activeOnly === "1" || q.activeOnly === "true";
     const commercial = q.commercial === "1" || q.commercial === "true";
+    const showArchived = q.archived === "1" || q.archived === "true";
 
     const junkSlugs = ["basic", "premium", "trial", "demo", "test", "initial"];
 
     let plans = await prisma.plan.findMany({
-      orderBy: [{ sortOrder: "asc" }, { priceMonthly: "asc" }],
-      include: { _count: { select: { tenants: true } } },
+      orderBy: [{ sortOrder: "asc" }, { priceMonthly: "asc" }, { createdAt: "asc" }],
+      include: {
+        _count: {
+          select: {
+            tenants: {
+              where: { status: { not: "PENDING_DELETION" } },
+            },
+          },
+        },
+      },
     });
 
     if (commercial) {
-      // free sempre (padrão de cadastro); demais ativos e sem lixo
       plans = plans.filter((p) => {
         if (junkSlugs.includes(p.slug)) return false;
         if (p.slug === "free") return true;
         if (activeOnly && !p.isActive) return false;
         return true;
       });
-      // free primeiro
       plans.sort((a, b) => {
         if (a.slug === "free") return -1;
         if (b.slug === "free") return 1;
         return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       });
+    } else if (showArchived) {
+      plans = plans.filter((p) => !p.isActive);
     } else if (activeOnly) {
       plans = plans.filter((p) => p.isActive);
     }
@@ -1815,35 +1827,63 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post("/admin/plans", async (request) => {
     const body = z
       .object({
-        name: z.string(),
-        slug: z.string(),
-        description: z.string().optional(),
-        priceMonthly: z.number().default(0),
-        priceAnnual: z.number().optional().nullable(),
-        priceOnRequest: z.boolean().optional(),
-        maxUsers: z.number().default(1),
-        maxChannels: z.number().default(1),
-        maxContacts: z.number().default(500),
-        maxConversations: z.number().default(1000),
-        maxAiMessages: z.number().default(100),
-        badge: z.string().optional().nullable(),
-        sortOrder: z.number().optional(),
+        name: z.string().trim().min(2, "O nome do plano deve ter pelo menos 2 caracteres").max(80),
+        slug: z
+          .string()
+          .trim()
+          .min(2, "Identificador obrigatório")
+          .max(50)
+          .regex(/^[a-z0-9-]+$/, "O identificador deve conter apenas letras minúsculas, números e hífens"),
+        description: z.string().trim().max(500).optional().nullable(),
+        priceMonthly: z.number().min(0).default(0),
+        priceAnnual: z.number().min(0).optional().nullable(),
+        priceOnRequest: z.boolean().default(false),
+        maxUsers: z.number().int().min(1).default(1),
+        maxChannels: z.number().int().min(1).default(1),
+        maxContacts: z.number().int().min(0).default(500),
+        maxConversations: z.number().int().min(0).default(1000),
+        maxAiMessages: z.number().int().min(0).default(100),
+        badge: z.string().max(40).optional().nullable(),
+        sortOrder: z.number().int().default(100),
+        isActive: z.boolean().default(true),
         features: z.record(z.unknown()).optional(),
       })
       .parse(request.body);
 
+    const existingSlug = await prisma.plan.findUnique({ where: { slug: body.slug } });
+    if (existingSlug) {
+      throw new AppError("Este identificador já está sendo usado por outro plano.", 400, "VALIDATION_ERROR");
+    }
+
     const { asInputJson } = await import("../lib/json");
-    return prisma.plan.create({
-      data: { ...body, features: asInputJson(body.features || {}) },
+    const plan = await prisma.plan.create({
+      data: {
+        ...body,
+        description: body.description || null,
+        badge: body.badge || null,
+        features: asInputJson(body.features || {}),
+      },
+      include: { _count: { select: { tenants: true } } },
     });
+
+    await audit({
+      userId: request.user.sub,
+      action: "plan.created",
+      entity: "plan",
+      entityId: plan.id,
+      metadata: { name: plan.name, slug: plan.slug, priceMonthly: Number(plan.priceMonthly) },
+      ip: request.ip,
+    });
+
+    return plan;
   });
 
   app.patch("/admin/plans/:id", async (request) => {
     const { id } = request.params as { id: string };
     const body = z
       .object({
-        name: z.string().min(2).max(80).optional(),
-        description: z.string().max(500).optional().nullable(),
+        name: z.string().trim().min(2).max(80).optional(),
+        description: z.string().trim().max(500).optional().nullable(),
         priceMonthly: z.number().min(0).optional(),
         priceAnnual: z.number().min(0).optional().nullable(),
         priceOnRequest: z.boolean().optional(),
@@ -1860,10 +1900,20 @@ export async function adminRoutes(app: FastifyInstance) {
       .parse(request.body);
 
     const current = assertFound(await prisma.plan.findUnique({ where: { id } }));
+
+    // Protege plano free obrigatório do sistema
+    if (current.slug === "free") {
+      if (body.isActive === false) {
+        throw new AppError("O plano gratuito básico do sistema não pode ser desativado.", 400, "VALIDATION_ERROR");
+      }
+      if (body.priceMonthly !== undefined && body.priceMonthly > 0) {
+        throw new AppError("O plano gratuito não pode ter preço mensal maior que zero.", 400, "VALIDATION_ERROR");
+      }
+    }
+
     const { asInputJson } = await import("../lib/json");
     const { features, ...rest } = body;
 
-    // Enterprise sob consulta: se priceOnRequest, não força preço zero na UI como “grátis”
     if (rest.priceOnRequest === true && rest.priceMonthly === undefined) {
       rest.priceMonthly = 0;
     }
@@ -1877,10 +1927,12 @@ export async function adminRoutes(app: FastifyInstance) {
       include: { _count: { select: { tenants: true } } },
     });
 
-    // Alterar catálogo NÃO atualiza Subscription.priceMonthly das empresas existentes
+    const isArchiveToggle = body.isActive !== undefined && body.isActive !== current.isActive;
+    const actionName = isArchiveToggle ? (body.isActive ? "plan.restored" : "plan.archived") : "plan.updated";
+
     await audit({
       userId: request.user.sub,
-      action: "plan.updated",
+      action: actionName,
       entity: "plan",
       entityId: id,
       metadata: {
@@ -1895,6 +1947,88 @@ export async function adminRoutes(app: FastifyInstance) {
     });
 
     return updated;
+  });
+
+  app.post("/admin/plans/:id/duplicate", async (request) => {
+    const { id } = request.params as { id: string };
+    const current = assertFound(await prisma.plan.findUnique({ where: { id } }));
+
+    // Gera slug único com sufixo copia
+    let baseSlug = `${current.slug}-copia`.slice(0, 40);
+    let candidateSlug = baseSlug;
+    let counter = 2;
+    while (await prisma.plan.findUnique({ where: { slug: candidateSlug } })) {
+      candidateSlug = `${baseSlug}-${counter}`.slice(0, 50);
+      counter++;
+    }
+
+    const { asInputJson } = await import("../lib/json");
+    const duplicated = await prisma.plan.create({
+      data: {
+        name: `${current.name} (cópia)`.slice(0, 80),
+        slug: candidateSlug,
+        description: current.description,
+        priceMonthly: current.priceMonthly,
+        priceAnnual: current.priceAnnual,
+        priceOnRequest: current.priceOnRequest,
+        maxUsers: current.maxUsers,
+        maxChannels: current.maxChannels,
+        maxContacts: current.maxContacts,
+        maxConversations: current.maxConversations,
+        maxAiMessages: current.maxAiMessages,
+        features: current.features ? asInputJson(current.features) : undefined,
+        badge: null, // Duplicado nunca herda badge de destaque
+        sortOrder: (current.sortOrder ?? 100) + 5,
+        isActive: false, // Duplicado nasce sempre indisponível por segurança
+      },
+      include: { _count: { select: { tenants: true } } },
+    });
+
+    await audit({
+      userId: request.user.sub,
+      action: "plan.duplicated",
+      entity: "plan",
+      entityId: duplicated.id,
+      metadata: { sourceSlug: current.slug, duplicatedSlug: duplicated.slug },
+      ip: request.ip,
+    });
+
+    return duplicated;
+  });
+
+  app.delete("/admin/plans/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const current = assertFound(
+      await prisma.plan.findUnique({
+        where: { id },
+        include: { _count: { select: { tenants: true, subscriptions: true } } },
+      })
+    );
+
+    if (current.slug === "free") {
+      throw new AppError("O plano gratuito essencial não pode ser excluído.", 400, "FORBIDDEN");
+    }
+
+    if ((current._count?.tenants ?? 0) > 0 || (current._count?.subscriptions ?? 0) > 0) {
+      throw new AppError(
+        "Não é possível excluir um plano que possui empresas vinculadas. Arquive o plano para retirá-lo de novas contratações.",
+        400,
+        "CONFLICT"
+      );
+    }
+
+    await prisma.plan.delete({ where: { id } });
+
+    await audit({
+      userId: request.user.sub,
+      action: "plan.deleted",
+      entity: "plan",
+      entityId: id,
+      metadata: { slug: current.slug },
+      ip: request.ip,
+    });
+
+    return { ok: true };
   });
 
   /**
