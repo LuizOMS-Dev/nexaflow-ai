@@ -646,64 +646,64 @@ export default function AdminPlansPage() {
                   </p>
 
                   {/* Grade de 6 Limites Oficiais */}
-                  <div className="mt-4 space-y-2 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3 text-[12px]">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-gray-400">
-                        <Users className="h-3.5 w-3.5 text-gray-500" />
+                  <div className="mt-4 space-y-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3.5 text-[12px]">
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                        <Users className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Usuários
                       </span>
-                      <span className="font-semibold text-white tabular-nums">
+                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : plan.maxUsers.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-gray-400">
-                        <MessageSquare className="h-3.5 w-3.5 text-gray-500" />
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                        <MessageSquare className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         WhatsApp
                       </span>
-                      <span className="font-semibold text-white tabular-nums">
+                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : plan.maxChannels.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-gray-400">
-                        <Bot className="h-3.5 w-3.5 text-gray-500" />
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                        <Bot className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Agentes IA
                       </span>
-                      <span className="font-semibold text-white tabular-nums">
+                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : maxAgents.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-gray-400">
-                        <Contact className="h-3.5 w-3.5 text-gray-500" />
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                        <Contact className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Contatos
                       </span>
-                      <span className="font-semibold text-white tabular-nums">
+                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : plan.maxContacts.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-gray-400">
-                        <Workflow className="h-3.5 w-3.5 text-gray-500" />
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                        <Workflow className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Fluxos
                       </span>
-                      <span className="font-semibold text-white tabular-nums">
+                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : maxFlows.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-gray-400">
-                        <Sparkles className="h-3.5 w-3.5 text-gray-500" />
-                        Créditos IA / mês
+                    <div className="flex items-center justify-between gap-2.5">
+                      <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
+                        <Sparkles className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                        Créditos IA
                       </span>
-                      <span className="font-semibold text-white tabular-nums">
-                        {isEnterprise ? "Personalizado" : plan.maxAiMessages.toLocaleString("pt-BR")}
+                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                        {isEnterprise ? "Personalizado" : `${plan.maxAiMessages.toLocaleString("pt-BR")}/mês`}
                       </span>
                     </div>
                   </div>
