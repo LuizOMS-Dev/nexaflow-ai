@@ -4,6 +4,7 @@ import { buildApp } from "../app";
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../services/security/password";
 import { cleanupTestTenant, testTenantSettings } from "../test/fixtures";
+import { computePlatformFinancialMetrics } from "../services/financial-metrics";
 
 describe("Financeiro do Superadmin (/admin/finance) — RBAC, Métricas & Custos", () => {
   let app: FastifyInstance;
@@ -238,13 +239,99 @@ describe("Financeiro do Superadmin (/admin/finance) — RBAC, Métricas & Custos
     const overview = overviewRes.json();
     const finance = financeRes.json();
 
-    // Compara MRR, ARR, Ticket Médio e Empresas Pagantes
     expect(finance.summary.mrr).toBe(overview.finance.mrr);
     expect(finance.summary.arr).toBe(overview.finance.arr);
     expect(finance.summary.avgTicket).toBe(overview.finance.avgTicket);
     expect(finance.summary.paidSubscriptions).toBe(overview.finance.paidSubscriptions);
     expect(finance.performance.costsConfigured).toBe(overview.finance.costsAvailable);
   });
+
+  it("7. Regra Financeira: Preço contratado é imutável em caso de reajuste do catálogo, nova assinatura recebe preço vigente e customizado sempre prevalece", () => {
+    const now = new Date();
+    const plans = [
+      { id: "p1", name: "Profissional", slug: "pro", priceMonthly: 299 as any, priceAnnual: null, priceOnRequest: false, isActive: true, sortOrder: 1, createdAt: now, updatedAt: now, maxAgents: 5, maxMembers: 10, maxContacts: 1000, features: null },
+    ];
+
+    const tenants = [
+      { id: "t1", name: "Empresa Antiga", slug: "empresa-antiga", status: "ACTIVE", planId: "p1", createdAt: now, updatedAt: now },
+      { id: "t2", name: "Empresa Nova", slug: "empresa-nova", status: "ACTIVE", planId: "p1", createdAt: now, updatedAt: now },
+      { id: "t3", name: "Empresa Custom", slug: "empresa-custom", status: "ACTIVE", planId: "p1", createdAt: now, updatedAt: now },
+    ];
+
+    // Contratos:
+    // t1 contratou a R$ 299 no passado
+    // Catálogo mudou para R$ 349
+    // t2 contratou a R$ 349
+    // t3 tem contrato customizado a R$ 249
+    const subscriptions = [
+      { id: "s1", tenantId: "t1", planId: "p1", priceMonthly: 299 as any, billingStatus: "ACTIVE" as const, billingCycle: "MONTHLY" as const, priceAnnual: null, billingDueDay: 10, currentPeriodEnd: null, trialEndsAt: null, cancelAt: null, createdAt: now, updatedAt: now },
+      { id: "s2", tenantId: "t2", planId: "p1", priceMonthly: 349 as any, billingStatus: "ACTIVE" as const, billingCycle: "MONTHLY" as const, priceAnnual: null, billingDueDay: 10, currentPeriodEnd: null, trialEndsAt: null, cancelAt: null, createdAt: now, updatedAt: now },
+      { id: "s3", tenantId: "t3", planId: "p1", priceMonthly: 249 as any, billingStatus: "ACTIVE" as const, billingCycle: "MONTHLY" as const, priceAnnual: null, billingDueDay: 10, currentPeriodEnd: null, trialEndsAt: null, cancelAt: null, createdAt: now, updatedAt: now },
+    ];
+
+    // Alteração no catálogo para R$ 399
+    plans[0].priceMonthly = 399 as any;
+
+    const metrics = computePlatformFinancialMetrics({
+      tenants,
+      plans: plans as any,
+      subscriptions: subscriptions as any,
+      now,
+    });
+
+    // O MRR deve ser a soma exata dos valores contratados: 299 + 349 + 249 = 897
+    expect(metrics.summary.mrr).toBe(897);
+    expect(metrics.summary.arr).toBe(897 * 12);
+    expect(metrics.summary.paidSubscriptions).toBe(3);
+    expect(metrics.summary.avgTicket).toBe(897 / 3);
+
+    // O preço médio contratado no plano Pro deve ser 897 / 3 = 299
+    const proPlan = metrics.revenueByPlan.find((p) => p.planId === "p1");
+    expect(proPlan?.averageContractedPrice).toBe(299);
+    expect(proPlan?.mrr).toBe(897);
+  });
+
+  it("8. Regra Financeira: PAST_DUE entra uma única vez no MRR em risco, e cancelamento/regularização atualizam métricas com exatidão", () => {
+    const now = new Date();
+    const plans = [
+      { id: "p1", name: "Profissional", slug: "pro", priceMonthly: 299 as any, priceAnnual: null, priceOnRequest: false, isActive: true, sortOrder: 1, createdAt: now, updatedAt: now, maxAgents: 5, maxMembers: 10, maxContacts: 1000, features: null },
+    ];
+
+    const tenants = [
+      { id: "t1", name: "Empresa Regular", slug: "empresa-regular", status: "ACTIVE", planId: "p1", createdAt: now, updatedAt: now },
+      { id: "t2", name: "Empresa Atrasada", slug: "empresa-atrasada", status: "ACTIVE", planId: "p1", createdAt: now, updatedAt: now },
+      { id: "t3", name: "Empresa Cancelada", slug: "empresa-cancelada", status: "CANCELLED", planId: "p1", createdAt: now, updatedAt: now },
+    ];
+
+    const subscriptions = [
+      { id: "s1", tenantId: "t1", planId: "p1", priceMonthly: 299 as any, billingStatus: "ACTIVE" as const, billingCycle: "MONTHLY" as const, priceAnnual: null, billingDueDay: 10, currentPeriodEnd: null, trialEndsAt: null, cancelAt: null, createdAt: now, updatedAt: now },
+      { id: "s2", tenantId: "t2", planId: "p1", priceMonthly: 299 as any, billingStatus: "PAST_DUE" as const, billingCycle: "MONTHLY" as const, priceAnnual: null, billingDueDay: 10, currentPeriodEnd: null, trialEndsAt: null, cancelAt: null, createdAt: now, updatedAt: now },
+      { id: "s3", tenantId: "t3", planId: "p1", priceMonthly: 299 as any, billingStatus: "CANCELLED" as const, billingCycle: "MONTHLY" as const, priceAnnual: null, billingDueDay: 10, currentPeriodEnd: null, trialEndsAt: null, cancelAt: null, createdAt: now, updatedAt: now },
+    ];
+
+    const metrics = computePlatformFinancialMetrics({
+      tenants,
+      plans: plans as any,
+      subscriptions: subscriptions as any,
+      now,
+    });
+
+    // MRR = 299 (s1) + 299 (s2) = 598 (cancelada não entra)
+    expect(metrics.summary.mrr).toBe(598);
+    expect(metrics.summary.paidSubscriptions).toBe(2);
+    expect(metrics.attention.overdueCount).toBe(1);
+    expect(metrics.attention.overdueMrrRisk).toBe(299);
+    expect(metrics.summary.cancelledTenants).toBe(1);
+
+    // Regulariza s2 para ACTIVE
+    subscriptions[1].billingStatus = "ACTIVE" as any;
+    const metricsReg = computePlatformFinancialMetrics({
+      tenants,
+      plans: plans as any,
+      subscriptions: subscriptions as any,
+      now,
+    });
+    expect(metricsReg.attention.overdueCount).toBe(0);
+    expect(metricsReg.attention.overdueMrrRisk).toBe(0);
+  });
 });
-
-
