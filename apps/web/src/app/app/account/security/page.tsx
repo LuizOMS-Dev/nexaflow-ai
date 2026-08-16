@@ -71,13 +71,13 @@ export default function AccountSecurityPage() {
       setPwdOpen(false);
       toast({
         kind: "success",
-        title: "Senha alterada com sucesso.",
-        description: data.message || "Outras sessões ativas foram encerradas por segurança.",
+        title: "Senha alterada",
+        description: data.message || "Sua nova senha foi definida com sucesso.",
       });
     },
     onError: (e: Error) => {
       setPwdError(e.message || "Senha atual incorreta ou inválida.");
-      toast({ kind: "error", title: "Não foi possível alterar a senha", description: e.message });
+      toast({ kind: "error", title: "Erro ao alterar senha", description: e.message });
     },
   });
 
@@ -109,8 +109,8 @@ export default function AccountSecurityPage() {
       setManageOpen(false);
       toast({
         kind: "success",
-        title: "Autenticação em duas etapas ativada!",
-        description: "Guarde seus códigos de recuperação em local seguro.",
+        title: "2FA ativado",
+        description: "A autenticação em duas etapas foi ativada com sucesso.",
       });
       void qc.invalidateQueries({ queryKey: ["mfa-status"] });
     },
@@ -136,7 +136,11 @@ export default function AccountSecurityPage() {
       setBackupCodes(null);
       setDisableOpen(false);
       setManageOpen(false);
-      toast({ kind: "success", title: "Autenticação em duas etapas desativada." });
+      toast({
+        kind: "success",
+        title: "2FA desativado",
+        description: "A autenticação em duas etapas foi removida da conta.",
+      });
       void qc.invalidateQueries({ queryKey: ["mfa-status"] });
     },
     onError: (e: Error) => toast({ kind: "error", title: "Não foi possível desativar", description: e.message }),

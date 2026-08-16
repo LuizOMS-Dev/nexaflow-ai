@@ -54,7 +54,11 @@ export default function AccountProfilePage() {
       }),
     onSuccess: (data) => {
       if (data.user) applyUser(data.user);
-      toast({ kind: "success", title: "Perfil atualizado com sucesso." });
+      toast({
+        kind: "success",
+        title: "Perfil atualizado",
+        description: "Suas informações foram salvas com sucesso.",
+      });
     },
     onError: (e: Error) =>
       toast({ kind: "error", title: "Erro ao salvar", description: e.message }),

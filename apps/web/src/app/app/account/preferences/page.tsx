@@ -225,7 +225,11 @@ export default function AccountPreferencesPage() {
       if (data.user) applyUser(data.user);
       applyTheme(prefs.theme, { persist: true });
       applyReduceMotion(prefs.reduceMotion);
-      toast({ kind: "success", title: "Preferências salvas com sucesso." });
+      toast({
+        kind: "success",
+        title: "Preferências salvas",
+        description: "Suas alterações foram aplicadas.",
+      });
     },
     onError: (e: Error) =>
       toast({ kind: "error", title: "Erro ao salvar", description: e.message }),

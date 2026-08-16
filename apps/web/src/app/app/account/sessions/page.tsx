@@ -82,12 +82,16 @@ export default function AccountSessionsPage() {
     onSuccess: () => {
       setSessionToRevoke(null);
       setRevokingId(null);
-      toast({ kind: "success", title: "Sessão encerrada com sucesso." });
+      toast({
+        kind: "success",
+        title: "Sessão encerrada",
+        description: "O dispositivo selecionado foi desconectado.",
+      });
       void qc.invalidateQueries({ queryKey: ["auth-sessions"] });
     },
     onError: (e: Error) => {
       setRevokingId(null);
-      toast({ kind: "error", title: "Não foi possível encerrar a sessão", description: e.message });
+      toast({ kind: "error", title: "Falha ao encerrar", description: e.message });
     },
   });
 
@@ -97,7 +101,8 @@ export default function AccountSessionsPage() {
       setConfirmRevokeOthersOpen(false);
       toast({
         kind: "success",
-        title: "Todas as outras sessões foram encerradas com sucesso.",
+        title: "Sessões encerradas",
+        description: "Todos os outros dispositivos foram desconectados.",
       });
       void qc.invalidateQueries({ queryKey: ["auth-sessions"] });
     },

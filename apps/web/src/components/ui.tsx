@@ -1716,95 +1716,14 @@ export function Tooltip({
   );
 }
 
-/* ─── Toast system ─── */
-
-type ToastKind = "success" | "error" | "warning" | "info";
-
-type ToastItem = {
-  id: string;
-  kind: ToastKind;
-  title: string;
-  description?: string;
-  duration?: number;
-};
-
-type ToastContextValue = {
-  toast: (opts: Omit<ToastItem, "id">) => void;
-};
-
-const ToastContext = createContext<ToastContextValue | null>(null);
-
-export function useToast() {
-  const ctx = useContext(ToastContext);
-  if (!ctx) {
-    return {
-      toast: (opts: Omit<ToastItem, "id">) => {
-        if (typeof window !== "undefined") {
-          // fallback sem provider
-          console.info(`[toast:${opts.kind}]`, opts.title, opts.description || "");
-        }
-      },
-    };
-  }
-  return ctx;
-}
-
-const toastIcons: Record<ToastKind, ReactNode> = {
-  success: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
-  error: <AlertCircle className="h-4 w-4 text-red-500" />,
-  warning: <AlertTriangle className="h-4 w-4 text-amber-500" />,
-  info: <Info className="h-4 w-4 text-brand-500" />,
-};
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<ToastItem[]>([]);
-
-  const dismiss = useCallback((id: string) => {
-    setItems((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  const toast = useCallback(
-    (opts: Omit<ToastItem, "id">) => {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      const item: ToastItem = { ...opts, id };
-      setItems((prev) => [...prev.slice(-4), item]);
-      const ms = opts.duration ?? (opts.kind === "error" ? 0 : 4000);
-      if (ms > 0) {
-        window.setTimeout(() => dismiss(id), ms);
-      }
-    },
-    [dismiss]
-  );
-
-  return (
-    <ToastContext.Provider value={{ toast }}>
-      {children}
-      <div className="nf-toast-viewport" aria-live="polite" aria-relevant="additions">
-        {items.map((t) => (
-          <div key={t.id} className={cn("nf-toast", `nf-toast-${t.kind}`)} role="status">
-            <span className="mt-0.5 shrink-0">{toastIcons[t.kind]}</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium leading-snug">{t.title}</p>
-              {t.description && (
-                <p className="mt-0.5 text-xs leading-relaxed text-ink-muted dark:text-gray-400">
-                  {t.description}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              className="btn-ghost h-7 w-7 shrink-0 px-0"
-              onClick={() => dismiss(t.id)}
-              aria-label="Fechar notificação"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  );
-}
+/* ─── Toast system (Design System — reexport) ─── */
+export { ToastProvider, useToast } from "./ui-toast";
+export type {
+  ToastKind,
+  ToastOptions,
+  ToastFunction,
+  ToastContextValue,
+} from "./ui-toast";
 
 /* ─── Menu, Dropdown, ActionMenu, Popover (Design System — reexport) ─── */
 export {
