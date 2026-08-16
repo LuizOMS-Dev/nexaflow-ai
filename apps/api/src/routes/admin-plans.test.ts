@@ -245,24 +245,24 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
     }
   });
 
-  it("8. Desconto Anual: Backend calcula automaticamente 15% de desconto no preço anual quando não informado", async () => {
+  it("8. Preço Anual Padrão: Backend define preço anual cheio (mensal * 12) quando não informado, sem aplicar 15% automático", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/admin/plans",
       headers: auth(superadminToken),
       payload: {
-        name: `Plano Desconto Anual ${suffix}`,
-        slug: `plano-anual-${suffix}`,
-        priceMonthly: 300, // 300 * 12 * 0.85 = 3060
+        name: `Plano Preço Cheio ${suffix}`,
+        slug: `plano-cheio-${suffix}`,
+        priceMonthly: 300, // 300 * 12 = 3600
       },
     });
     expect(res.statusCode).toBe(200);
     const plan = res.json();
     expect(Number(plan.priceMonthly)).toBe(300);
-    expect(Number(plan.priceAnnual)).toBe(3060);
+    expect(Number(plan.priceAnnual)).toBe(3600);
   });
 
-  it("9. Desconto Anual Customizado: Preço anual explicitamente informado é preservado fielmente", async () => {
+  it("9. Desconto Anual Customizado: Preço anual explicitamente informado é preservado fielmente (15%, 10%, 12.5%)", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/admin/plans",

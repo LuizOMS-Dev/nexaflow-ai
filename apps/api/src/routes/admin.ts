@@ -1860,7 +1860,7 @@ export async function adminRoutes(app: FastifyInstance) {
     let finalAnnual = body.priceAnnual;
     if (finalAnnual === undefined || finalAnnual === null || finalAnnual <= 0) {
       if (body.priceMonthly > 0 && !body.priceOnRequest) {
-        finalAnnual = Math.round(body.priceMonthly * 12 * 0.85 * 100) / 100;
+        finalAnnual = Math.round(body.priceMonthly * 12 * 100) / 100;
       } else {
         finalAnnual = null;
       }
@@ -1928,9 +1928,6 @@ export async function adminRoutes(app: FastifyInstance) {
     if (rest.priceOnRequest === true && rest.priceMonthly === undefined) {
       rest.priceMonthly = 0;
       rest.priceAnnual = null;
-    } else if (rest.priceMonthly !== undefined && rest.priceMonthly > 0 && rest.priceAnnual === undefined) {
-      // Se alterou o mensal e não informou anual, atualiza anual com 15% de desconto
-      rest.priceAnnual = Math.round(rest.priceMonthly * 12 * 0.85 * 100) / 100;
     }
 
     const updated = await prisma.plan.update({

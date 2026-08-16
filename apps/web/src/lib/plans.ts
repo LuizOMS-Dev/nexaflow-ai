@@ -1,6 +1,6 @@
 /**
  * NexaFlow Plans & Commercial Catalog Utilities
- * Regras de formatação, cálculo de desconto anual e helpers de formulário
+ * Regras de formatação, cálculo de desconto anual customizado e helpers de formulário
  */
 
 export type Plan = {
@@ -30,6 +30,8 @@ export type PlanFormState = {
   priceType: "fixed" | "on_request" | "free";
   priceMonthly: string;
   priceAnnual: string;
+  discountMode: "0" | "5" | "10" | "15" | "20" | "25" | "30" | "custom";
+  customDiscountPercent: string;
   maxUsers: string;
   maxChannels: string;
   maxAgents: string;
@@ -59,6 +61,17 @@ export const BADGE_LABEL: Record<string, string> = {
   recommended: "Recomendado",
   best_value: "Melhor custo-benefício",
 };
+
+export const DISCOUNT_PRESET_OPTIONS = [
+  { value: "0", label: "Sem desconto (0%)" },
+  { value: "5", label: "5% de desconto" },
+  { value: "10", label: "10% de desconto" },
+  { value: "15", label: "15% de desconto" },
+  { value: "20", label: "20% de desconto" },
+  { value: "25", label: "25% de desconto" },
+  { value: "30", label: "30% de desconto" },
+  { value: "custom", label: "Personalizado..." },
+];
 
 /** Formatação BRL (centavos para visualização R$) */
 export function formatBrlInput(value: string): string {
@@ -93,6 +106,15 @@ export function parseIntegerInput(value: string, fallback = 0): number {
   return parseInt(digits, 10);
 }
 
+/** Formatação de percentual (aceita números e strings pt-BR como 12,5) */
+export function parsePercentInput(value: string): number {
+  if (!value) return 0;
+  const clean = value.replace(/[^0-9.,]/g, "").replace(",", ".");
+  const num = parseFloat(clean);
+  if (isNaN(num) || num < 0) return 0;
+  return Math.min(99.99, num);
+}
+
 /** Normalização de slugs de plano (acentos, espaços, múltiplos hífens) */
 export function slugify(name: string): string {
   return name
@@ -113,20 +135,49 @@ export function getAnnualDiscountPercent(monthly: number, annual: number | null 
   if (!monthly || monthly <= 0 || !annual || annual <= 0) return 0;
   const fullYear = monthly * 12;
   if (annual >= fullYear) return 0;
-  const pct = Math.round((1 - annual / fullYear) * 100);
-  return pct > 0 ? pct : 0;
+  const pct = ((fullYear - annual) / fullYear) * 100;
+  const rounded = Math.round(pct * 100) / 100;
+  return rounded > 0 ? rounded : 0;
 }
 
-/** Calcula o valor anual com base em um percentual de desconto (padrão 15%) */
+/** Formata percentual com até 2 casas decimais no padrão pt-BR */
+export function formatDiscountPercent(pct: number): string {
+  if (!pct || pct <= 0) return "0%";
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 2,
+  }).format(pct) + "%";
+}
+
+/** Calcula o valor anual com base em um percentual de desconto (ex: 15, 12.5) */
 export function calculateAnnualPriceWithDiscount(monthly: number, discountPercent = 15): number {
   if (!monthly || monthly <= 0) return 0;
-  return Math.round(monthly * 12 * (1 - discountPercent / 100) * 100) / 100;
+  const validPct = Math.max(0, Math.min(99.99, discountPercent));
+  return Math.round(monthly * 12 * (1 - validPct / 100) * 100) / 100;
 }
 
 /** Calcula o valor anual cheio (sem desconto: mensal * 12) */
 export function calculateFullAnnualPrice(monthly: number): number {
   if (!monthly || monthly <= 0) return 0;
   return Math.round(monthly * 12 * 100) / 100;
+}
+
+/** Calcula a economia monetária anual */
+export function calculateAnnualSavings(monthly: number, annual: number | null | undefined): number {
+  if (!monthly || monthly <= 0 || !annual || annual <= 0) return 0;
+  const fullYear = monthly * 12;
+  return Math.max(0, Math.round((fullYear - annual) * 100) / 100);
+}
+
+/** Identifica o modo do preset a partir do percentual */
+export function detectDiscountMode(pct: number): { mode: PlanFormState["discountMode"]; customVal: string } {
+  if (pct <= 0) return { mode: "0", customVal: "" };
+  if (pct === 5) return { mode: "5", customVal: "" };
+  if (pct === 10) return { mode: "10", customVal: "" };
+  if (pct === 15) return { mode: "15", customVal: "" };
+  if (pct === 20) return { mode: "20", customVal: "" };
+  if (pct === 25) return { mode: "25", customVal: "" };
+  if (pct === 30) return { mode: "30", customVal: "" };
+  return { mode: "custom", customVal: pct.toString().replace(".", ",") };
 }
 
 /** Estado inicial rigorosamente limpo para o modal de Novo Plano (zero state leakage) */
@@ -138,6 +189,8 @@ export function emptyForm(): PlanFormState {
     priceType: "fixed",
     priceMonthly: "",
     priceAnnual: "",
+    discountMode: "0",
+    customDiscountPercent: "",
     maxUsers: "1",
     maxChannels: "1",
     maxAgents: "1",
@@ -154,19 +207,26 @@ export function emptyForm(): PlanFormState {
 export function planToForm(p: Plan): PlanFormState {
   const feats = (p.features || {}) as Record<string, unknown>;
   const isEnterprise = Boolean(p.priceOnRequest) || p.slug === "enterprise";
-  const isFree = p.slug === "free" || Number(p.priceMonthly) === 0 && !isEnterprise;
+  const isFree = p.slug === "free" || (Number(p.priceMonthly) === 0 && !isEnterprise);
 
   let pType: "fixed" | "on_request" | "free" = "fixed";
   if (isEnterprise) pType = "on_request";
   else if (isFree) pType = "free";
+
+  const monthlyNum = p.priceMonthly != null ? Number(p.priceMonthly) : 0;
+  const annualNum = p.priceAnnual != null ? Number(p.priceAnnual) : null;
+  const discountPct = getAnnualDiscountPercent(monthlyNum, annualNum);
+  const { mode, customVal } = detectDiscountMode(discountPct);
 
   return {
     name: p.name,
     slug: p.slug,
     description: p.description || "",
     priceType: pType,
-    priceMonthly: p.priceMonthly != null && Number(p.priceMonthly) > 0 ? formatBrlInput(Math.round(Number(p.priceMonthly) * 100).toString()) : "",
-    priceAnnual: p.priceAnnual != null && Number(p.priceAnnual) > 0 ? formatBrlInput(Math.round(Number(p.priceAnnual) * 100).toString()) : "",
+    priceMonthly: monthlyNum > 0 ? formatBrlInput(Math.round(monthlyNum * 100).toString()) : "",
+    priceAnnual: annualNum != null && annualNum > 0 ? formatBrlInput(Math.round(annualNum * 100).toString()) : "",
+    discountMode: mode,
+    customDiscountPercent: customVal,
     maxUsers: p.maxUsers != null ? formatIntegerInput(p.maxUsers.toString()) : "1",
     maxChannels: p.maxChannels != null ? formatIntegerInput(p.maxChannels.toString()) : "1",
     maxAgents: feats.maxAgents != null ? formatIntegerInput(String(feats.maxAgents)) : "1",

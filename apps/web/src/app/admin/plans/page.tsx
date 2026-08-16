@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useMemo, FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
-  CreditCard,
   Pencil,
   Plus,
   Archive,
@@ -33,21 +32,25 @@ import {
   AdminPageSkeleton,
   StatusBadge,
 } from "@/components/admin";
-
 import {
   type Plan,
   type PlanFormState,
   PRICE_TYPE_OPTIONS,
   BADGE_OPTIONS,
   BADGE_LABEL,
+  DISCOUNT_PRESET_OPTIONS,
   formatBrlInput,
   parseBrlInput,
   formatIntegerInput,
   parseIntegerInput,
+  parsePercentInput,
   slugify,
   getAnnualDiscountPercent,
+  formatDiscountPercent,
   calculateAnnualPriceWithDiscount,
   calculateFullAnnualPrice,
+  calculateAnnualSavings,
+  detectDiscountMode,
   emptyForm,
   planToForm,
 } from "@/lib/plans";
@@ -158,6 +161,7 @@ export default function AdminPlansPage() {
   const [initialFormJson, setInitialFormJson] = useState<string>("");
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Archive confirmation state
   const [planToArchive, setPlanToArchive] = useState<Plan | null>(null);
@@ -175,39 +179,60 @@ export default function AdminPlansPage() {
   const createPlanMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       api<Plan>("/admin/plans", { method: "POST", body: JSON.stringify(payload) }),
-    onSuccess: () => {
-      toast.success("Plano comercial criado com sucesso!");
+    onSuccess: (newPlan) => {
+      toast.success(
+        "Plano criado",
+        `O plano ${newPlan.name} foi adicionado ao catálogo comercial.`
+      );
       forceCloseModal();
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao criar plano");
+      if (err.message?.includes("identificador")) {
+        setFieldErrors((prev) => ({ ...prev, slug: "Este identificador já está sendo usado por outro plano." }));
+      }
+      toast.error(
+        "Não foi possível criar o plano",
+        err.message || "Verifique os dados informados e tente novamente."
+      );
     },
   });
 
   const updatePlanMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
       api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
-    onSuccess: () => {
-      toast.success("Plano atualizado com sucesso!");
+    onSuccess: (updated) => {
+      toast.success(
+        "Alterações salvas",
+        `O plano ${updated.name} foi atualizado com sucesso no catálogo.`
+      );
       forceCloseModal();
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao atualizar plano");
+      toast.error(
+        "Não foi possível salvar o plano",
+        err.message || "Verifique a conexão e tente novamente."
+      );
     },
   });
 
   const duplicatePlanMutation = useMutation({
     mutationFn: (id: string) =>
       api<Plan>(`/admin/plans/${id}/duplicate`, { method: "POST" }),
-    onSuccess: () => {
-      toast.success("Plano duplicado com sucesso!");
+    onSuccess: (duplicated) => {
+      toast.success(
+        "Plano duplicado",
+        `A cópia "${duplicated.name}" foi criada como indisponível para novas contratações.`
+      );
       forceCloseModal();
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao duplicar plano");
+      toast.error(
+        "Não foi possível duplicar o plano",
+        err.message || "Erro ao gerar cópia do plano."
+      );
     },
   });
 
@@ -215,12 +240,25 @@ export default function AdminPlansPage() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       api<Plan>(`/admin/plans/${id}`, { method: "PATCH", body: JSON.stringify({ isActive }) }),
     onSuccess: (_, variables) => {
-      toast.success(variables.isActive ? "Plano restaurado para o catálogo ativo!" : "Plano arquivado com sucesso!");
+      if (variables.isActive) {
+        toast.success(
+          "Plano restaurado",
+          "O plano voltou a ficar disponível no catálogo comercial ativo."
+        );
+      } else {
+        toast.success(
+          "Plano arquivado",
+          "O plano foi retirado de novas contratações e movido para Arquivados."
+        );
+      }
       setPlanToArchive(null);
       queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao alterar status do plano");
+      toast.error(
+        "Não foi possível alterar status do plano",
+        err.message || "Ocorreu um erro ao atualizar o plano."
+      );
     },
   });
 
@@ -231,6 +269,7 @@ export default function AdminPlansPage() {
     setEditingPlan(null);
     setSlugManuallyEdited(false);
     setShowDiscardConfirm(false);
+    setFieldErrors({});
     setModalMode("create");
   };
 
@@ -241,6 +280,7 @@ export default function AdminPlansPage() {
     setEditingPlan(p);
     setSlugManuallyEdited(true);
     setShowDiscardConfirm(false);
+    setFieldErrors({});
     setModalMode("edit");
   };
 
@@ -256,6 +296,7 @@ export default function AdminPlansPage() {
     setEditingPlan(p);
     setSlugManuallyEdited(true);
     setShowDiscardConfirm(false);
+    setFieldErrors({});
     setModalMode("duplicate");
   };
 
@@ -276,9 +317,11 @@ export default function AdminPlansPage() {
     setEditingPlan(null);
     setSlugManuallyEdited(false);
     setShowDiscardConfirm(false);
+    setFieldErrors({});
   };
 
   const handleNameChange = (nameVal: string) => {
+    setFieldErrors((prev) => ({ ...prev, name: "" }));
     setFormData((prev) => {
       const next = { ...prev, name: nameVal };
       if (!slugManuallyEdited && modalMode === "create") {
@@ -288,15 +331,109 @@ export default function AdminPlansPage() {
     });
   };
 
-  const handleFormSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) {
-      toast.error("O nome do plano é obrigatório.");
+  const handleMonthlyChange = (valStr: string) => {
+    setFieldErrors((prev) => ({ ...prev, priceMonthly: "" }));
+    const formatted = formatBrlInput(valStr);
+    const monthlyNum = parseBrlInput(formatted);
+
+    setFormData((prev) => {
+      let nextAnnual = prev.priceAnnual;
+      if (monthlyNum > 0) {
+        if (prev.discountMode !== "0" && prev.discountMode !== "custom") {
+          const pct = parseInt(prev.discountMode, 10) || 0;
+          const discounted = calculateAnnualPriceWithDiscount(monthlyNum, pct);
+          nextAnnual = formatBrlInput(Math.round(discounted * 100).toString());
+        } else if (prev.discountMode === "custom" && prev.customDiscountPercent) {
+          const pct = parsePercentInput(prev.customDiscountPercent);
+          const discounted = calculateAnnualPriceWithDiscount(monthlyNum, pct);
+          nextAnnual = formatBrlInput(Math.round(discounted * 100).toString());
+        } else if (prev.discountMode === "0") {
+          const fullYear = calculateFullAnnualPrice(monthlyNum);
+          nextAnnual = formatBrlInput(Math.round(fullYear * 100).toString());
+        }
+      }
+      return { ...prev, priceMonthly: formatted, priceAnnual: nextAnnual };
+    });
+  };
+
+  const handleAnnualChange = (valStr: string) => {
+    setFieldErrors((prev) => ({ ...prev, priceAnnual: "" }));
+    const formatted = formatBrlInput(valStr);
+    const annualNum = parseBrlInput(formatted);
+    const monthlyNum = parseBrlInput(formData.priceMonthly);
+
+    const discountPct = getAnnualDiscountPercent(monthlyNum, annualNum);
+    const { mode, customVal } = detectDiscountMode(discountPct);
+
+    setFormData((prev) => ({
+      ...prev,
+      priceAnnual: formatted,
+      discountMode: mode,
+      customDiscountPercent: customVal,
+    }));
+  };
+
+  const handleDiscountPresetChange = (presetValue: string) => {
+    const monthlyNum = parseBrlInput(formData.priceMonthly);
+    if (presetValue === "custom") {
+      setFormData((prev) => ({
+        ...prev,
+        discountMode: "custom",
+      }));
       return;
     }
-    if (!formData.slug.trim()) {
-      toast.error("O identificador (slug) do plano é obrigatório.");
+
+    const pct = parseInt(presetValue, 10) || 0;
+    if (monthlyNum <= 0 && pct > 0) {
+      toast.info("Informe um preço mensal válido para calcular o valor anual.");
       return;
+    }
+
+    const annualPrice = pct === 0 ? calculateFullAnnualPrice(monthlyNum) : calculateAnnualPriceWithDiscount(monthlyNum, pct);
+
+    setFormData((prev) => ({
+      ...prev,
+      discountMode: presetValue as any,
+      customDiscountPercent: "",
+      priceAnnual: annualPrice > 0 ? formatBrlInput(Math.round(annualPrice * 100).toString()) : "",
+    }));
+  };
+
+  const handleCustomDiscountChange = (valStr: string) => {
+    setFieldErrors((prev) => ({ ...prev, customDiscount: "" }));
+    const pct = parsePercentInput(valStr);
+    const monthlyNum = parseBrlInput(formData.priceMonthly);
+
+    const discounted = calculateAnnualPriceWithDiscount(monthlyNum, pct);
+
+    setFormData((prev) => ({
+      ...prev,
+      discountMode: "custom",
+      customDiscountPercent: valStr,
+      priceAnnual: discounted > 0 ? formatBrlInput(Math.round(discounted * 100).toString()) : "",
+    }));
+  };
+
+  const handleRemoveDiscount = () => {
+    const monthlyNum = parseBrlInput(formData.priceMonthly);
+    const fullYear = calculateFullAnnualPrice(monthlyNum);
+    setFormData((prev) => ({
+      ...prev,
+      discountMode: "0",
+      customDiscountPercent: "",
+      priceAnnual: fullYear > 0 ? formatBrlInput(Math.round(fullYear * 100).toString()) : "",
+    }));
+  };
+
+  const handleFormSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const errors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      errors.name = "Informe o nome comercial do plano.";
+    }
+    if (!formData.slug.trim()) {
+      errors.slug = "Informe o identificador (slug) do plano.";
     }
 
     const isEnterprise = formData.priceType === "on_request";
@@ -305,9 +442,31 @@ export default function AdminPlansPage() {
     let monthly = parseBrlInput(formData.priceMonthly);
     let annual = parseBrlInput(formData.priceAnnual);
 
-    if (isEnterprise || isFree) {
+    if (formData.priceType === "fixed") {
+      if (monthly <= 0) {
+        errors.priceMonthly = "Informe um preço mensal maior que zero.";
+      }
+      if (annual <= 0) {
+        errors.priceAnnual = "Informe um preço anual válido.";
+      }
+      if (formData.discountMode === "custom" && formData.customDiscountPercent) {
+        const pct = parsePercentInput(formData.customDiscountPercent);
+        if (pct < 0 || pct >= 100) {
+          errors.customDiscount = "Informe um desconto entre 0% e 99,99%.";
+        }
+      }
+    } else {
       monthly = 0;
       annual = 0;
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      toast.error(
+        "Revise os campos destacados",
+        "Existem informações obrigatórias não preenchidas ou inválidas."
+      );
+      return;
     }
 
     const payload: Record<string, unknown> = {
@@ -425,7 +584,7 @@ export default function AdminPlansPage() {
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {displayedPlans.map((plan) => {
             const isEnterprise = Boolean(plan.priceOnRequest) || plan.slug === "enterprise";
-            const isFree = plan.slug === "free" || Number(plan.priceMonthly) === 0 && !isEnterprise;
+            const isFree = plan.slug === "free" || (Number(plan.priceMonthly) === 0 && !isEnterprise);
             const monthlyPrice = Number(plan.priceMonthly || 0);
             const annualPrice = plan.priceAnnual != null ? Number(plan.priceAnnual) : null;
             const discountPct = getAnnualDiscountPercent(monthlyPrice, annualPrice);
@@ -494,7 +653,7 @@ export default function AdminPlansPage() {
                             </p>
                             {discountPct > 0 && (
                               <span className="rounded bg-emerald-500/15 px-1.5 py-0.2 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
-                                {discountPct}% OFF
+                                {formatDiscountPercent(discountPct)} OFF
                               </span>
                             )}
                           </div>
@@ -645,7 +804,7 @@ export default function AdminPlansPage() {
         </div>
       )}
 
-      {/* 3. MODAL UNIFICADO REFINADO: PlanFormDialog (Criar / Editar / Duplicar) */}
+      {/* 3. MODAL UNIFICADO: PlanFormDialog (Criar / Editar / Duplicar) */}
       <Modal
         open={modalMode !== null}
         onClose={requestCloseModal}
@@ -682,9 +841,16 @@ export default function AdminPlansPage() {
                   placeholder="Ex: Profissional Plus"
                   value={formData.name}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none"
+                  className={cn(
+                    "w-full rounded-lg border bg-white/[0.04] px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:outline-none transition-colors",
+                    fieldErrors.name
+                      ? "border-red-500/60 focus:border-red-500"
+                      : "border-white/[0.08] focus:border-violet-500"
+                  )}
                 />
+                {fieldErrors.name && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.name}</p>
+                )}
               </div>
 
               <div>
@@ -697,15 +863,22 @@ export default function AdminPlansPage() {
                   value={formData.slug}
                   onChange={(e) => {
                     setSlugManuallyEdited(true);
+                    setFieldErrors((prev) => ({ ...prev, slug: "" }));
                     setFormData((prev) => ({ ...prev, slug: slugify(e.target.value) }));
                   }}
                   disabled={modalMode === "edit"}
-                  required
                   className={cn(
-                    "w-full rounded-lg border border-white/[0.08] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none placeholder-gray-500",
-                    modalMode === "edit" ? "bg-white/[0.02] text-gray-400 cursor-not-allowed" : "bg-white/[0.04]"
+                    "w-full rounded-lg border px-3 py-2 text-[13px] text-white focus:outline-none placeholder-gray-500 transition-colors",
+                    modalMode === "edit"
+                      ? "bg-white/[0.02] text-gray-400 cursor-not-allowed border-white/[0.06]"
+                      : fieldErrors.slug
+                      ? "border-red-500/60 bg-white/[0.04] focus:border-red-500"
+                      : "border-white/[0.08] bg-white/[0.04] focus:border-violet-500"
                   )}
                 />
+                {fieldErrors.slug && (
+                  <p className="mt-1 text-[11px] text-red-400">{fieldErrors.slug}</p>
+                )}
               </div>
             </div>
 
@@ -742,126 +915,156 @@ export default function AdminPlansPage() {
 
             {formData.priceType === "free" && (
               <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12px] text-gray-400">
-                Sem cobrança de catálogo comercial. As empresas cadastradas no plano gratuito não serão cobradas mensalmente.
+                Sem cobrança de catálogo comercial. As empresas vinculadas não serão cobradas mensalmente.
               </div>
             )}
 
             {formData.priceType === "on_request" && (
               <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[12px] text-gray-400">
-                O valor e os termos comerciais serão definidos individualmente no contrato personalizado da empresa.
+                O valor e os termos comerciais serão definidos no contrato customizado de cada empresa.
               </div>
             )}
 
             {formData.priceType === "fixed" && (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
-                    Preço mensal (R$) *
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
-                      R$
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="0,00"
-                      value={formData.priceMonthly}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, priceMonthly: formatBrlInput(e.target.value) }))}
-                      required
-                      className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
-                    />
+              <div className="space-y-3">
+                {/* Valores Mensal e Anual */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                      Preço mensal (R$) *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
+                        R$
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="0,00"
+                        value={formData.priceMonthly}
+                        onChange={(e) => handleMonthlyChange(e.target.value)}
+                        className={cn(
+                          "w-full rounded-lg border bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:outline-none tabular-nums transition-colors",
+                          fieldErrors.priceMonthly
+                            ? "border-red-500/60 focus:border-red-500"
+                            : "border-white/[0.08] focus:border-violet-500"
+                        )}
+                      />
+                    </div>
+                    {fieldErrors.priceMonthly && (
+                      <p className="mt-1 text-[11px] text-red-400">{fieldErrors.priceMonthly}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                      Preço anual (R$) *
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
+                        R$
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="0,00"
+                        value={formData.priceAnnual}
+                        onChange={(e) => handleAnnualChange(e.target.value)}
+                        className={cn(
+                          "w-full rounded-lg border bg-white/[0.04] pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-500 focus:outline-none tabular-nums transition-colors",
+                          fieldErrors.priceAnnual
+                            ? "border-red-500/60 focus:border-red-500"
+                            : "border-white/[0.08] focus:border-violet-500"
+                        )}
+                      />
+                    </div>
+                    {fieldErrors.priceAnnual && (
+                      <p className="mt-1 text-[11px] text-red-400">{fieldErrors.priceAnnual}</p>
+                    )}
                   </div>
                 </div>
 
-                <div>
-                  {(() => {
-                    const parsedM = parseBrlInput(formData.priceMonthly);
-                    const parsedA = parseBrlInput(formData.priceAnnual);
-                    const discountPct = getAnnualDiscountPercent(parsedM, parsedA);
-                    const suggested15 = calculateAnnualPriceWithDiscount(parsedM, 15);
-                    const fullYear = calculateFullAnnualPrice(parsedM);
+                {/* Bloco de Desconto Anual Configurável */}
+                {(() => {
+                  const monthlyNum = parseBrlInput(formData.priceMonthly);
+                  const annualNum = parseBrlInput(formData.priceAnnual);
+                  const discountPct = getAnnualDiscountPercent(monthlyNum, annualNum);
+                  const savings = calculateAnnualSavings(monthlyNum, annualNum);
 
-                    return (
-                      <>
-                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
-                          <label className="block text-[11.5px] font-medium text-gray-400">
-                            Preço anual (R$)
-                          </label>
-                          {parsedM > 0 && (
-                            <div className="flex items-center gap-1.5">
-                              {discountPct > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      priceAnnual: formatBrlInput(Math.round(fullYear * 100).toString()),
-                                    }));
-                                    toast.info(`Desconto removido. Valor anual integral: ${formatCurrency(fullYear)}/ano`);
-                                  }}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 text-[11px] font-medium transition-colors cursor-pointer"
-                                  title="Remover desconto e restaurar preço anual integral (mensal x 12)"
-                                >
-                                  <RotateCcw className="h-3 w-3" />
-                                  Remover desconto
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      priceAnnual: formatBrlInput(Math.round(suggested15 * 100).toString()),
-                                    }));
-                                    toast.success(`Desconto de 15% aplicado: ${formatCurrency(suggested15)}/ano`);
-                                  }}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/25 text-[11px] font-semibold transition-colors cursor-pointer"
-                                  title="Calcular valor anual com 15% de desconto"
-                                >
-                                  <Sparkles className="h-3 w-3 text-violet-400" />
-                                  Aplicar -15% · {formatCurrency(suggested15)}/ano
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12.5px] text-gray-400 pointer-events-none">
-                            R$
-                          </span>
-                          <input
-                            type="text"
-                            placeholder="0,00"
-                            value={formData.priceAnnual}
-                            onChange={(e) => setFormData((prev) => ({ ...prev, priceAnnual: formatBrlInput(e.target.value) }))}
-                            className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-20 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
-                          />
-                          {discountPct > 0 && (
-                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
-                              {discountPct}% OFF
+                  return (
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <label className="text-[11.5px] font-medium text-gray-400">
+                          Desconto anual de catálogo
+                        </label>
+                        {discountPct > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-emerald-400 font-medium">
+                              Economia de {formatCurrency(savings)}/ano ({formatDiscountPercent(discountPct)} OFF)
                             </span>
-                          )}
+                            <button
+                              type="button"
+                              onClick={handleRemoveDiscount}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400 hover:text-amber-300 transition-colors"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              Remover desconto
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <CustomSelect
+                            value={formData.discountMode}
+                            onChange={handleDiscountPresetChange}
+                            options={DISCOUNT_PRESET_OPTIONS}
+                            size="sm"
+                          />
                         </div>
-                      </>
-                    );
-                  })()}
-                </div>
+
+                        {formData.discountMode === "custom" && (
+                          <div>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Ex: 12,5"
+                                value={formData.customDiscountPercent}
+                                onChange={(e) => handleCustomDiscountChange(e.target.value)}
+                                className={cn(
+                                  "w-full rounded-lg border bg-white/[0.04] px-3 py-1.5 text-[12px] text-white focus:outline-none tabular-nums placeholder-gray-500",
+                                  fieldErrors.customDiscount
+                                    ? "border-red-500/60 focus:border-red-500"
+                                    : "border-white/[0.08] focus:border-violet-500"
+                                )}
+                              />
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11.5px] text-gray-400 pointer-events-none">
+                                %
+                              </span>
+                            </div>
+                            {fieldErrors.customDiscount && (
+                              <p className="mt-1 text-[10.5px] text-red-400">{fieldErrors.customDiscount}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
 
-          {/* Seção 3: Limites do Produto em 3 colunas */}
+          {/* Seção 3: Limites do Produto */}
           <div className="space-y-2.5 pt-3 border-t border-white/[0.06]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-1">
               <h4 className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">
                 Limites do Produto
               </h4>
-              {modalMode === "edit" && (
-                <span className="text-[11px] text-amber-300/80 flex items-center gap-1">
-                  <Info className="h-3 w-3 text-amber-400" />
-                  Alterações afetam empresas vinculadas
-                </span>
-              )}
+              <span className="text-[11px] text-violet-300/80 flex items-center gap-1">
+                <Info className="h-3 w-3 text-violet-400 shrink-0" />
+                Limites dinâmicos (aplicados às empresas sem override)
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -1024,7 +1227,7 @@ export default function AdminPlansPage() {
                 updatePlanMutation.isPending ||
                 (modalMode === "edit" && !isDirty)
               }
-              className="rounded-lg bg-violet-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors shadow-sm"
+              className="rounded-lg bg-violet-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
               {createPlanMutation.isPending || updatePlanMutation.isPending
                 ? "Salvando..."
@@ -1042,24 +1245,25 @@ export default function AdminPlansPage() {
       <Modal
         open={showDiscardConfirm}
         onClose={() => setShowDiscardConfirm(false)}
-        title="Descartar alterações não salvas?"
-        description="Você possui alterações não salvas no formulário. Se você sair agora, todos os dados modificados serão perdidos."
+        title="Descartar alterações?"
+        description="As alterações feitas neste plano ainda não foram salvas."
         size="sm"
       >
         <div className="flex items-center justify-end gap-2.5 pt-2">
           <button
             type="button"
+            autoFocus
             onClick={() => setShowDiscardConfirm(false)}
-            className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
+            className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
           >
             Continuar editando
           </button>
           <button
             type="button"
             onClick={forceCloseModal}
-            className="rounded-lg bg-red-600/90 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-red-500 transition-colors shadow-sm"
+            className="rounded-lg bg-red-600/80 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-red-600 transition-colors shadow-sm"
           >
-            Descartar alterações
+            Descartar
           </button>
         </div>
       </Modal>
