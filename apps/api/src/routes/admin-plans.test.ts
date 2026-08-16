@@ -261,4 +261,39 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
     expect(Number(plan.priceMonthly)).toBe(300);
     expect(Number(plan.priceAnnual)).toBe(3060);
   });
+
+  it("9. Desconto Anual Customizado: Preço anual explicitamente informado é preservado fielmente", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Custom Anual ${suffix}`,
+        slug: `plano-custom-anual-${suffix}`,
+        priceMonthly: 100,
+        priceAnnual: 1080, // 10% de desconto
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const plan = res.json();
+    expect(Number(plan.priceMonthly)).toBe(100);
+    expect(Number(plan.priceAnnual)).toBe(1080);
+  });
+
+  it("10. Defaults Seguros: Criação nunca injeta slug 'pro' ou valores acidentais", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/plans",
+      headers: auth(superadminToken),
+      payload: {
+        name: `Plano Starter Novo ${suffix}`,
+        slug: `plano-starter-novo-${suffix}`,
+        priceMonthly: 50,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const plan = res.json();
+    expect(plan.slug).toBe(`plano-starter-novo-${suffix}`);
+    expect(plan.slug).not.toBe("pro");
+  });
 });

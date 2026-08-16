@@ -126,6 +126,7 @@ function slugify(name: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 }
@@ -232,12 +233,12 @@ function emptyForm(): PlanFormState {
     priceType: "fixed",
     priceMonthly: "",
     priceAnnual: "",
-    maxUsers: "2",
+    maxUsers: "1",
     maxChannels: "1",
     maxAgents: "1",
-    maxContacts: "2000",
+    maxContacts: "500",
     maxActiveFlows: "5",
-    maxAiMessages: "1000",
+    maxAiMessages: "100",
     isActive: true,
     badge: "",
     sortOrder: "100",
@@ -591,7 +592,7 @@ export default function AdminPlansPage() {
                     : "border-white/[0.08] hover:border-white/[0.15]"
                 )}
               >
-                {/* Top: Header do Card */}
+                {/* Top: Header do Card (sem slug técnico) */}
                 <div>
                   <div className="flex items-start justify-between gap-2 min-h-[32px]">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -653,63 +654,63 @@ export default function AdminPlansPage() {
 
                   {/* Grade de 6 Limites Oficiais */}
                   <div className="mt-4 space-y-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3.5 text-[12px]">
-                    <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
                         <Users className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Usuários
                       </span>
-                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : plan.maxUsers.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
                         <MessageSquare className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         WhatsApp
                       </span>
-                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : plan.maxChannels.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
                         <Bot className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Agentes IA
                       </span>
-                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : maxAgents.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
                         <Contact className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Contatos
                       </span>
-                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : plan.maxContacts.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
                         <Workflow className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                         Fluxos
                       </span>
-                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
                         {isEnterprise ? "Personalizado" : maxFlows.toLocaleString("pt-BR")}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
                       <span className="flex items-center gap-1.5 text-gray-400 shrink-0">
                         <Sparkles className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                        Créditos IA
+                        Créditos IA / mês
                       </span>
-                      <span className={cn("font-semibold tabular-nums shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
-                        {isEnterprise ? "Personalizado" : `${plan.maxAiMessages.toLocaleString("pt-BR")}/mês`}
+                      <span className={cn("font-semibold tabular-nums text-right shrink-0", isEnterprise ? "text-[11.5px] text-gray-300" : "text-white")}>
+                        {isEnterprise ? "Personalizado" : plan.maxAiMessages.toLocaleString("pt-BR")}
                       </span>
                     </div>
                   </div>
@@ -822,7 +823,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Profissional"
+                  placeholder="Ex: Profissional Plus"
                   value={formData.name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   required
@@ -836,7 +837,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="pro"
+                  placeholder="ex: plano-plus"
                   value={formData.slug}
                   onChange={(e) => {
                     setSlugManuallyEdited(true);
@@ -845,7 +846,7 @@ export default function AdminPlansPage() {
                   disabled={modalMode === "edit"}
                   required
                   className={cn(
-                    "w-full rounded-lg border border-white/[0.08] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none",
+                    "w-full rounded-lg border border-white/[0.08] px-3 py-2 text-[13px] text-white focus:border-violet-500 focus:outline-none placeholder-gray-500",
                     modalMode === "edit" ? "bg-white/[0.02] text-gray-400 cursor-not-allowed" : "bg-white/[0.04]"
                   )}
                 />
@@ -895,7 +896,7 @@ export default function AdminPlansPage() {
                     </span>
                     <input
                       type="text"
-                      placeholder="299,00"
+                      placeholder="0,00"
                       value={formData.priceMonthly}
                       onChange={(e) => setFormData((prev) => ({ ...prev, priceMonthly: formatBrlInput(e.target.value) }))}
                       required
@@ -916,7 +917,7 @@ export default function AdminPlansPage() {
 
                     return (
                       <>
-                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1.5">
+                        <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1.5">
                           <label className="block text-[11.5px] font-medium text-gray-400">
                             Preço anual (R$)
                           </label>
@@ -924,12 +925,12 @@ export default function AdminPlansPage() {
                             <button
                               type="button"
                               onClick={(e) => handleApplyDiscountSuggestion(e)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-violet-600/20 hover:bg-violet-600/35 text-violet-300 border border-violet-500/30 text-[11px] font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
-                              title="Calcular automaticamente com 15% de desconto anual"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/25 text-[11px] font-semibold transition-colors cursor-pointer"
+                              title="Calcular valor anual com 15% de desconto"
                             >
                               <Sparkles className="h-3 w-3 text-violet-400 shrink-0" />
                               <span>
-                                Aplicar 15% ({formatCurrency(suggestedA)}/ano)
+                                Aplicar -15% · {formatCurrency(suggestedA)}/ano
                               </span>
                             </button>
                           )}
@@ -940,14 +941,14 @@ export default function AdminPlansPage() {
                           </span>
                           <input
                             type="text"
-                            placeholder={suggestedA > 0 ? formatBrlInput(Math.round(suggestedA * 100).toString()) : "3.049,80"}
+                            placeholder="0,00"
                             value={formData.priceAnnual}
                             onChange={(e) => setFormData((prev) => ({ ...prev, priceAnnual: formatBrlInput(e.target.value) }))}
                             className="w-full rounded-lg border border-white/[0.08] bg-white/[0.04] pl-9 pr-20 py-2 text-[13px] text-white placeholder-gray-500 focus:border-violet-500 focus:outline-none tabular-nums"
                           />
                           {discountPct > 0 && (
                             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/25">
-                              -{discountPct}% OFF
+                              {discountPct}% OFF
                             </span>
                           )}
                         </div>
@@ -980,7 +981,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="5"
+                  placeholder="1"
                   value={formData.maxUsers}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxUsers: formatIntegerInput(e.target.value) }))}
                   required
@@ -994,7 +995,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="2"
+                  placeholder="1"
                   value={formData.maxChannels}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxChannels: formatIntegerInput(e.target.value) }))}
                   required
@@ -1008,7 +1009,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="3"
+                  placeholder="1"
                   value={formData.maxAgents}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxAgents: formatIntegerInput(e.target.value) }))}
                   required
@@ -1022,7 +1023,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="5.000"
+                  placeholder="500"
                   value={formData.maxContacts}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxContacts: formatIntegerInput(e.target.value) }))}
                   required
@@ -1036,7 +1037,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="10"
+                  placeholder="5"
                   value={formData.maxActiveFlows}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxActiveFlows: formatIntegerInput(e.target.value) }))}
                   required
@@ -1050,7 +1051,7 @@ export default function AdminPlansPage() {
                 </label>
                 <input
                   type="text"
-                  placeholder="2.000"
+                  placeholder="100"
                   value={formData.maxAiMessages}
                   onChange={(e) => setFormData((prev) => ({ ...prev, maxAiMessages: formatIntegerInput(e.target.value) }))}
                   required
