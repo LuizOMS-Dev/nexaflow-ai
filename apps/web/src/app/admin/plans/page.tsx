@@ -911,54 +911,41 @@ export default function AdminPlansPage() {
             })}
           </div>
 
-          {/* 2. RESUMO DO CATÁLOGO (Faixa horizontal discreta de 90-120px) */}
+          {/* 2. RESUMO DO CATÁLOGO (Faixa horizontal compacta e discreta ~60px) */}
           {!isLoading && !error && plans.length > 0 && (
-            <div className="mt-7 rounded-2xl border border-white/[0.08] bg-[#141721]/80 backdrop-blur-sm p-4 sm:p-5">
-              <div className="flex items-center gap-2 mb-3.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-                <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
+            <div className="mt-5 flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-[#12141c]/60 px-4 py-2.5 backdrop-blur-sm sm:px-5">
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-1.5 rounded-full bg-violet-400/80 shrink-0" />
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                   Resumo do catálogo
                 </h4>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0 lg:divide-x lg:divide-white/[0.08]">
-                {/* 1. Planos disponíveis */}
-                <div className="lg:px-4 first:lg:pl-0">
-                  <p className="text-[11px] font-medium text-gray-400">Planos disponíveis</p>
-                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight">
-                    {availablePlansCount}{" "}
-                    <span className="text-[12.5px] font-normal text-gray-400">disponíveis</span>
-                  </p>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-white tabular-nums">{availablePlansCount}</span>
+                  <span className="text-gray-400">disponíveis</span>
                 </div>
 
-                {/* 2. Empresas em planos pagos */}
-                <div className="lg:px-4">
-                  <p className="text-[11px] font-medium text-gray-400">Empresas em planos pagos</p>
-                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight">
-                    {payingCompaniesCount}{" "}
-                    <span className="text-[12.5px] font-normal text-gray-400">
-                      {payingCompaniesCount === 1 ? "empresa pagante" : "empresas pagantes"}
-                    </span>
-                  </p>
+                <span className="hidden text-white/15 md:inline" aria-hidden>|</span>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-white tabular-nums">{payingCompaniesCount}</span>
+                  <span className="text-gray-400">{payingCompaniesCount === 1 ? "pagante" : "pagantes"}</span>
                 </div>
 
-                {/* 3. Plano mais popular */}
-                <div className="lg:px-4">
-                  <p className="text-[11px] font-medium text-gray-400">Plano mais popular</p>
-                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight truncate">
-                    {mostPopularLabel}
-                  </p>
+                <span className="hidden text-white/15 md:inline" aria-hidden>|</span>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-gray-400">Mais popular:</span>
+                  <span className="font-medium text-white">{mostPopularLabel}</span>
                 </div>
 
-                {/* 4. Planos arquivados */}
-                <div className="lg:px-4 last:lg:pr-0">
-                  <p className="text-[11px] font-medium text-gray-400">Planos arquivados</p>
-                  <p className="mt-1 text-[16px] font-bold text-white tracking-tight">
-                    {archivedPlansCount}{" "}
-                    <span className="text-[12.5px] font-normal text-gray-400">
-                      {archivedPlansCount === 1 ? "arquivado" : "arquivados"}
-                    </span>
-                  </p>
+                <span className="hidden text-white/15 md:inline" aria-hidden>|</span>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-white tabular-nums">{archivedPlansCount}</span>
+                  <span className="text-gray-400">{archivedPlansCount === 1 ? "arquivado" : "arquivados"}</span>
                 </div>
               </div>
             </div>
@@ -984,90 +971,48 @@ export default function AdminPlansPage() {
             ? "Crie uma cópia independente. O novo plano nasce indisponível para novas contratações."
             : "Defina preços de catálogo, limites técnicos e disponibilidade comercial."
         }
-        headerExtra={
-          isDirty ? (
-            <div className="flex items-center gap-2 animate-in fade-in duration-150">
-              <button
-                type="button"
-                onClick={requestCloseModal}
-                className="rounded-lg px-2.5 py-1 text-[11.5px] font-medium text-gray-400 hover:text-white transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const form = document.getElementById("plan-form-dialog") as HTMLFormElement | null;
-                  if (form) form.requestSubmit();
-                }}
-                disabled={
-                  createPlanMutation.isPending ||
-                  updatePlanMutation.isPending ||
-                  (modalMode === "edit" && !isDirty) ||
-                  !formData.name.trim()
-                }
-                className="rounded-lg bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-              >
-                {createPlanMutation.isPending || updatePlanMutation.isPending
-                  ? "Salvando..."
-                  : modalMode === "create"
-                  ? "Criar plano"
-                  : modalMode === "duplicate"
-                  ? "Criar cópia"
-                  : "Salvar alterações"}
-              </button>
-            </div>
-          ) : undefined
-        }
         size="lg"
+        footer={
+          <div className="flex w-full items-center justify-end gap-2.5">
+            <button
+              type="button"
+              onClick={requestCloseModal}
+              className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              form="plan-form-dialog"
+              disabled={
+                createPlanMutation.isPending ||
+                updatePlanMutation.isPending ||
+                (modalMode === "edit" && !isDirty) ||
+                !formData.name.trim()
+              }
+              className="rounded-lg bg-violet-600 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              {createPlanMutation.isPending || updatePlanMutation.isPending
+                ? "Salvando..."
+                : modalMode === "create"
+                ? "Criar plano"
+                : modalMode === "duplicate"
+                ? "Criar cópia"
+                : "Salvar alterações"}
+            </button>
+          </div>
+        }
       >
-        <form id="plan-form-dialog" onSubmit={handleFormSubmit} className="space-y-3.5">
-          {/* Barra Flutuante de Ação Rápida no Topo do Formulário (aparece instantaneamente ao editar qualquer campo) */}
-          {isDirty && (
-            <div className="sticky -top-4 z-20 -mx-6 -mt-2 mb-2 px-6 py-2 bg-[#161a26]/95 backdrop-blur-md border-b border-violet-500/30 flex items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="flex items-center gap-2 text-[12px] text-violet-300">
-                <span className="h-2 w-2 rounded-full bg-violet-400 animate-pulse" />
-                <span className="font-medium">Alterações não salvas</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={requestCloseModal}
-                  className="rounded-md px-2.5 py-1 text-[11.5px] font-medium text-gray-400 hover:text-white transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    createPlanMutation.isPending ||
-                    updatePlanMutation.isPending ||
-                    (modalMode === "edit" && !isDirty) ||
-                    !formData.name.trim()
-                  }
-                  className="rounded-md bg-violet-600 px-3 py-1 text-[11.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-                >
-                  {createPlanMutation.isPending || updatePlanMutation.isPending
-                    ? "Salvando..."
-                    : modalMode === "create"
-                    ? "Criar plano"
-                    : modalMode === "duplicate"
-                    ? "Criar cópia"
-                    : "Salvar alterações"}
-                </button>
-              </div>
-            </div>
-          )}
-
+        <form id="plan-form-dialog" onSubmit={handleFormSubmit} className="space-y-3 pb-1">
           {/* Seção 1: Informações do Plano */}
           <div className="space-y-2">
-            <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
               Informações do Plano
             </h4>
 
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
-                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
                   Nome comercial *
                 </label>
                 <input
@@ -1089,7 +1034,7 @@ export default function AdminPlansPage() {
               </div>
 
               <div>
-                <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                <label className="block text-[11px] font-medium text-gray-400 mb-1">
                   Identificador (Slug) *
                 </label>
                 <input
@@ -1120,7 +1065,7 @@ export default function AdminPlansPage() {
             </div>
 
             <div>
-              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+              <label className="block text-[11px] font-medium text-gray-400 mb-1">
                 Descrição comercial
               </label>
               <textarea
@@ -1134,13 +1079,13 @@ export default function AdminPlansPage() {
           </div>
 
           {/* Seção 2: Precificação de Catálogo */}
-          <div className="space-y-2.5 pt-2.5 border-t border-white/[0.06]">
-            <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
+          <div className="space-y-2 pt-2.5 border-t border-white/[0.06]">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
               Precificação de Catálogo
             </h4>
 
             <div>
-              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+              <label className="block text-[11px] font-medium text-gray-400 mb-1">
                 Tipo de preço *
               </label>
               <CustomSelect
@@ -1163,11 +1108,11 @@ export default function AdminPlansPage() {
             )}
 
             {formData.priceType === "fixed" && (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {/* Valores Mensal e Anual lado a lado */}
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
-                    <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                    <label className="block text-[11px] font-medium text-gray-400 mb-1">
                       Preço mensal (R$) *
                     </label>
                     <div className="relative">
@@ -1194,7 +1139,7 @@ export default function AdminPlansPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+                    <label className="block text-[11px] font-medium text-gray-400 mb-1">
                       Preço anual (R$) *
                     </label>
                     <div className="relative">
@@ -1233,7 +1178,7 @@ export default function AdminPlansPage() {
                   return (
                     <div className="space-y-1.5 pt-0.5">
                       <div className="flex items-center justify-between gap-2">
-                        <label className="block text-[11.5px] font-medium text-gray-400">
+                        <label className="block text-[11px] font-medium text-gray-400">
                           Desconto anual
                         </label>
                         {hasDiscount && (
@@ -1306,9 +1251,9 @@ export default function AdminPlansPage() {
           </div>
 
           {/* Seção 3: Limites do Produto */}
-          <div className="space-y-2.5 pt-2.5 border-t border-white/[0.06]">
+          <div className="space-y-2 pt-2.5 border-t border-white/[0.06]">
             <div className="flex items-center justify-between flex-wrap gap-1">
-              <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                 Limites do Produto
               </h4>
               <div
@@ -1339,7 +1284,7 @@ export default function AdminPlansPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 mb-1">
                   Usuários *
@@ -1428,12 +1373,12 @@ export default function AdminPlansPage() {
 
           {/* Seção 4: Disponibilidade & Ordem */}
           <div className="space-y-2 pt-2.5 border-t border-white/[0.06]">
-            <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-gray-400">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
               Disponibilidade & Ordem
             </h4>
 
             <div>
-              <label className="block text-[11.5px] font-medium text-gray-400 mb-1">
+              <label className="block text-[11px] font-medium text-gray-400 mb-1">
                 Ordem de exibição
               </label>
               <input
@@ -1447,7 +1392,7 @@ export default function AdminPlansPage() {
 
             <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-2.5">
               <div>
-                <p className="text-[12.5px] font-semibold text-white">Disponível para novas contratações</p>
+                <p className="text-[12px] font-semibold text-white">Disponível para novas contratações</p>
                 <p className="text-[11px] text-gray-400">
                   Novas empresas poderão visualizar e contratar este plano no catálogo comercial.
                 </p>
@@ -1456,47 +1401,18 @@ export default function AdminPlansPage() {
                 type="button"
                 onClick={() => setFormData((prev) => ({ ...prev, isActive: !prev.isActive }))}
                 className={cn(
-                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
                   formData.isActive ? "bg-violet-600" : "bg-white/[0.1]"
                 )}
               >
                 <span
                   className={cn(
-                    "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
-                    formData.isActive ? "translate-x-5" : "translate-x-0"
+                    "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                    formData.isActive ? "translate-x-4" : "translate-x-0"
                   )}
                 />
               </button>
             </div>
-          </div>
-
-          {/* Sticky Footer com Ações */}
-          <div className="flex items-center justify-end gap-2.5 pt-2.5 border-t border-white/[0.06]">
-            <button
-              type="button"
-              onClick={requestCloseModal}
-              className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={
-                createPlanMutation.isPending ||
-                updatePlanMutation.isPending ||
-                (modalMode === "edit" && !isDirty) ||
-                !formData.name.trim()
-              }
-              className="rounded-lg bg-violet-600 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            >
-              {createPlanMutation.isPending || updatePlanMutation.isPending
-                ? "Salvando..."
-                : modalMode === "create"
-                ? "Criar plano"
-                : modalMode === "duplicate"
-                ? "Criar cópia"
-                : "Salvar alterações"}
-            </button>
           </div>
         </form>
       </Modal>
@@ -1508,24 +1424,29 @@ export default function AdminPlansPage() {
         title="Descartar alterações?"
         description="As alterações feitas neste plano ainda não foram salvas."
         size="sm"
+        footer={
+          <div className="flex w-full items-center justify-end gap-2.5">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setShowDiscardConfirm(false)}
+              className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3.5 py-1.5 text-[12.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
+            >
+              Continuar editando
+            </button>
+            <button
+              type="button"
+              onClick={forceCloseModal}
+              className="rounded-lg bg-red-600/80 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-red-600 transition-colors shadow-sm"
+            >
+              Descartar
+            </button>
+          </div>
+        }
       >
-        <div className="flex items-center justify-end gap-2.5 pt-2">
-          <button
-            type="button"
-            autoFocus
-            onClick={() => setShowDiscardConfirm(false)}
-            className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-medium text-gray-200 hover:bg-white/[0.08] hover:text-white transition-colors"
-          >
-            Continuar editando
-          </button>
-          <button
-            type="button"
-            onClick={forceCloseModal}
-            className="rounded-lg bg-red-600/80 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-red-600 transition-colors shadow-sm"
-          >
-            Descartar
-          </button>
-        </div>
+        <p className="text-[12.5px] text-gray-300 leading-relaxed">
+          Se fechar agora, todos os dados preenchidos serão perdidos. Tem certeza de que deseja sair?
+        </p>
       </Modal>
 
       {/* 5. MODAL: Confirmação de Arquivamento */}
@@ -1535,21 +1456,12 @@ export default function AdminPlansPage() {
         title={`Arquivar plano "${planToArchive?.name}"?`}
         description="O plano deixará de estar disponível para novas contratações no catálogo. Empresas que já utilizam este plano continuarão com seus contratos atuais sem nenhuma alteração."
         size="md"
-      >
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3.5">
-            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-[12px] text-amber-200/90 leading-relaxed">
-              Planos arquivados podem ser restaurados a qualquer momento pela aba{" "}
-              <strong>Arquivados</strong>. Nenhuma assinatura ou empresa vinculada será excluída.
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2.5 pt-2">
+        footer={
+          <div className="flex w-full items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={() => setPlanToArchive(null)}
-              className="rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
+              className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium text-gray-400 hover:text-white transition-colors"
             >
               Cancelar
             </button>
@@ -1561,10 +1473,18 @@ export default function AdminPlansPage() {
                 }
               }}
               disabled={toggleArchiveMutation.isPending}
-              className="rounded-lg bg-amber-600 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-amber-500 transition-colors shadow-sm"
+              className="rounded-lg bg-amber-600 px-4 py-1.5 text-[12.5px] font-semibold text-white hover:bg-amber-500 transition-colors shadow-sm"
             >
               {toggleArchiveMutation.isPending ? "Arquivando..." : "Arquivar plano"}
             </button>
+          </div>
+        }
+      >
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3.5">
+          <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-[12px] text-amber-200/90 leading-relaxed">
+            Planos arquivados podem ser restaurados a qualquer momento pela aba{" "}
+            <strong>Arquivados</strong>. Nenhuma assinatura ou empresa vinculada será excluída.
           </div>
         </div>
       </Modal>
