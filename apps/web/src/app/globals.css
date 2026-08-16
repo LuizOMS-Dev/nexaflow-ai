@@ -2356,7 +2356,7 @@ html.nf-panel-lock body {
 @keyframes nf-toast-in {
   0% {
     opacity: 0;
-    transform: translateY(-8px) scale(0.96);
+    transform: translateY(-10px) scale(0.96);
   }
   100% {
     opacity: 1;
@@ -2371,46 +2371,55 @@ html.nf-panel-lock body {
   }
   100% {
     opacity: 0;
-    transform: translateY(-6px) scale(0.96);
+    transform: translateY(-8px) scale(0.95);
   }
 }
 
 @keyframes nf-toast-progress {
   0% {
-    width: 100%;
+    transform: scaleX(1);
   }
   100% {
-    width: 0%;
+    transform: scaleX(0);
   }
 }
 
 .nf-toast-in {
-  animation: nf-toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: nf-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
 }
 
 .nf-toast-out {
-  animation: nf-toast-out 150ms ease-in forwards;
+  animation: nf-toast-out 190ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.nf-toast-card .nf-toast-progress-bar {
+  transform-origin: left center;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .nf-toast-in {
-    animation: nf-fade-in 120ms ease-out forwards !important;
+    animation: nf-fade-in 140ms ease-out forwards !important;
     transform: none !important;
   }
   .nf-toast-out {
-    animation: nf-fade-out 100ms ease-in forwards !important;
+    animation: nf-fade-out 120ms ease-in forwards !important;
     transform: none !important;
+  }
+  .nf-toast-progress-bar {
+    animation-duration: 0.01ms !important;
   }
 }
 
 [data-reduce-motion="true"] .nf-toast-in {
-  animation: nf-fade-in 120ms ease-out forwards !important;
+  animation: nf-fade-in 140ms ease-out forwards !important;
   transform: none !important;
 }
 
 [data-reduce-motion="true"] .nf-toast-out {
-  animation: nf-fade-out 100ms ease-in forwards !important;
+  animation: nf-fade-out 120ms ease-in forwards !important;
   transform: none !important;
 }
 

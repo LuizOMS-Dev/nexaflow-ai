@@ -27,11 +27,20 @@ export function PlansPage() {
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       platformAdminApi.patchPlan(id, body),
     onSuccess: () => {
-      toast({ title: "Catálogo atualizado. Contratos existentes não mudam.", kind: "success" });
+      toast({
+        title: "Catálogo atualizado",
+        description: "As alterações foram salvas. Contratos vigentes permanecem inalterados.",
+        kind: "success",
+      });
       setEdit(null);
       void qc.invalidateQueries({ queryKey: ["platform-plans"] });
     },
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Falha.", kind: "error" }),
+    onError: (e) =>
+      toast({
+        title: "Não foi possível atualizar o catálogo",
+        description: e instanceof Error ? e.message : "Erro ao salvar alterações no plano.",
+        kind: "error",
+      }),
   });
 
   if (q.isLoading) return <Skeleton />;

@@ -36,10 +36,19 @@ export function LeadsPage() {
   const mut = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => platformAdminApi.patchLead(id, status),
     onSuccess: () => {
-      toast({ title: "Lead atualizado.", kind: "success" });
+      toast({
+        title: "Lead atualizado",
+        description: "O status do lead foi modificado com sucesso.",
+        kind: "success",
+      });
       void qc.invalidateQueries({ queryKey: ["platform-leads"] });
     },
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Falha.", kind: "error" }),
+    onError: (e) =>
+      toast({
+        title: "Não foi possível atualizar o lead",
+        description: e instanceof Error ? e.message : "Erro ao processar a alteração.",
+        kind: "error",
+      }),
   });
 
   if (q.isLoading) return <Skeleton />;

@@ -66,7 +66,7 @@ type ActiveToast = {
   };
 };
 
-const DEFAULT_DURATIONS: Record<ToastKind, number> = {
+export const DEFAULT_DURATIONS: Record<ToastKind, number> = {
   success: 3800,
   info: 4000,
   warning: 5000,
@@ -122,32 +122,38 @@ const statusConfig: Record<
     Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
     badgeClass: string;
     progressClass: string;
+    cardBorderHover: string;
   }
 > = {
   success: {
     Icon: CheckCircle2,
-    badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
     progressClass: "bg-emerald-500/80 dark:bg-emerald-400/90",
+    cardBorderHover: "hover:border-emerald-500/30 dark:hover:border-emerald-500/30",
   },
   error: {
     Icon: AlertCircle,
-    badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
     progressClass: "bg-rose-500/80 dark:bg-rose-400/90",
+    cardBorderHover: "hover:border-rose-500/30 dark:hover:border-rose-500/30",
   },
   warning: {
     Icon: AlertTriangle,
-    badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
     progressClass: "bg-amber-500/80 dark:bg-amber-400/90",
+    cardBorderHover: "hover:border-amber-500/30 dark:hover:border-amber-500/30",
   },
   info: {
     Icon: Info,
-    badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20",
     progressClass: "bg-violet-500/80 dark:bg-violet-400/90",
+    cardBorderHover: "hover:border-violet-500/30 dark:hover:border-violet-500/30",
   },
   loading: {
     Icon: Loader2,
-    badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20",
     progressClass: "bg-violet-500/80 dark:bg-violet-400/90",
+    cardBorderHover: "hover:border-violet-500/30 dark:hover:border-violet-500/30",
   },
 };
 
@@ -163,10 +169,11 @@ function ToastCard({
   const lastStartRef = useRef<number>(Date.now());
   const timerRef = useRef<number | null>(null);
 
-  const { Icon, badgeClass, progressClass } = statusConfig[item.kind] || statusConfig.info;
+  const { Icon, badgeClass, progressClass, cardBorderHover } =
+    statusConfig[item.kind] || statusConfig.info;
   const isAutoDismiss = item.duration > 0;
 
-  // Gerencia o temporizador com suporte a pause/resume no hover
+  // Gerencia o temporizador com suporte a pause/resume no hover e foco
   useEffect(() => {
     if (!isAutoDismiss || item.exiting) return;
 
@@ -204,19 +211,29 @@ function ToastCard({
       aria-live={item.kind === "error" ? "assertive" : "polite"}
       data-toast-id={item.id}
       data-toast-kind={item.kind}
+      tabIndex={0}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onDismiss(item.id);
+        }
+      }}
       className={cn(
-        "nf-toast-card group relative flex w-full max-w-[360px] items-start gap-3 rounded-2xl p-3.5 select-none",
-        "border border-black/[0.08] bg-white/95 text-ink shadow-xl shadow-black/10 backdrop-blur-md",
-        "dark:border-white/[0.08] dark:bg-[#12141c]/95 dark:text-zinc-100 dark:shadow-2xl dark:shadow-black/70",
+        "nf-toast-card group relative flex w-full sm:w-[350px] max-w-[calc(100vw-2rem)] items-start gap-3 rounded-2xl p-3.5 select-none transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40",
+        "border border-black/[0.08] bg-white/98 text-ink shadow-[0_12px_30px_-8px_rgba(15,23,42,0.12),0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-xl",
+        "dark:border-white/[0.08] dark:bg-[#10121a]/95 dark:text-zinc-100 dark:shadow-[0_16px_36px_-10px_rgba(0,0,0,0.75),0_1px_3px_rgba(0,0,0,0.5)]",
+        cardBorderHover,
         item.exiting ? "nf-toast-out" : "nf-toast-in"
       )}
     >
-      {/* ── ÍCONE COM BADGE DEDICADO ── */}
+      {/* ── ÍCONE COM BADGE DEDICADO E BORDA SUTIL ── */}
       <div
         className={cn(
-          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl transition-colors",
+          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl transition-all duration-150 group-hover:scale-105",
           badgeClass
         )}
         aria-hidden
@@ -229,12 +246,12 @@ function ToastCard({
 
       {/* ── CONTEÚDO PRINCIPAL (TÍTULO + DESCRIÇÃO OPCIONAL + AÇÃO) ── */}
       <div className="min-w-0 flex-1 pt-0.5">
-        <p className="text-[13px] font-semibold leading-tight tracking-tight text-ink dark:text-zinc-100">
+        <p className="text-[13px] font-semibold leading-snug tracking-tight text-ink dark:text-zinc-100">
           {item.title}
         </p>
 
         {item.description ? (
-          <div className="mt-1 text-[12px] leading-relaxed text-ink-muted dark:text-zinc-400">
+          <div className="mt-0.5 text-[12px] leading-relaxed text-ink-muted dark:text-zinc-400">
             {item.description}
           </div>
         ) : null}
@@ -247,7 +264,7 @@ function ToastCard({
                 item.action?.onClick();
                 onDismiss(item.id);
               }}
-              className="text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300 underline underline-offset-2"
+              className="text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300 underline underline-offset-2 transition-colors focus:outline-none"
             >
               {item.action.label}
             </button>
@@ -255,7 +272,7 @@ function ToastCard({
         ) : null}
       </div>
 
-      {/* ── BOTÃO FECHAR DISCRETO ── */}
+      {/* ── BOTÃO FECHAR DISCRETO COM HOVER SUAVE ── */}
       <button
         type="button"
         onClick={(e) => {
@@ -263,20 +280,20 @@ function ToastCard({
           onDismiss(item.id);
         }}
         aria-label="Fechar notificação"
-        className="shrink-0 -mr-1 -mt-1 flex h-6 w-6 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-black/[0.04] hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40 dark:hover:bg-white/[0.06] dark:hover:text-zinc-200"
+        className="shrink-0 -mr-1 -mt-1 flex h-6 w-6 items-center justify-center rounded-lg text-zinc-400 transition-all duration-150 hover:bg-black/[0.05] hover:text-zinc-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-400/40 dark:hover:bg-white/[0.08] dark:hover:text-zinc-100"
       >
         <X className="h-3.5 w-3.5" strokeWidth={2} />
       </button>
 
-      {/* ── BARRA DE PROGRESSO DO TEMPO RESTANTE ── */}
+      {/* ── BARRA DE PROGRESSO ULTRAFINA INTEGRADA (1.5px / 2px) ── */}
       {isAutoDismiss && !item.exiting ? (
         <div
-          className="absolute inset-x-0 bottom-0 h-[2.5px] overflow-hidden rounded-b-2xl bg-black/[0.04] dark:bg-white/[0.05]"
+          className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden rounded-b-2xl bg-black/[0.04] dark:bg-white/[0.04]"
           aria-hidden
         >
           <div
             key={item.refreshCount}
-            className={cn("h-full", progressClass)}
+            className={cn("h-full w-full origin-left nf-toast-progress-bar", progressClass)}
             style={{
               animation: `nf-toast-progress ${item.duration}ms linear forwards`,
               animationPlayState: paused ? "paused" : "running",
@@ -294,7 +311,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dismiss = useCallback((id?: string) => {
     if (!id) {
       setItems((prev) => prev.map((t) => ({ ...t, exiting: true })));
-      window.setTimeout(() => setItems([]), 160);
+      window.setTimeout(() => setItems([]), 190);
       return;
     }
 
@@ -303,7 +320,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     );
     window.setTimeout(() => {
       setItems((prev) => prev.filter((t) => t.id !== id));
-    }, 160);
+    }, 190);
   }, []);
 
   const update = useCallback((id: string, opts: Partial<ToastOptions>) => {
@@ -410,11 +427,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ toast: toastObj, dismiss }}>
       {children}
       <div
-        className="nf-toast-viewport pointer-events-none fixed z-[var(--z-toast,80)] flex flex-col gap-2.5"
+        className="nf-toast-viewport pointer-events-none fixed top-4 right-4 sm:top-5 sm:right-5 z-[var(--z-toast,9999)] flex flex-col gap-2.5 max-w-full"
         aria-label="Notificações"
       >
         {items.map((item) => (
-          <div key={item.id} className="pointer-events-auto">
+          <div key={item.id} className="pointer-events-auto transition-all duration-200">
             <ToastCard item={item} onDismiss={dismiss} />
           </div>
         ))}

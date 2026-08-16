@@ -298,21 +298,6 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
   });
 
   it("11. Dinâmico & Real: 'Mais Popular' é calculado dinamicamente com base em clientes pagos reais (líder único, empate, cancelamento e exclusão de free)", async () => {
-    // 11.0 Identifica o estado inicial do banco para garantir testes isolados
-    const initRes = await app.inject({
-      method: "GET",
-      url: "/admin/plans",
-      headers: auth(superadminToken),
-    });
-    expect(initRes.statusCode).toBe(200);
-    const initialPlans = initRes.json();
-    const baseMax = Math.max(
-      0,
-      ...initialPlans
-        .filter((p: any) => p.slug !== "free")
-        .map((p: any) => p.activeCustomerCount || 0)
-    );
-
     // 11.1 Cria dois planos comerciais pagos para o teste
     const planARes = await app.inject({
       method: "POST",
@@ -363,8 +348,23 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
     };
 
     try {
-      // Cenário 1: Plano Alfa recebe (baseMax + 1) assinaturas -> Torna-se o líder único isolado
-      for (let i = 0; i <= baseMax; i++) {
+      const initRes = await app.inject({
+        method: "GET",
+        url: "/admin/plans",
+        headers: auth(superadminToken),
+      });
+      const initialPlans = initRes.json();
+      const currentOthersMax = Math.max(
+        0,
+        ...initialPlans
+          .filter((p: any) => p.slug !== "free" && p.id !== planA.id && p.id !== planB.id)
+          .map((p: any) => p.activeCustomerCount || 0)
+      );
+
+      const targetCount = currentOthersMax + 2;
+
+      // Cenário 1: Plano Alfa recebe targetCount assinaturas -> Torna-se o líder único isolado
+      for (let i = 0; i < targetCount; i++) {
         await createPayingTenant(planA.id, `Alfa Empresa ${i}`, 150);
       }
 
@@ -378,16 +378,14 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
       let fetchedPlanA = allPlans.find((p: any) => p.id === planA.id);
       let fetchedPlanB = allPlans.find((p: any) => p.id === planB.id);
 
-      expect(fetchedPlanA.activeCustomerCount).toBe(baseMax + 1);
+      expect(fetchedPlanA.activeCustomerCount).toBe(targetCount);
       expect(fetchedPlanA.isMostPopular).toBe(true);
       expect(fetchedPlanB.activeCustomerCount).toBe(0);
       expect(fetchedPlanB.isMostPopular).toBe(false);
 
-      // Cenário 2: Plano Beta também atinge (baseMax + 1) assinaturas -> Empate no topo -> Nenhum é Mais Popular
-      const betaSubs: any[] = [];
-      for (let i = 0; i <= baseMax; i++) {
-        const item = await createPayingTenant(planB.id, `Beta Empresa ${i}`, 250);
-        betaSubs.push(item);
+      // Cenário 2: Plano Beta também atinge targetCount assinaturas -> Empate no topo -> Nenhum é Mais Popular
+      for (let i = 0; i < targetCount; i++) {
+        await createPayingTenant(planB.id, `Beta Empresa ${i}`, 250);
       }
 
       plansListRes = await app.inject({
@@ -399,12 +397,12 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
       fetchedPlanA = allPlans.find((p: any) => p.id === planA.id);
       fetchedPlanB = allPlans.find((p: any) => p.id === planB.id);
 
-      expect(fetchedPlanA.activeCustomerCount).toBe(baseMax + 1);
+      expect(fetchedPlanA.activeCustomerCount).toBe(targetCount);
       expect(fetchedPlanA.isMostPopular).toBe(false); // Empate
-      expect(fetchedPlanB.activeCustomerCount).toBe(baseMax + 1);
+      expect(fetchedPlanB.activeCustomerCount).toBe(targetCount);
       expect(fetchedPlanB.isMostPopular).toBe(false); // Empate
 
-      // Cenário 3: Plano Beta recebe mais 1 assinatura (baseMax + 2) -> Assume a liderança isolada
+      // Cenário 3: Plano Beta recebe mais 1 assinatura (targetCount + 1) -> Assume a liderança isolada
       const extraBeta = await createPayingTenant(planB.id, "Beta Empresa Extra", 250);
 
       plansListRes = await app.inject({
@@ -416,9 +414,9 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
       fetchedPlanA = allPlans.find((p: any) => p.id === planA.id);
       fetchedPlanB = allPlans.find((p: any) => p.id === planB.id);
 
-      expect(fetchedPlanA.activeCustomerCount).toBe(baseMax + 1);
+      expect(fetchedPlanA.activeCustomerCount).toBe(targetCount);
       expect(fetchedPlanA.isMostPopular).toBe(false);
-      expect(fetchedPlanB.activeCustomerCount).toBe(baseMax + 2);
+      expect(fetchedPlanB.activeCustomerCount).toBe(targetCount + 1);
       expect(fetchedPlanB.isMostPopular).toBe(true); // Líder único isolado
 
       // Cenário 4: Cancelamento no Plano Beta (cancela a assinatura extra) -> Volta para empate
@@ -436,9 +434,9 @@ describe("Planos da Administração (/admin/plans) — RBAC, Catálogo, Duplica�
       fetchedPlanA = allPlans.find((p: any) => p.id === planA.id);
       fetchedPlanB = allPlans.find((p: any) => p.id === planB.id);
 
-      expect(fetchedPlanA.activeCustomerCount).toBe(baseMax + 1);
+      expect(fetchedPlanA.activeCustomerCount).toBe(targetCount);
       expect(fetchedPlanA.isMostPopular).toBe(false);
-      expect(fetchedPlanB.activeCustomerCount).toBe(baseMax + 1);
+      expect(fetchedPlanB.activeCustomerCount).toBe(targetCount);
       expect(fetchedPlanB.isMostPopular).toBe(false); // Empate novamente
     } finally {
       if (createdTenants.length > 0) {

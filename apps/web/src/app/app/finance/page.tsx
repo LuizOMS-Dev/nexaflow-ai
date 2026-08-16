@@ -223,7 +223,10 @@ export default function TenantFinancePage() {
       notes?: string | null;
     }) => api<ChargeItem>("/finance/charges", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      toast.success("Cobrança criada com sucesso!");
+      toast.success(
+        "Cobrança criada",
+        "O registro financeiro foi adicionado com sucesso ao fluxo de caixa."
+      );
       setIsNewChargeOpen(false);
       setNewChargeTitle("");
       setNewChargeContactId("");
@@ -233,7 +236,10 @@ export default function TenantFinancePage() {
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-charges"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao criar cobrança");
+      toast.error(
+        "Não foi possível criar a cobrança",
+        err.message || "Verifique os dados informados e tente novamente."
+      );
     },
   });
 
@@ -244,12 +250,18 @@ export default function TenantFinancePage() {
         body: JSON.stringify({ status: "PAID" }),
       }),
     onSuccess: () => {
-      toast.success("Cobrança marcada como paga!");
+      toast.success(
+        "Cobrança quitada",
+        "O status foi atualizado para pago no fluxo financeiro."
+      );
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-overview"] });
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-charges"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao atualizar cobrança");
+      toast.error(
+        "Não foi possível atualizar a cobrança",
+        err.message || "Erro ao processar atualização."
+      );
     },
   });
 
@@ -257,12 +269,18 @@ export default function TenantFinancePage() {
     mutationFn: (chargeId: string) =>
       api(`/finance/charges/${chargeId}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Cobrança removida!");
+      toast.success(
+        "Cobrança removida",
+        "O registro financeiro foi excluído com sucesso."
+      );
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-overview"] });
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-charges"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao remover cobrança");
+      toast.error(
+        "Não foi possível remover a cobrança",
+        err.message || "Erro ao excluir o registro."
+      );
     },
   });
 
@@ -275,7 +293,10 @@ export default function TenantFinancePage() {
       notes?: string | null;
     }) => api<CostItem>("/finance/costs", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
-      toast.success("Custo operacional adicionado!");
+      toast.success(
+        "Custo adicionado",
+        "A despesa operacional foi registrada no cálculo de resultado."
+      );
       setNewCostName("");
       setNewCostAmount("");
       setNewCostNotes("");
@@ -283,7 +304,10 @@ export default function TenantFinancePage() {
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-overview"] });
     },
     onError: (err: any) => {
-      toast.error(err.message || "Erro ao cadastrar custo");
+      toast.error(
+        "Não foi possível registrar o custo",
+        err.message || "Verifique os valores informados e tente novamente."
+      );
     },
   });
 
@@ -302,7 +326,10 @@ export default function TenantFinancePage() {
   const deleteCostMutation = useMutation({
     mutationFn: (id: string) => api(`/finance/costs/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Custo removido!");
+      toast.success(
+        "Custo removido",
+        "A despesa operacional foi excluída com sucesso."
+      );
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-costs"] });
       queryClient.invalidateQueries({ queryKey: ["tenant-finance-overview"] });
     },
@@ -312,7 +339,10 @@ export default function TenantFinancePage() {
     e.preventDefault();
     const amt = parseFloat(newChargeAmount.replace(",", "."));
     if (!newChargeTitle.trim() || isNaN(amt) || amt <= 0) {
-      toast.error("Preencha o título e um valor válido maior que zero.");
+      toast.error(
+        "Revise os campos destacados",
+        "Informe o título e um valor monetário válido maior que zero."
+      );
       return;
     }
     createChargeMutation.mutate({
@@ -330,7 +360,10 @@ export default function TenantFinancePage() {
     e.preventDefault();
     const amt = parseFloat(newCostAmount.replace(",", "."));
     if (!newCostName.trim() || isNaN(amt) || amt <= 0) {
-      toast.error("Preencha o nome e um valor mensal válido.");
+      toast.error(
+        "Revise os campos destacados",
+        "Informe o nome do custo e um valor mensal válido maior que zero."
+      );
       return;
     }
     createCostMutation.mutate({

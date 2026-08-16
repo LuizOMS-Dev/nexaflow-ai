@@ -73,10 +73,19 @@ function UsersInner() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       platformAdminApi.patchUserStatus(id, status, reason || undefined),
     onSuccess: () => {
-      toast({ title: "Status atualizado.", kind: "success" });
+      toast({
+        title: "Status do usuário atualizado",
+        description: "A alteração de acesso foi aplicada com sucesso.",
+        kind: "success",
+      });
       void qc.invalidateQueries({ queryKey: ["platform-users"] });
     },
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Falha.", kind: "error" }),
+    onError: (e) =>
+      toast({
+        title: "Não foi possível atualizar o usuário",
+        description: e instanceof Error ? e.message : "Erro ao modificar o status da conta.",
+        kind: "error",
+      }),
   });
 
   if (list.isLoading) return <Skeleton />;

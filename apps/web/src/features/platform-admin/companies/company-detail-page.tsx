@@ -41,9 +41,18 @@ export function CompanyDetailPage({ id }: { id: string }) {
     mutationFn: (body: Record<string, unknown>) => platformAdminApi.patchCompany(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["platform-company", id] });
-      toast({ title: "Empresa atualizada.", kind: "success" });
+      toast({
+        title: "Empresa atualizada",
+        description: "As alterações foram salvas com sucesso.",
+        kind: "success",
+      });
     },
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Falha ao atualizar.", kind: "error" }),
+    onError: (e) =>
+      toast({
+        title: "Não foi possível atualizar a empresa",
+        description: e instanceof Error ? e.message : "Erro ao processar as alterações.",
+        kind: "error",
+      }),
   });
 
   if (q.isLoading) return <Skeleton />;
@@ -344,11 +353,19 @@ export function CompanyDetailPage({ id }: { id: string }) {
         onConfirm={async (confirmName, reason) => {
           try {
             await platformAdminApi.deleteCompany(c.id, { confirmName, reason });
-            toast({ title: "Exclusão solicitada. Dados preservados.", kind: "success" });
+            toast({
+              title: "Exclusão solicitada",
+              description: "O pedido de exclusão foi registrado e os dados foram preservados.",
+              kind: "success",
+            });
             setDelOpen(false);
             void qc.invalidateQueries({ queryKey: ["platform-company", id] });
           } catch (e) {
-            toast({ title: e instanceof Error ? e.message : "Falha ao excluir.", kind: "error" });
+            toast({
+              title: "Não foi possível solicitar exclusão",
+              description: e instanceof Error ? e.message : "Erro ao processar a solicitação.",
+              kind: "error",
+            });
           }
         }}
       />
@@ -383,16 +400,28 @@ function ImpersonateModal({
         tenant: data.tenant,
         memberships: [],
       });
-      toast({ title: "Acesso à empresa iniciado.", kind: "success" });
+      toast({
+        title: "Acesso iniciado",
+        description: "Sessão de suporte iniciada na empresa.",
+        kind: "success",
+      });
       window.location.href = "/app";
       onDone();
     },
     onError: (e) => {
       if (isStepUpRequiredError(e) || (e instanceof ApiError && e.code === "MFA_REQUIRED_SUPERADMIN")) {
-        toast({ title: "Confirme o MFA e tente de novo.", kind: "warning" });
+        toast({
+          title: "MFA Obrigatório",
+          description: "Confirme a verificação em duas etapas para continuar.",
+          kind: "warning",
+        });
         return;
       }
-      toast({ title: e instanceof Error ? e.message : "Não foi possível entrar.", kind: "error" });
+      toast({
+        title: "Não foi possível entrar",
+        description: e instanceof Error ? e.message : "Erro na autenticação de suporte.",
+        kind: "error",
+      });
     },
   });
 
@@ -441,11 +470,20 @@ function PaymentModal({
     mutationFn: (body: { amount: number; method?: string; notes?: string }) =>
       platformAdminApi.registerPayment(tenantId, body),
     onSuccess: () => {
-      toast({ title: "Pagamento registrado.", kind: "success" });
+      toast({
+        title: "Pagamento registrado",
+        description: "O lançamento financeiro foi processado com sucesso.",
+        kind: "success",
+      });
       onClose();
       onDone();
     },
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Falha no pagamento.", kind: "error" }),
+    onError: (e) =>
+      toast({
+        title: "Não foi possível registrar o pagamento",
+        description: e instanceof Error ? e.message : "Erro ao processar o pagamento.",
+        kind: "error",
+      }),
   });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {

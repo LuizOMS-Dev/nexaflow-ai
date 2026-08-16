@@ -183,10 +183,19 @@ function PolicyPanel() {
   const mut = useMutation({
     mutationFn: platformAdminApi.putAccessPolicy,
     onSuccess: () => {
-      toast({ title: "Política atualizada.", kind: "success" });
+      toast({
+        title: "Política de acesso atualizada",
+        description: "As regras de suspensão e carência foram salvas com sucesso.",
+        kind: "success",
+      });
       void qc.invalidateQueries({ queryKey: ["platform-access-policy"] });
     },
-    onError: (e) => toast({ title: e instanceof Error ? e.message : "Falha.", kind: "error" }),
+    onError: (e) =>
+      toast({
+        title: "Não foi possível salvar a política",
+        description: e instanceof Error ? e.message : "Erro ao aplicar configurações de acesso.",
+        kind: "error",
+      }),
   });
 
   if (q.isLoading) return <Skeleton rows={2} />;

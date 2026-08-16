@@ -383,7 +383,10 @@ export default function AdminFinancePage() {
     e.preventDefault();
     const amt = parseBrlInput(costAmount);
     if (!costName.trim() || amt <= 0) {
-      toast.error("Preencha o nome e um valor mensal válido maior que zero.");
+      toast.error(
+        "Revise os campos destacados",
+        "Informe a identificação do custo e um valor mensal maior que zero."
+      );
       return;
     }
     createCostMutation.mutate({
@@ -405,7 +408,10 @@ export default function AdminFinancePage() {
   const handleSaveEditSubmit = (costId: string) => {
     const amt = parseBrlInput(editAmount);
     if (!editName.trim() || amt <= 0) {
-      toast.error("Preencha o nome e um valor válido.");
+      toast.error(
+        "Revise os campos destacados",
+        "Informe o nome e um valor válido maior que zero."
+      );
       return;
     }
     updateCostMutation.mutate({
