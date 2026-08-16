@@ -175,45 +175,114 @@ function isTestFixtureTenant(t: {
 export async function adminRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.requireSuperadmin);
 
-  app.get("/admin/overview", async () => {
-    const [allTenantsRaw, users, conversations, messages, contacts, activeAgents, automationRuns, plans, errors] =
-      await Promise.all([
-        prisma.tenant.findMany({
-          include: {
-            plan: true,
-            _count: { select: { members: true, contacts: true, conversations: true } },
+  app.get("/admin/overview", async (request) => {
+    const q = z
+      .object({
+        days: z.coerce.number().int().min(1).max(365).optional().default(30),
+      })
+      .parse(request.query || {});
+
+    const days = q.days || 30;
+    const now = Date.now();
+    const since = new Date(now - days * 24 * 60 * 60 * 1000);
+    const prevSince = new Date(now - 2 * days * 24 * 60 * 60 * 1000);
+
+    const { getPlatformHealthDetailed } = await import("../services/platform-diagnostics");
+
+    const [
+      allTenantsRaw,
+      users,
+      newUsersPeriod,
+      prevUsersPeriod,
+      conversations,
+      conversationsPeriod,
+      prevConversationsPeriod,
+      messages,
+      messagesPeriod,
+      prevMessagesPeriod,
+      contacts,
+      activeAgents,
+      automationRuns,
+      automationRunsPeriod,
+      prevAutomationRunsPeriod,
+      plans,
+      recentAuditLogs,
+      errors,
+      healthReport,
+    ] = await Promise.all([
+      prisma.tenant.findMany({
+        include: {
+          plan: true,
+          _count: { select: { members: true, contacts: true, conversations: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.user.count({
+        where: {
+          NOT: {
+            OR: [
+              { email: { endsWith: "@test.local" } },
+              { email: { endsWith: "@test.nexaflow.local" } },
+            ],
           },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.user.count({
-          where: {
-            NOT: {
-              OR: [
-                { email: { endsWith: "@test.local" } },
-                { email: { endsWith: "@test.nexaflow.local" } },
-              ],
-            },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          createdAt: { gte: since },
+          NOT: {
+            OR: [
+              { email: { endsWith: "@test.local" } },
+              { email: { endsWith: "@test.nexaflow.local" } },
+            ],
           },
-        }),
-        prisma.conversation.count(),
-        prisma.message.count(),
-        prisma.contact.count(),
-        prisma.aiAgent.count({ where: { isActive: true } }),
-        prisma.automationRun.count(),
-        prisma.plan.findMany({
-          orderBy: { priceMonthly: "asc" },
-          include: {
-            tenants: {
-              select: { id: true, name: true, slug: true, status: true, settings: true },
-            },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          createdAt: { gte: prevSince, lt: since },
+          NOT: {
+            OR: [
+              { email: { endsWith: "@test.local" } },
+              { email: { endsWith: "@test.nexaflow.local" } },
+            ],
           },
-        }),
-        prisma.auditLog.findMany({
-          where: { action: { contains: "error" } },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        }),
-      ]);
+        },
+      }),
+      prisma.conversation.count(),
+      prisma.conversation.count({ where: { createdAt: { gte: since } } }),
+      prisma.conversation.count({ where: { createdAt: { gte: prevSince, lt: since } } }),
+      prisma.message.count(),
+      prisma.message.count({ where: { createdAt: { gte: since } } }),
+      prisma.message.count({ where: { createdAt: { gte: prevSince, lt: since } } }),
+      prisma.contact.count(),
+      prisma.aiAgent.count({ where: { isActive: true } }),
+      prisma.automationRun.count(),
+      prisma.automationRun.count({ where: { createdAt: { gte: since } } }),
+      prisma.automationRun.count({ where: { createdAt: { gte: prevSince, lt: since } } }),
+      prisma.plan.findMany({
+        orderBy: { priceMonthly: "asc" },
+        include: {
+          tenants: {
+            select: { id: true, name: true, slug: true, status: true, settings: true },
+          },
+        },
+      }),
+      prisma.auditLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          tenant: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.auditLog.findMany({
+        where: { action: { contains: "error" } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+      getPlatformHealthDetailed().catch(() => null),
+    ]);
 
     // Filtra fixtures de teste da listagem e contadores de empresas
     const realTenants = allTenantsRaw.filter((t) => !isTestFixtureTenant(t));
@@ -224,6 +293,11 @@ export async function adminRoutes(app: FastifyInstance) {
       (t) => t.status === "CANCELLED" || t.status === "PENDING_DELETION"
     ).length;
     const blocked = realTenants.filter((t) => t.status === "BLOCKED").length;
+
+    const newTenantsPeriod = realTenants.filter((t) => new Date(t.createdAt) >= since).length;
+    const prevTenantsPeriod = realTenants.filter(
+      (t) => new Date(t.createdAt) >= prevSince && new Date(t.createdAt) < since
+    ).length;
 
     // MRR estimado: preço CONTRATADO da Subscription; senão catálogo.
     // Não conta: trial, free, canceladas, suspensas, bloqueadas, exclusão, enterprise sem valor.
@@ -240,6 +314,7 @@ export async function adminRoutes(app: FastifyInstance) {
       isActive: boolean;
       tenants: number;
       mrr: number;
+      sharePercentage: number;
     }> = [];
 
     const subscriptions = await prisma.subscription.findMany({
@@ -327,7 +402,6 @@ export async function adminRoutes(app: FastifyInstance) {
     }
 
     // Receita por plano: catálogo real do banco (mesma fonte da página Planos)
-    // Exclui Gratuito inativo sem empresas; inclui ativos e enterprise (sob consulta)
     for (const p of plans) {
       if (p.slug === "free" && !p.isActive) {
         const hasTenants = (p.tenants || []).filter((t) => !isTestFixtureTenant(t)).length > 0;
@@ -335,6 +409,9 @@ export async function adminRoutes(app: FastifyInstance) {
       }
       const agg = mrrByPlanId.get(p.id);
       const catalog = catalogPriceOf(p);
+      const planMrr = agg?.mrr ?? 0;
+      const sharePercentage = mrr > 0 ? Math.round((planMrr / mrr) * 100) : 0;
+
       revenueByPlan.push({
         planId: p.id,
         planName: p.name,
@@ -344,7 +421,8 @@ export async function adminRoutes(app: FastifyInstance) {
         priceLabel: priceLabelOf(p),
         isActive: p.isActive,
         tenants: agg?.tenants ?? 0,
-        mrr: agg?.mrr ?? 0,
+        mrr: planMrr,
+        sharePercentage,
       });
     }
 
@@ -366,11 +444,14 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const avgTicket = paidSubscriptions > 0 ? mrr / paidSubscriptions : 0;
     const arr = mrr * 12;
+    const paidRatio = active > 0 ? Math.round((paidSubscriptions / active) * 100) : 0;
 
     // Billing snapshots para alertas reais (sem inventar)
     const subByTenant = new Map(subscriptions.map((s) => [s.tenantId, s]));
     let overdueCount = 0;
     let dueSoonCount = 0;
+    let trialsExpiringSoonCount = 0;
+
     for (const t of realTenants) {
       if (t.status === "CANCELLED" || t.status === "PENDING_DELETION") continue;
       const sub = subByTenant.get(t.id);
@@ -387,6 +468,12 @@ export async function adminRoutes(app: FastifyInstance) {
         snap.financialStatus === "DUE_TODAY"
       ) {
         if (snap.daysUntilDue != null && snap.daysUntilDue <= 3) dueSoonCount += 1;
+      }
+      if (t.status === "TRIAL" && sub?.trialEndsAt) {
+        const diffDays = Math.ceil((new Date(sub.trialEndsAt).getTime() - now) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays <= 7) {
+          trialsExpiringSoonCount += 1;
+        }
       }
     }
 
@@ -446,15 +533,50 @@ export async function adminRoutes(app: FastifyInstance) {
       });
     }
 
+    // Formata atividades administrativas recentes de forma legível
+    const recentActivity = recentAuditLogs.map((log) => {
+      let description = log.action;
+      if (log.action === "tenant.create" || log.action === "tenant.created") {
+        description = `Empresa ${log.tenant?.name || log.entityId || ""} criada`;
+      } else if (log.action.includes("status")) {
+        description = `Status de ${log.tenant?.name || "empresa"} atualizado`;
+      } else if (log.action.includes("plan")) {
+        description = `Plano de ${log.tenant?.name || "empresa"} alterado`;
+      } else if (log.action.includes("2fa")) {
+        description = `Segurança 2FA atualizada para ${log.user?.name || log.user?.email || "usuário"}`;
+      } else if (log.action.includes("login")) {
+        description = `Login administrativo realizado (${log.user?.email || "admin"})`;
+      }
+      return {
+        id: log.id,
+        action: log.action,
+        description,
+        entity: log.entity,
+        entityId: log.entityId,
+        userName: log.user?.name || log.user?.email || "Sistema",
+        tenantName: log.tenant?.name || null,
+        createdAt: log.createdAt,
+      };
+    });
+
     return {
+      periodDays: days,
       stats: {
         tenants: realTenants.length,
         users,
+        newUsersPeriod,
+        prevUsersPeriod,
         conversations,
+        conversationsPeriod,
+        prevConversationsPeriod,
         messages,
+        messagesPeriod,
+        prevMessagesPeriod,
         contacts,
         activeAgents,
         automationRuns,
+        automationRunsPeriod,
+        prevAutomationRunsPeriod,
         activeTenants: active,
         suspendedTenants: suspended,
         blockedTenants: blocked,
@@ -462,7 +584,11 @@ export async function adminRoutes(app: FastifyInstance) {
         cancelledTenants: cancelled,
         overdueTenants: overdueCount,
         dueSoonTenants: dueSoonCount,
+        trialsExpiringSoon: trialsExpiringSoonCount,
         paidSubscriptions,
+        paidRatio,
+        newTenantsPeriod,
+        prevTenantsPeriod,
         mrr,
         arr,
         avgTicket,
@@ -472,6 +598,7 @@ export async function adminRoutes(app: FastifyInstance) {
         arr,
         avgTicket,
         paidSubscriptions,
+        paidRatio,
         revenueByPlan,
         costsAvailable: false,
         profitAvailable: false,
@@ -479,14 +606,23 @@ export async function adminRoutes(app: FastifyInstance) {
         note: "MRR estimado com base no valor contratado das assinaturas de empresas ativas. Não representa pagamentos já recebidos. Alterar preço de catálogo não altera contratos existentes.",
       },
       usage: {
+        periodDays: days,
         conversations,
+        conversationsPeriod,
+        prevConversationsPeriod,
         messages,
+        messagesPeriod,
+        prevMessagesPeriod,
         contacts,
         activeAgents,
         automationRuns,
+        automationRunsPeriod,
+        prevAutomationRunsPeriod,
       },
       plans: plansWithRealCount,
       recentTenants: realTenants.slice(0, 5),
+      recentActivity,
+      health: healthReport,
       totalTenants: realTenants.length,
       alerts,
       errors,

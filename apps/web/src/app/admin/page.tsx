@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -10,14 +11,29 @@ import {
   Wallet,
   Bot,
   Zap,
+  RefreshCw,
+  TrendingUp,
+  CircleDollarSign,
+  AlertTriangle,
+  CheckCircle2,
+  ShieldCheck,
+  Activity,
+  ArrowRight,
+  Send,
+  Radio,
+  Server,
+  Database,
+  Cpu,
+  Mail,
+  Smartphone,
+  ExternalLink,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import {
   AdminErrorState,
   AdminPageHeader,
-  AdminPageSkeleton,
   AdminSection,
   AdminSectionLink,
   MetricCard,
@@ -25,25 +41,37 @@ import {
   StatusBadge,
   statusToTone,
 } from "@/components/admin";
-import {
-  AttentionPanel,
-  type AttentionItem,
-  type AttentionTone,
-} from "@/components/attention-panel";
 
 type Overview = {
+  periodDays: number;
   stats: {
     tenants: number;
     users: number;
+    newUsersPeriod?: number;
+    prevUsersPeriod?: number;
     conversations: number;
+    conversationsPeriod?: number;
+    prevConversationsPeriod?: number;
     messages: number;
+    messagesPeriod?: number;
+    prevMessagesPeriod?: number;
     contacts?: number;
     activeAgents?: number;
     automationRuns?: number;
+    automationRunsPeriod?: number;
+    prevAutomationRunsPeriod?: number;
     activeTenants?: number;
     suspendedTenants?: number;
+    blockedTenants?: number;
     trialTenants?: number;
+    cancelledTenants?: number;
+    overdueTenants?: number;
+    dueSoonTenants?: number;
+    trialsExpiringSoon?: number;
     paidSubscriptions?: number;
+    paidRatio?: number;
+    newTenantsPeriod?: number;
+    prevTenantsPeriod?: number;
     mrr?: number;
     arr?: number;
     avgTicket?: number;
@@ -53,6 +81,7 @@ type Overview = {
     arr: number;
     avgTicket: number;
     paidSubscriptions: number;
+    paidRatio?: number;
     revenueByPlan: Array<{
       planId: string;
       planName: string;
@@ -63,17 +92,25 @@ type Overview = {
       isActive?: boolean;
       tenants: number;
       mrr: number;
+      sharePercentage?: number;
     }>;
     costsAvailable: boolean;
     profitAvailable: boolean;
     note: string;
   };
   usage?: {
+    periodDays: number;
     conversations: number;
+    conversationsPeriod?: number;
+    prevConversationsPeriod?: number;
     messages: number;
+    messagesPeriod?: number;
+    prevMessagesPeriod?: number;
     contacts: number;
     activeAgents: number;
     automationRuns: number;
+    automationRunsPeriod?: number;
+    prevAutomationRunsPeriod?: number;
   };
   recentTenants: Array<{
     id: string;
@@ -81,8 +118,29 @@ type Overview = {
     status: string;
     createdAt: string;
     plan?: { name: string } | null;
-    _count: { members: number };
+    _count?: { members: number };
   }>;
+  recentActivity?: Array<{
+    id: string;
+    action: string;
+    description: string;
+    entity: string;
+    entityId?: string | null;
+    userName: string;
+    tenantName?: string | null;
+    createdAt: string;
+  }>;
+  health?: {
+    overall: "operational" | "degraded" | "down";
+    dependencies: Array<{
+      id: string;
+      name: string;
+      tier: "CRITICAL" | "OPTIONAL";
+      status: "operational" | "degraded" | "down" | "not_configured";
+      impact: string;
+      detail?: string;
+    }>;
+  } | null;
   alerts?: Array<{
     id: string;
     severity: "warning" | "danger" | "info";
@@ -100,24 +158,65 @@ const statusLabel: Record<string, string> = {
   PENDING_DELETION: "Exclusão",
 };
 
+function formatRelativeTime(isoString: string): string {
+  try {
+    const diffSec = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+    if (diffSec < 60) return "agora";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `há ${diffMin} min`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `há ${diffHours} ${diffHours === 1 ? "hora" : "horas"}`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 30) return `há ${diffDays} ${diffDays === 1 ? "dia" : "dias"}`;
+    return formatDate(isoString);
+  } catch {
+    return formatDate(isoString);
+  }
+}
+
 export default function AdminOverviewPage() {
   const user = useAuth((s) => s.user);
+  const [days, setDays] = useState<number>(30);
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ["admin-overview"],
-    queryFn: () => api<Overview>("/admin/overview"),
+    queryKey: ["admin-overview", days],
+    queryFn: () => api<Overview>(`/admin/overview?days=${days}`),
     enabled: user?.platformRole === "SUPERADMIN",
     retry: false,
   });
 
   if (user?.platformRole !== "SUPERADMIN") return null;
-  if (isLoading) return <AdminPageSkeleton metrics={4} />;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-7 w-40 rounded-lg bg-zinc-200 dark:bg-zinc-800" />
+            <div className="h-4 w-72 rounded bg-zinc-100 dark:bg-zinc-800/60" />
+          </div>
+          <div className="h-9 w-48 rounded-xl bg-zinc-200 dark:bg-zinc-800" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="h-64 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+          <div className="h-64 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+        </div>
+        <div className="h-32 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+      </div>
+    );
+  }
 
   if (error || !data) {
     if (isSuperadminMfaRequiredError(error)) return null;
     return (
       <AdminErrorState
         title="Não foi possível carregar a visão geral"
+        description="Ocorreu um problema ao consolidar os indicadores executivos."
         onRetry={() => void refetch()}
       />
     );
@@ -126,35 +225,68 @@ export default function AdminOverviewPage() {
   const s = data.stats;
   const fin = data.finance;
   const usage = data.usage;
-  const recent = (data.recentTenants || []).slice(0, 5);
+  const recentTenants = data.recentTenants || [];
+  const recentActivity = data.recentActivity || [];
   const alerts = data.alerts || [];
+  const healthDeps = data.health?.dependencies || [];
 
-  const attentionItems: AttentionItem[] = alerts.map((a) => {
-    const tone: AttentionTone =
-      a.severity === "danger" ? "danger" : a.severity === "warning" ? "warning" : "info";
-    return {
-      id: a.id,
-      title: a.title,
-      href: a.href,
-      actionLabel: a.href ? "Ver" : undefined,
-      tone,
-    };
-  });
-
-  const planBars = (fin?.revenueByPlan || [])
-    .filter((r) => r.tenants > 0 || r.mrr > 0)
-    .slice(0, 5);
-  const maxPlanMrr = Math.max(1, ...planBars.map((r) => r.mrr || 0));
+  const paidPlans = (fin?.revenueByPlan || []).filter((r) => r.tenants > 0 || r.mrr > 0);
+  const totalMrr = s.mrr || 0;
+  const maxPlanMrr = Math.max(1, ...paidPlans.map((r) => r.mrr || 0));
 
   return (
-    <div className="space-y-5">
-      <AdminPageHeader title="Visão geral" />
+    <div className="space-y-6">
+      {/* ── 1. Cabeçalho Executivo com Seletor Temporal ── */}
+      <AdminPageHeader
+        title="Visão geral"
+        description="Acompanhe os principais indicadores e a saúde da plataforma."
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.03] p-0.5 text-[12px] font-medium text-zinc-600 dark:text-zinc-400">
+              {[
+                { label: "7 dias", value: 7 },
+                { label: "30 dias", value: 30 },
+                { label: "90 dias", value: 90 },
+              ].map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setDays(tab.value)}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1 transition-all duration-150 cursor-pointer",
+                    days === tab.value
+                      ? "bg-violet-600 text-white shadow-xs font-semibold"
+                      : "hover:text-zinc-900 dark:hover:text-white"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+              title="Atualizar dados"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin text-violet-500")} />
+            </button>
+          </div>
+        }
+      />
+
+      {/* ── 2. Grid de KPIs Principais ── */}
       <MetricGrid cols={4}>
         <MetricCard
           label="Empresas ativas"
-          value={s.activeTenants ?? "—"}
-          hint={`${s.tenants} total · ${s.trialTenants ?? 0} trial`}
+          value={s.activeTenants ?? 0}
+          hint={
+            s.trialTenants || s.paidSubscriptions
+              ? `${s.trialTenants ?? 0} em trial · ${s.paidSubscriptions ?? 0} pagantes`
+              : `${s.tenants} empresas no total`
+          }
           icon={<Building2 className="h-4 w-4" />}
           tone="brand"
           href="/admin/companies"
@@ -162,9 +294,11 @@ export default function AdminOverviewPage() {
         />
         <MetricCard
           label="Assinaturas pagas"
-          value={s.paidSubscriptions ?? "—"}
+          value={s.paidSubscriptions ?? 0}
           hint={
-            s.suspendedTenants ? `${s.suspendedTenants} suspensas` : undefined
+            (s.activeTenants ?? 0) > 0 && s.paidRatio != null
+              ? `${s.paidRatio}% das empresas ativas`
+              : "Sem contratos pagos"
           }
           icon={<CreditCard className="h-4 w-4" />}
           tone="violet"
@@ -173,14 +307,8 @@ export default function AdminOverviewPage() {
         />
         <MetricCard
           label="MRR"
-          value={
-            s.mrr != null && Number.isFinite(s.mrr) ? formatCurrency(s.mrr) : "—"
-          }
-          hint={
-            s.arr != null && Number.isFinite(s.arr)
-              ? `ARR ${formatCurrency(s.arr)}`
-              : undefined
-          }
+          value={formatCurrency(s.mrr || 0)}
+          hint={`ARR ${formatCurrency(s.arr || 0)}`}
           icon={<Wallet className="h-4 w-4" />}
           tone="success"
           href="/admin/finance"
@@ -190,9 +318,9 @@ export default function AdminOverviewPage() {
           label="Usuários"
           value={s.users}
           hint={
-            usage?.messages != null
-              ? `${Number(usage.messages).toLocaleString("pt-BR")} msgs`
-              : undefined
+            s.newUsersPeriod != null && s.newUsersPeriod > 0
+              ? `+${s.newUsersPeriod} adicionados no período`
+              : "Cadastrados na plataforma"
           }
           icon={<Users className="h-4 w-4" />}
           href="/admin/users"
@@ -200,92 +328,119 @@ export default function AdminOverviewPage() {
         />
       </MetricGrid>
 
-      {attentionItems.length > 0 ? (
-        <AttentionPanel
-          title="Alertas"
-          items={attentionItems}
-          emptyTitle="Nenhum alerta"
-          variant="compact"
-          countLabel={(n) => (n === 1 ? "1 alerta" : `${n} alertas`)}
-        />
-      ) : null}
-
+      {/* ── 3. Receita por Plano & Empresas Recentes ── */}
       <div className="grid gap-4 lg:grid-cols-2">
+        {/* Bloco: Receita */}
         <AdminSection
-          title="Receita por plano"
-          action={<AdminSectionLink href="/admin/finance">Financeiro</AdminSectionLink>}
+          title="Receita"
+          description="Distribuição da receita recorrente por plano."
+          action={<AdminSectionLink href="/admin/finance">Abrir Financeiro →</AdminSectionLink>}
         >
-          {planBars.length === 0 ? (
-            <p className="text-[13px] text-gray-500">Sem assinaturas pagas.</p>
+          {paidPlans.length === 0 ? (
+            <div className="py-8 text-center space-y-2">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                <CircleDollarSign className="h-5 w-5" />
+              </div>
+              <p className="text-[13px] font-semibold text-zinc-900 dark:text-white">
+                Ainda não há receita recorrente
+              </p>
+              <p className="text-[12px] text-zinc-500 max-w-sm mx-auto">
+                As métricas de MRR e faturamento aparecerão assim que houver assinaturas ativas em planos pagos.
+              </p>
+              <div className="pt-2">
+                <Link
+                  href="/admin/plans"
+                  className="inline-flex items-center gap-1.5 text-[12px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                  Ver planos comerciais <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+            </div>
           ) : (
-            <ul className="space-y-2.5">
-              {planBars.map((r) => (
-                <li key={r.planId}>
-                  <div className="mb-1 flex items-center justify-between gap-2 text-[13px]">
-                    <span className="truncate font-medium text-white/90">
-                      {r.planName}
-                      <span className="ml-1.5 font-normal text-gray-500">
-                        · {r.tenants}
-                      </span>
-                    </span>
-                    <span className="shrink-0 tabular-nums font-semibold text-white">
-                      {formatCurrency(r.mrr)}
-                    </span>
-                  </div>
-                  <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
-                    <div
-                      className="h-full rounded-full bg-violet-500/80"
-                      style={{
-                        width: `${Math.max(4, (r.mrr / maxPlanMrr) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-3.5">
+              <ul className="space-y-3">
+                {paidPlans.map((r) => (
+                  <li key={r.planId} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span className="font-semibold text-zinc-900 dark:text-white truncate">
+                          {r.planName}
+                        </span>
+                        <span className="text-[11.5px] text-zinc-500">
+                          · {r.tenants} {r.tenants === 1 ? "cliente" : "clientes"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                        <span className="font-semibold text-zinc-900 dark:text-white">
+                          {formatCurrency(r.mrr)}
+                        </span>
+                        <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400 min-w-[32px] text-right">
+                          {r.sharePercentage ?? (totalMrr > 0 ? Math.round((r.mrr / totalMrr) * 100) : 0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.05] dark:bg-white/[0.06]">
+                      <div
+                        className="h-full rounded-full bg-violet-600 dark:bg-violet-500 transition-all duration-300"
+                        style={{
+                          width: `${Math.max(4, (r.mrr / maxPlanMrr) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
+
           {fin && !fin.costsAvailable ? (
-            <p className="mt-3 text-[12px] text-amber-200/80">
-              Custos não configurados.{" "}
-              <Link href="/admin/finance" className="underline-offset-2 hover:underline">
-                Abrir financeiro
-              </Link>
-            </p>
+            <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 text-[12px] text-amber-700 dark:text-amber-300/90">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <span className="font-medium">Custos operacionais incompletos:</span>{" "}
+                indicadores de margem líquida serão calculados após a definição no financeiro.{" "}
+                <Link href="/admin/finance" className="font-semibold underline underline-offset-2 hover:opacity-80">
+                  Configurar custos →
+                </Link>
+              </div>
+            </div>
           ) : null}
         </AdminSection>
 
+        {/* Bloco: Empresas Recentes */}
         <AdminSection
           title="Empresas recentes"
-          action={<AdminSectionLink href="/admin/companies">Todas</AdminSectionLink>}
+          description="Últimas organizações cadastradas na plataforma."
+          action={<AdminSectionLink href="/admin/companies">Ver todas →</AdminSectionLink>}
           flush
         >
-          {recent.length === 0 ? (
-            <p className="px-4 py-5 text-[13px] text-gray-500 sm:px-5">
-              Nenhuma empresa ainda.
-            </p>
+          {recentTenants.length === 0 ? (
+            <div className="px-5 py-8 text-center text-[12.5px] text-zinc-500">
+              Nenhuma empresa criada recentemente.
+            </div>
           ) : (
-            <ul className="divide-y divide-white/[0.05]">
-              {recent.map((t) => (
+            <ul className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+              {recentTenants.map((t) => (
                 <li
                   key={t.id}
-                  className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5"
+                  className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5 hover:bg-black/[0.015] dark:hover:bg-white/[0.015] transition-colors"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-[13px] font-medium text-white">
+                      <p className="truncate text-[13px] font-semibold text-zinc-900 dark:text-white">
                         {t.name}
                       </p>
                       <StatusBadge tone={statusToTone(t.status)} dot>
                         {statusLabel[t.status] || t.status}
                       </StatusBadge>
                     </div>
-                    <p className="mt-0.5 text-[11px] text-gray-500">
-                      {t.plan?.name || "Sem plano"} · {formatDate(t.createdAt)}
+                    <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400">
+                      {t.plan?.name || "Gratuito"} · Criada em {formatDate(t.createdAt)}
                     </p>
                   </div>
                   <Link
                     href={`/admin/tenants/${t.id}`}
-                    className="admin-btn-ghost h-8 shrink-0 px-2 text-[12px]"
+                    className="admin-btn-ghost h-7.5 px-3 text-[12px] font-medium shrink-0 rounded-lg"
                   >
                     Abrir
                   </Link>
@@ -296,33 +451,238 @@ export default function AdminOverviewPage() {
         </AdminSection>
       </div>
 
-      {/* Uso — uma linha compacta, sem segunda grade de cards */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-[12px] text-gray-400">
-        <span className="inline-flex items-center gap-1.5">
-          <MessageSquare className="h-3.5 w-3.5 opacity-60" />
-          {(usage?.conversations ?? s.conversations).toLocaleString("pt-BR")} conversas
-        </span>
-        <span className="text-white/15">·</span>
-        <span>
-          {(usage?.messages ?? s.messages).toLocaleString("pt-BR")} mensagens
-        </span>
-        <span className="text-white/15">·</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Bot className="h-3.5 w-3.5 opacity-60" />
-          {usage?.activeAgents ?? s.activeAgents ?? 0} agentes
-        </span>
-        <span className="text-white/15">·</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Zap className="h-3.5 w-3.5 opacity-60" />
-          {(usage?.automationRuns ?? s.automationRuns ?? 0).toLocaleString("pt-BR")} autom.
-        </span>
-        {isFetching ? (
-          <>
-            <span className="text-white/15">·</span>
-            <span className="text-gray-600">atualizando…</span>
-          </>
-        ) : null}
+      {/* ── 4. Uso da Plataforma no Período Selecionado ── */}
+      <AdminSection
+        title="Uso da plataforma"
+        description={`Métricas operacionais registradas nos últimos ${days} dias.`}
+      >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+          <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02] p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-zinc-500">
+              <span className="text-[12px] font-medium">Conversas</span>
+              <MessageSquare className="h-4 w-4 text-violet-500" />
+            </div>
+            <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
+              {(usage?.conversationsPeriod ?? s.conversationsPeriod ?? 0).toLocaleString("pt-BR")}
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              {(usage?.conversations ?? s.conversations).toLocaleString("pt-BR")} no total acumulado
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02] p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-zinc-500">
+              <span className="text-[12px] font-medium">Mensagens</span>
+              <Send className="h-4 w-4 text-blue-500" />
+            </div>
+            <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
+              {(usage?.messagesPeriod ?? s.messagesPeriod ?? 0).toLocaleString("pt-BR")}
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              {(usage?.messages ?? s.messages).toLocaleString("pt-BR")} no total acumulado
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02] p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-zinc-500">
+              <span className="text-[12px] font-medium">Agentes de IA</span>
+              <Bot className="h-4 w-4 text-emerald-500" />
+            </div>
+            <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
+              {usage?.activeAgents ?? s.activeAgents ?? 0}
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              Ativos e configurados
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02] p-3.5 space-y-1">
+            <div className="flex items-center justify-between text-zinc-500">
+              <span className="text-[12px] font-medium">Automações</span>
+              <Zap className="h-4 w-4 text-amber-500" />
+            </div>
+            <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
+              {(usage?.automationRunsPeriod ?? s.automationRunsPeriod ?? 0).toLocaleString("pt-BR")}
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              {(usage?.automationRuns ?? s.automationRuns ?? 0).toLocaleString("pt-BR")} execuções totais
+            </p>
+          </div>
+        </div>
+      </AdminSection>
+
+      {/* ── 5. Atividade Recente & Atenção Necessária ── */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Atividade Recente */}
+        <AdminSection
+          title="Atividade recente"
+          description="Eventos administrativos registrados no log de auditoria."
+          action={<AdminSectionLink href="/admin/audit">Ver auditoria →</AdminSectionLink>}
+          flush
+        >
+          {recentActivity.length === 0 ? (
+            <div className="px-5 py-8 text-center text-[12.5px] text-zinc-500">
+              Nenhuma atividade administrativa recente registrada.
+            </div>
+          ) : (
+            <ul className="divide-y divide-black/[0.05] dark:divide-white/[0.05]">
+              {recentActivity.slice(0, 6).map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5 hover:bg-black/[0.015] dark:hover:bg-white/[0.015] transition-colors"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-[12.5px] font-medium text-zinc-900 dark:text-white truncate">
+                      {item.description}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">
+                      {item.userName} {item.tenantName ? `· ${item.tenantName}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-zinc-400 shrink-0 tabular-nums">
+                    {formatRelativeTime(item.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AdminSection>
+
+        {/* Atenção Necessária */}
+        <AdminSection
+          title="Atenção necessária"
+          description="Pendências operacionais e conformidade."
+        >
+          {alerts.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-emerald-800 dark:text-emerald-300">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              <div>
+                <p className="text-[13px] font-semibold">Nenhuma ação crítica pendente</p>
+                <p className="text-[11.5px] text-emerald-700/80 dark:text-emerald-400/80">
+                  Todas as empresas e serviços essenciais estão em operação normal.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <ul className="space-y-2.5">
+              {alerts.map((a) => {
+                const isDanger = a.severity === "danger";
+                const isWarning = a.severity === "warning";
+                return (
+                  <li
+                    key={a.id}
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-xl border p-3 transition-colors",
+                      isDanger
+                        ? "border-rose-500/20 bg-rose-500/5 text-rose-800 dark:text-rose-300"
+                        : isWarning
+                          ? "border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-300"
+                          : "border-blue-500/20 bg-blue-500/5 text-blue-800 dark:text-blue-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <AlertTriangle
+                        className={cn(
+                          "h-4 w-4 shrink-0",
+                          isDanger
+                            ? "text-rose-600 dark:text-rose-400"
+                            : isWarning
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-blue-600 dark:text-blue-400"
+                        )}
+                      />
+                      <span className="text-[12.5px] font-medium truncate">{a.title}</span>
+                    </div>
+                    {a.href ? (
+                      <Link
+                        href={a.href}
+                        className="text-[11.5px] font-semibold shrink-0 hover:underline inline-flex items-center gap-1"
+                      >
+                        Ver <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </AdminSection>
       </div>
+
+      {/* ── 6. Resumo de Saúde Operacional ── */}
+      <AdminSection
+        title="Saúde operacional"
+        description="Status em tempo real dos serviços fundamentais da infraestrutura."
+        action={<AdminSectionLink href="/admin/system/health">Ver Diagnóstico Completo →</AdminSectionLink>}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {healthDeps.map((dep) => {
+            const isOp = dep.status === "operational";
+            const isDown = dep.status === "down";
+            const isDegraded = dep.status === "degraded";
+            const isNotConfig = dep.status === "not_configured";
+
+            const Icon =
+              dep.id === "api"
+                ? Server
+                : dep.id === "postgres"
+                  ? Database
+                  : dep.id === "redis"
+                    ? Cpu
+                    : dep.id === "whatsapp"
+                      ? Smartphone
+                      : dep.id === "mail"
+                        ? Mail
+                        : Bot;
+
+            return (
+              <div
+                key={dep.id}
+                className={cn(
+                  "flex flex-col justify-between rounded-xl border p-3 space-y-2",
+                  isOp
+                    ? "border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-500/[0.04]"
+                    : isDown
+                      ? "border-rose-500/20 bg-rose-500/5 dark:bg-rose-500/[0.04]"
+                      : isDegraded
+                        ? "border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/[0.04]"
+                        : "border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.02]"
+                )}
+              >
+                <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400">
+                  <span className="text-[12px] font-semibold text-zinc-900 dark:text-white truncate">
+                    {dep.name}
+                  </span>
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full shrink-0",
+                      isOp
+                        ? "bg-emerald-500 animate-pulse"
+                        : isDown
+                          ? "bg-rose-500"
+                          : isDegraded
+                            ? "bg-amber-500"
+                            : "bg-zinc-400 dark:bg-zinc-600"
+                    )}
+                  />
+                  <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-300 truncate">
+                    {isOp
+                      ? "Operacional"
+                      : isDown
+                        ? "Indisponível"
+                        : isDegraded
+                          ? "Degradado"
+                          : "Não configurado"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </AdminSection>
     </div>
   );
 }
