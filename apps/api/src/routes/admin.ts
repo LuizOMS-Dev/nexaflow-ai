@@ -27,6 +27,7 @@ import {
   formatDueDayLabel,
   computeNextDueDate,
 } from "../services/billing";
+import { getPlatformHealthDetailed } from "../services/platform-diagnostics";
 
 function cookieSecure() {
   return env.nodeEnv === "production";
@@ -187,8 +188,6 @@ export async function adminRoutes(app: FastifyInstance) {
     const since = new Date(now - days * 24 * 60 * 60 * 1000);
     const prevSince = new Date(now - 2 * days * 24 * 60 * 60 * 1000);
 
-    const { getPlatformHealthDetailed } = await import("../services/platform-diagnostics");
-
     const [
       allTenantsRaw,
       users,
@@ -206,6 +205,7 @@ export async function adminRoutes(app: FastifyInstance) {
       automationRunsPeriod,
       prevAutomationRunsPeriod,
       plans,
+      subscriptions,
       recentAuditLogs,
       errors,
       healthReport,
@@ -268,6 +268,10 @@ export async function adminRoutes(app: FastifyInstance) {
           },
         },
       }),
+      prisma.subscription.findMany({
+        where: { billingStatus: { in: ["ACTIVE", "PAST_DUE"] } },
+        include: { plan: true },
+      }),
       prisma.auditLog.findMany({
         orderBy: { createdAt: "desc" },
         take: 8,
@@ -317,10 +321,6 @@ export async function adminRoutes(app: FastifyInstance) {
       sharePercentage: number;
     }> = [];
 
-    const subscriptions = await prisma.subscription.findMany({
-      where: { billingStatus: { in: ["ACTIVE", "PAST_DUE"] } },
-      include: { plan: true },
-    });
     const tenantById = new Map(realTenants.map((t) => [t.id, t]));
 
     const mrrByPlanId = new Map<

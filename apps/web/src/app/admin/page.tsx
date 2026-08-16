@@ -203,6 +203,11 @@ export default function AdminOverviewPage() {
           <div className="h-48 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
         </div>
         <div className="h-28 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="h-40 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+          <div className="h-40 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
+        </div>
+        <div className="h-24 rounded-xl bg-zinc-100 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-800" />
       </div>
     );
   }
@@ -238,7 +243,11 @@ export default function AdminOverviewPage() {
         description="Acompanhe os principais indicadores e a saúde da plataforma."
         actions={
           <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.03] p-0.5 text-[12px] font-medium text-zinc-600 dark:text-zinc-400">
+            <div
+              role="tablist"
+              aria-label="Selecionar período do resumo"
+              className="inline-flex rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.03] p-0.5 text-[12px] font-medium text-zinc-600 dark:text-zinc-400"
+            >
               {[
                 { label: "7 dias", value: 7 },
                 { label: "30 dias", value: 30 },
@@ -247,9 +256,11 @@ export default function AdminOverviewPage() {
                 <button
                   key={tab.value}
                   type="button"
+                  role="tab"
+                  aria-selected={days === tab.value}
                   onClick={() => setDays(tab.value)}
                   className={cn(
-                    "rounded-lg px-2.5 py-1 transition-all duration-150 cursor-pointer",
+                    "rounded-lg px-2.5 py-1 transition-all duration-150 cursor-pointer focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-violet-500",
                     days === tab.value
                       ? "bg-violet-600 text-white shadow-xs font-semibold"
                       : "hover:text-zinc-900 dark:hover:text-white"
@@ -264,7 +275,8 @@ export default function AdminOverviewPage() {
               type="button"
               onClick={() => void refetch()}
               disabled={isFetching}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+              aria-label="Atualizar dados do painel"
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.03] dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-violet-500"
               title="Atualizar dados"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin text-violet-500")} />
