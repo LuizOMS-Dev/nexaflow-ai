@@ -1,50 +1,45 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowRight,
   Building2,
+  Clock,
+  Eye,
+  EyeOff,
   Plus,
+  Search,
   ShieldOff,
+  X,
 } from "lucide-react";
 import {
   api,
   ApiError,
-  isStepUpRequiredError,
   isSuperadminMfaRequiredError,
 } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import {
   defaultCompanyPlanId,
   planSelectLabel,
   selectablePlansForCompany,
 } from "@/lib/plan-price";
 import {
-  ConsequenceBanner,
-  DateInput,
-  DialogFooter,
-  EntitySummary,
-  FieldGrid,
-  FormField,
-  FormSection,
   Modal,
-  MoneyInput,
-  Select,
   useToast,
 } from "@/components/ui";
+import { Select as PortalSelect, type SelectOption } from "@/components/ui-select";
 import {
   AdminEmptyState,
   AdminErrorState,
   AdminFilterBar,
   AdminPageHeader,
   AdminPageSkeleton,
-  AdminSearchInput,
   AdminSection,
-  AdminSelectFilter,
   MetricCard,
   MetricGrid,
   StatusBadge,
@@ -65,18 +60,6 @@ type PlanRow = {
   features?: Record<string, unknown> | null;
 };
 
-function planLimitAgents(p?: PlanRow | null): number | null {
-  if (!p) return null;
-  const fromFeat = Number((p.features as { maxAgents?: unknown } | null)?.maxAgents);
-  if (Number.isFinite(fromFeat) && fromFeat >= 0) return fromFeat;
-  return null;
-}
-
-function formatLimit(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return Math.trunc(n).toLocaleString("pt-BR");
-}
-
 type TenantRow = {
   id: string;
   name: string;
@@ -86,7 +69,7 @@ type TenantRow = {
   logoUrl?: string | null;
   primaryColor?: string;
   createdAt: string;
-  plan?: { id: string; name: string; priceMonthly?: number | string } | null;
+  plan?: { id: string; name: string; slug?: string; priceMonthly?: number | string; priceOnRequest?: boolean } | null;
   _count?: { members: number; contacts: number; conversations: number };
   contractedPrice?: number | null;
   financialStatus?: string;
@@ -99,13 +82,6 @@ type TenantRow = {
   daysUntilDue?: number | null;
   needsAttention?: boolean;
   primaryAdmin?: { id: string; name: string; email: string } | null;
-  subscription?: {
-    id: string;
-    billingStatus: string;
-    priceMonthly?: number | null;
-    billingDueDay?: number | null;
-    currentPeriodEnd?: string | null;
-  } | null;
 };
 
 type TenantsResponse = {
@@ -120,6 +96,7 @@ type TenantsResponse = {
     overdue: number;
     suspended: number;
     blocked: number;
+    suspendedBlocked?: number;
     trial: number;
     dueIn7Days: number;
     cancelled: number;
@@ -136,16 +113,17 @@ const statusLabel: Record<string, string> = {
   PENDING_DELETION: "Exclusão agendada",
 };
 
-const financialFilterOptions = [
-  { value: "ALL", label: "Financeiro: todos" },
-  { value: "IN_GOOD_STANDING", label: "Em dia" },
-  { value: "DUE_TODAY", label: "Vence hoje" },
-  { value: "DUE_SOON", label: "Vence em breve" },
-  { value: "OVERDUE", label: "Em atraso" },
-  { value: "PAYMENT_PENDING", label: "Pagamento pendente" },
-  { value: "TRIAL", label: "Trial (financeiro)" },
-  { value: "NEEDS_ATTENTION", label: "Precisa atenção" },
-];
+const financialLabelMap: Record<string, string> = {
+  IN_GOOD_STANDING: "Em dia",
+  DUE_TODAY: "Vence hoje",
+  DUE_SOON: "Vence em breve",
+  OVERDUE: "Em atraso",
+  PAYMENT_PENDING: "Pagamento pendente",
+  TRIAL: "Trial",
+  CANCELLED: "Cancelada",
+  SUSPENDED: "Suspensa",
+  NEEDS_ATTENTION: "Precisa atenção",
+};
 
 function financialToTone(code?: string): AdminTone {
   if (!code) return "neutral";
@@ -156,126 +134,120 @@ function financialToTone(code?: string): AdminTone {
   return statusToTone(code);
 }
 
-function formatDateOnly(value?: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(value));
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "NF";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function CompanyMark({
-  name,
-  logoUrl,
-  color,
-}: {
-  name: string;
-  logoUrl?: string | null;
-  color?: string;
-}) {
-  const initials = name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+function formatPlanPriceColumn(t: TenantRow): { planName: string; priceText: string } {
+  const planName = t.plan?.name || "Gratuito";
+  const slug = (t.plan?.slug || "").toLowerCase();
+  const isFree = slug === "free" || (!t.plan && (t.contractedPrice === 0 || t.contractedPrice == null));
 
-  if (logoUrl?.startsWith("data:") || logoUrl?.startsWith("http") || logoUrl?.startsWith("/")) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={logoUrl}
-        alt=""
-        className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-white/[0.08]"
-      />
-    );
+  if (isFree && (t.contractedPrice == null || t.contractedPrice === 0)) {
+    return { planName: "Gratuito", priceText: "Sem cobrança" };
   }
 
-  return (
-    <div
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-semibold tracking-wide text-white"
-      style={{ backgroundColor: color || "#6366F1" }}
-    >
-      {initials || "E"}
-    </div>
-  );
+  if (t.contractedPrice != null && t.contractedPrice > 0) {
+    return {
+      planName,
+      priceText: `${formatCurrency(t.contractedPrice)}/mês`,
+    };
+  }
+
+  if (slug === "enterprise" || t.plan?.priceOnRequest) {
+    return { planName, priceText: "Sob consulta" };
+  }
+
+  if (t.contractedPrice === 0) {
+    return { planName, priceText: "Sem cobrança" };
+  }
+
+  return { planName, priceText: "Sob consulta" };
 }
 
-type ActionKind =
-  | "payment"
-  | "due"
-  | "block"
-  | "unblock"
-  | "suspend"
-  | "reactivate"
-  | "cancel_sub"
-  | "delete"
-  | "plan"
-  | null;
+function formatDueDate(t: TenantRow): string {
+  const slug = (t.plan?.slug || "").toLowerCase();
+  if (slug === "free" || (t.contractedPrice === 0 && t.status !== "TRIAL")) {
+    return "Sem vencimento";
+  }
+  if (t.status === "TRIAL") {
+    return t.nextDueAt ? `Trial até ${formatDate(t.nextDueAt)}` : "Trial ativo";
+  }
+  if (t.nextDueAt) {
+    return formatDate(t.nextDueAt);
+  }
+  return "Não definido";
+}
 
 export default function AdminCompaniesPage() {
-  const qc = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const setSession = useAuth((s) => s.setSession);
+  const qc = useQueryClient();
   const user = useAuth((s) => s.user);
 
   const initialStatus = searchParams.get("status") || "ALL";
   const initialFinancial = searchParams.get("financial") || "ALL";
+  const initialPlan = searchParams.get("planId") || "ALL";
+  const initialSearch = searchParams.get("q") || searchParams.get("search") || "";
+  const initialPage = Number(searchParams.get("page") || 1);
 
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [financialFilter, setFinancialFilter] = useState(initialFinancial);
-  const [planFilter, setPlanFilter] = useState("ALL");
-  const [page, setPage] = useState(1);
+  const [planFilter, setPlanFilter] = useState(initialPlan);
+  const [page, setPage] = useState(initialPage);
   const [openCreate, setOpenCreate] = useState(false);
-  const [impTarget, setImpTarget] = useState<TenantRow | null>(null);
-  const [stepUpOpen, setStepUpOpen] = useState(false);
-  const [stepUpForm, setStepUpForm] = useState({ password: "", code: "" });
-  const [pendingImpersonateId, setPendingImpersonateId] = useState<string | null>(null);
-  const [actionTarget, setActionTarget] = useState<TenantRow | null>(null);
-  const [actionKind, setActionKind] = useState<ActionKind>(null);
-  const [actionReason, setActionReason] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState("");
-  const [dueDay, setDueDay] = useState("10");
-  const [planIdEdit, setPlanIdEdit] = useState("");
-  const [priceEdit, setPriceEdit] = useState("");
-  const [payForm, setPayForm] = useState({
-    amount: "",
-    paidAt: new Date().toISOString().slice(0, 10),
-    referencePeriod: "",
-    method: "",
-    notes: "",
-  });
-  const [form, setForm] = useState({
-    name: "",
-    adminName: "",
-    adminEmail: "",
-    adminPassword: "",
-    planId: "",
-    forceSimilarName: false,
-  });
 
   useEffect(() => {
     const s = searchParams.get("status");
     if (s) setStatusFilter(s);
     const f = searchParams.get("financial");
     if (f) setFinancialFilter(f);
+    const p = searchParams.get("planId");
+    if (p) setPlanFilter(p);
+    const q = searchParams.get("q") || searchParams.get("search");
+    if (q !== null) {
+      setSearch(q);
+      setDebouncedSearch(q);
+    }
   }, [searchParams]);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
+  function setParam(key: string, value: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (!value || value === "ALL") next.delete(key);
+    else next.set(key, value);
+    if (key !== "page") next.delete("page");
+    router.replace(`/admin/companies?${next.toString()}`);
+  }
+
+  function clearAllFilters() {
+    setSearch("");
+    setDebouncedSearch("");
+    setStatusFilter("ALL");
+    setFinancialFilter("ALL");
+    setPlanFilter("ALL");
     setPage(1);
-  }, [debouncedSearch, statusFilter, financialFilter, planFilter]);
+    router.replace("/admin/companies");
+  }
 
   const plansQuery = useQuery({
     queryKey: ["admin-plans", "company-assign"],
     queryFn: () => api<PlanRow[]>("/admin/plans?activeOnly=1&commercial=1"),
     enabled: user?.platformRole === "SUPERADMIN",
+    staleTime: 60_000,
   });
 
   const tenantsQuery = useQuery({
@@ -300,237 +272,17 @@ export default function AdminCompaniesPage() {
     enabled: user?.platformRole === "SUPERADMIN",
   });
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["admin-tenants"] });
-    qc.invalidateQueries({ queryKey: ["admin-overview"] });
-  };
-
-  const closeAction = () => {
-    setActionKind(null);
-    setActionTarget(null);
-    setActionReason("");
-    setDeleteConfirm("");
-  };
-
-  const openAction = (t: TenantRow, kind: ActionKind) => {
-    setActionTarget(t);
-    setActionKind(kind);
-    setActionReason("");
-    setDeleteConfirm("");
-    setDueDay(String(t.billingDueDay || 10));
-    setPlanIdEdit(t.plan?.id || "");
-    setPriceEdit(
-      t.contractedPrice != null && Number.isFinite(t.contractedPrice)
-        ? String(t.contractedPrice)
-        : ""
-    );
-    setPayForm({
-      amount:
-        t.contractedPrice != null && Number.isFinite(t.contractedPrice)
-          ? String(t.contractedPrice)
-          : "",
-      paidAt: new Date().toISOString().slice(0, 10),
-      referencePeriod: new Date().toISOString().slice(0, 7),
-      method: "",
-      notes: "",
-    });
-  };
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      api<{ id: string }>("/admin/tenants", {
-        method: "POST",
-        json: {
-          name: form.name.trim(),
-          adminName: form.adminName.trim(),
-          adminEmail: form.adminEmail.trim(),
-          adminPassword: form.adminPassword || undefined,
-          planId: form.planId || freePlanId || undefined,
-          forceSimilarName: form.forceSimilarName || undefined,
-        },
-      }),
-    onSuccess: (tenant) => {
-      invalidate();
-      setOpenCreate(false);
-      setForm({
-        name: "",
-        adminName: "",
-        adminEmail: "",
-        adminPassword: "",
-        planId: freePlanId || "",
-        forceSimilarName: false,
-      });
-      toast({
-        kind: "success",
-        title: "Empresa criada",
-        description: "Abrindo o gerenciamento…",
-      });
-      // Cadastro → gestão da empresa (centro de controle)
-      router.push(`/admin/tenants/${tenant.id}`);
-    },
-    onError: (e: Error) => {
-      if (e instanceof ApiError && e.code === "SIMILAR_TENANT_NAME") {
-        setForm((f) => ({ ...f, forceSimilarName: true }));
-        toast({
-          kind: "warning",
-          title: "Nome semelhante",
-          description: `${e.message} Clique em Criar novamente para confirmar.`,
-        });
-        return;
-      }
-      toast({ kind: "error", title: "Falha ao criar", description: e.message });
-    },
-  });
-
-  const impersonateMutation = useMutation({
-    mutationFn: (tenantId: string) =>
-      api<{
-        token: string;
-        accessToken?: string;
-        tenant: { id: string; name: string; slug: string; role?: string };
-        user: { id: string; name: string; email: string };
-      }>("/admin/impersonate", {
-        method: "POST",
-        json: {
-          tenantId,
-          reason: "Suporte operacional via painel de administração",
-        },
-      }),
-    onSuccess: (data) => {
-      try {
-        sessionStorage.setItem("nexaflow_impersonating", "1");
-      } catch {
-        /* ignore */
-      }
-      const tok = data.accessToken || data.token;
-      setSession({
-        token: tok,
-        user: {
-          id: data.user.id,
-          name: data.user.name,
-          email: data.user.email,
-          platformRole: "SUPERADMIN",
-        },
-        tenant: data.tenant,
-      });
-      setImpTarget(null);
-      setStepUpOpen(false);
-      setPendingImpersonateId(null);
-      setStepUpForm({ password: "", code: "" });
-      window.location.href = "/app";
-    },
-    onError: (e: Error) => {
-      if (isStepUpRequiredError(e)) {
-        setPendingImpersonateId(impTarget?.id || pendingImpersonateId);
-        setStepUpOpen(true);
-        toast({
-          kind: "warning",
-          title: "Confirme sua identidade",
-          description: "Por segurança, informe sua senha (e MFA se ativo) para acessar a empresa.",
-        });
-        return;
-      }
-      toast({
-        kind: "error",
-        title: "Não foi possível acessar a empresa",
-        description: e.message,
-      });
-    },
-  });
-
-  const stepUpMutation = useMutation({
-    mutationFn: () =>
-      api("/auth/step-up", {
-        method: "POST",
-        json: {
-          password: stepUpForm.password,
-          code: stepUpForm.code.trim() || undefined,
-        },
-      }),
-    onSuccess: () => {
-      toast({ kind: "success", title: "Identidade confirmada" });
-      const tid = pendingImpersonateId || impTarget?.id;
-      if (tid) impersonateMutation.mutate(tid);
-    },
-    onError: (e: Error) =>
-      toast({ kind: "error", title: "Confirmação falhou", description: e.message }),
-  });
-
-  const patchMutation = useMutation({
-    mutationFn: (payload: { id: string; json: Record<string, unknown> }) =>
-      api(`/admin/tenants/${payload.id}`, { method: "PATCH", json: payload.json }),
-    onSuccess: () => {
-      invalidate();
-      closeAction();
-      toast({ kind: "success", title: "Alterações salvas" });
-    },
-    onError: (e: Error) =>
-      toast({ kind: "error", title: "Não foi possível concluir", description: e.message }),
-  });
-
-  const paymentMutation = useMutation({
-    mutationFn: (payload: { id: string; json: Record<string, unknown> }) =>
-      api(`/admin/tenants/${payload.id}/payments`, {
-        method: "POST",
-        json: payload.json,
-      }),
-    onSuccess: () => {
-      invalidate();
-      closeAction();
-      toast({ kind: "success", title: "Pagamento registrado" });
-    },
-    onError: (e: Error) =>
-      toast({ kind: "error", title: "Falha ao registrar", description: e.message }),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (payload: { id: string; confirmName: string; reason?: string }) =>
-      api(`/admin/tenants/${payload.id}`, {
-        method: "DELETE",
-        json: {
-          confirmName: payload.confirmName,
-          reason: payload.reason,
-          mode: "soft",
-        },
-      }),
-    onSuccess: () => {
-      invalidate();
-      closeAction();
-      toast({
-        kind: "success",
-        title: "Exclusão solicitada",
-        description: "Dados preservados. Acesso bloqueado até processo definitivo.",
-      });
-    },
-    onError: (e: Error) =>
-      toast({ kind: "error", title: "Não foi possível concluir", description: e.message }),
-  });
-
-  const plans = selectablePlansForCompany(plansQuery.data || []);
-  const freePlanId = defaultCompanyPlanId(plans);
-
-  // Garante Gratuito como valor selecionado assim que o catálogo carrega
-  useEffect(() => {
-    if (!freePlanId) return;
-    setForm((f) => {
-      if (f.planId && f.planId !== freePlanId) return f;
-      if (f.planId === freePlanId) return f;
-      return { ...f, planId: freePlanId };
-    });
-  }, [freePlanId]);
-
-  const planOptions = plans.map((p) => {
-    const isFree =
-      (p.slug || "").toLowerCase() === "free" ||
-      p.name.trim().toLowerCase() === "gratuito";
-    return {
-      value: p.id,
-      label: planSelectLabel(p, { asDefault: isFree }),
-    };
-  });
   const items = tenantsQuery.data?.items || [];
   const summary = tenantsQuery.data?.summary;
   const totalPages = tenantsQuery.data?.totalPages || 1;
+  const total = tenantsQuery.data?.total || 0;
+
+  const hasActiveFilters = Boolean(
+    debouncedSearch.trim() ||
+      statusFilter !== "ALL" ||
+      financialFilter !== "ALL" ||
+      planFilter !== "ALL"
+  );
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
@@ -543,46 +295,40 @@ export default function AdminCompaniesPage() {
     return (
       <AdminErrorState
         title="Não foi possível carregar as empresas"
-        description="Tente novamente em instantes."
+        description="Verifique sua conexão e tente novamente."
         onRetry={() => void tenantsQuery.refetch()}
       />
     );
   }
 
-  const actionPending =
-    patchMutation.isPending || paymentMutation.isPending || deleteMutation.isPending;
-
-  const openCreateCompany = () => {
-    setForm((f) => ({
-      ...f,
-      planId: f.planId || freePlanId || "",
-      forceSimilarName: false,
-    }));
-    setOpenCreate(true);
-  };
-
   return (
     <div className="space-y-5">
+      {/* 1. Header */}
       <AdminPageHeader
         title="Empresas"
         description={
-          tenantsQuery.data?.total != null
-            ? `${tenantsQuery.data.total} empresa${tenantsQuery.data.total === 1 ? "" : "s"} na plataforma`
-            : undefined
+          summary
+            ? `${summary.total} ${summary.total === 1 ? "empresa cadastrada" : "empresas cadastradas"} · ${summary.active} ${summary.active === 1 ? "ativa" : "ativas"}`
+            : "Gerencie empresas, contratos, planos e permissões de acesso."
         }
         actions={
-          <button type="button" className="admin-btn-primary" onClick={openCreateCompany}>
+          <button
+            type="button"
+            className="admin-btn-primary"
+            onClick={() => setOpenCreate(true)}
+          >
             <Plus className="h-3.5 w-3.5" strokeWidth={2} /> Nova empresa
           </button>
         }
       />
 
+      {/* 2. KPIs */}
       {summary ? (
         <MetricGrid cols={4}>
           <MetricCard
-            label="Total"
+            label="Total de empresas"
             value={summary.total}
-            hint={`${summary.active} ativas`}
+            hint={`${summary.active} ${summary.active === 1 ? "empresa ativa" : "empresas ativas"}`}
             icon={<Building2 className="h-4 w-4" />}
             tone="brand"
             compact
@@ -590,226 +336,386 @@ export default function AdminCompaniesPage() {
           <MetricCard
             label="Em atraso"
             value={summary.overdue}
-            hint={summary.needsAttention > 0 ? `${summary.needsAttention} precisam atenção` : "Financeiro"}
+            hint={
+              summary.overdue === 0
+                ? "Nenhuma cobrança em atraso"
+                : `${summary.overdue} com pendência financeira`
+            }
             icon={<AlertTriangle className="h-4 w-4" />}
             tone={summary.overdue > 0 ? "danger" : "neutral"}
             compact
           />
           <MetricCard
-            label="Trial"
+            label="Em período trial"
             value={summary.trial}
-            hint={summary.dueIn7Days > 0 ? `${summary.dueIn7Days} vencem em 7 dias` : "Em período de teste"}
-            tone="warning"
+            hint={
+              summary.trial === 0
+                ? "Nenhum trial em vigor"
+                : `${summary.trial} ${summary.trial === 1 ? "trial ativo" : "trials ativos"}`
+            }
+            icon={<Clock className="h-4 w-4" />}
+            tone={summary.trial > 0 ? "warning" : "neutral"}
             compact
           />
           <MetricCard
             label="Suspensas / bloqueadas"
-            value={summary.suspended + summary.blocked}
+            value={summary.suspendedBlocked ?? summary.suspended + summary.blocked}
             hint={`${summary.suspended} suspensas · ${summary.blocked} bloqueadas`}
+            icon={<ShieldOff className="h-4 w-4" />}
             tone={summary.suspended + summary.blocked > 0 ? "warning" : "neutral"}
             compact
           />
         </MetricGrid>
       ) : null}
 
+      {/* 3. Filtros */}
       <AdminFilterBar>
-        <AdminSearchInput
-          id="admin-companies-search"
-          value={search}
-          onChange={setSearch}
-          placeholder="Buscar por nome, e-mail ou slug…"
-        />
-        <AdminSelectFilter
-          label="Status"
+        <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
+          <input
+            id="admin-companies-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome, e-mail ou slug…"
+            className="w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] py-1.5 pl-8 pr-7 text-[13px] text-white placeholder-white/35 focus:border-violet-500/50 focus:outline-none"
+          />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setDebouncedSearch("");
+                setParam("q", "");
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+
+        <select
+          className="rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[12.5px] text-white/90 focus:border-violet-500/50 focus:outline-none"
           value={statusFilter}
-          onChange={setStatusFilter}
-          options={[
-            { value: "ALL", label: "Todos" },
-            { value: "ACTIVE", label: "Ativas" },
-            { value: "TRIAL", label: "Trial" },
-            { value: "BLOCKED", label: "Bloqueadas" },
-            { value: "SUSPENDED", label: "Suspensas" },
-            { value: "CANCELLED", label: "Canceladas" },
-            { value: "PENDING_DELETION", label: "Exclusão agendada" },
-          ]}
-        />
-        <AdminSelectFilter
-          label="Financeiro"
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setParam("status", e.target.value);
+          }}
+        >
+          <option value="ALL">Status: Todos</option>
+          <option value="ACTIVE">Ativas</option>
+          <option value="TRIAL">Trial</option>
+          <option value="BLOCKED">Bloqueadas</option>
+          <option value="SUSPENDED">Suspensas</option>
+          <option value="CANCELLED">Canceladas</option>
+          <option value="PENDING_DELETION">Exclusão agendada</option>
+        </select>
+
+        <select
+          className="rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[12.5px] text-white/90 focus:border-violet-500/50 focus:outline-none"
           value={financialFilter}
-          onChange={setFinancialFilter}
-          options={financialFilterOptions.map((o) =>
-            o.value === "ALL" ? { value: "ALL", label: "Todos" } : o
-          )}
-        />
-        <AdminSelectFilter
-          label="Plano"
+          onChange={(e) => {
+            setFinancialFilter(e.target.value);
+            setParam("financial", e.target.value);
+          }}
+        >
+          <option value="ALL">Financeiro: Todos</option>
+          {Object.entries(financialLabelMap).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-1.5 text-[12.5px] text-white/90 focus:border-violet-500/50 focus:outline-none"
           value={planFilter}
-          onChange={setPlanFilter}
-          options={[{ value: "ALL", label: "Todos" }, ...planOptions]}
-        />
+          onChange={(e) => {
+            setPlanFilter(e.target.value);
+            setParam("planId", e.target.value);
+          }}
+        >
+          <option value="ALL">Plano: Todos</option>
+          {(plansQuery.data || []).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            className="admin-btn-ghost h-8 px-2.5 text-[12px] text-white/60 hover:text-white"
+            onClick={clearAllFilters}
+          >
+            Limpar filtros
+          </button>
+        ) : null}
       </AdminFilterBar>
 
+      {/* 4. Listagem / Tabela */}
       <AdminSection flush>
         {items.length === 0 ? (
-          <AdminEmptyState
-            icon={<Building2 className="h-5 w-5" strokeWidth={1.5} />}
-            title="Nenhuma empresa encontrada"
-            description="Ajuste os filtros ou use Nova empresa no topo da página."
-          />
+          hasActiveFilters ? (
+            <AdminEmptyState
+              icon={<Building2 className="h-5 w-5" strokeWidth={1.5} />}
+              title="Nenhuma empresa encontrada"
+              description="Nenhuma empresa corresponde aos filtros aplicados."
+              action={
+                <button
+                  type="button"
+                  className="admin-btn-secondary text-[12px]"
+                  onClick={clearAllFilters}
+                >
+                  Limpar filtros
+                </button>
+              }
+            />
+          ) : (
+            <AdminEmptyState
+              icon={<Building2 className="h-5 w-5" strokeWidth={1.5} />}
+              title="Nenhuma empresa cadastrada"
+              description="Comece cadastrando a primeira empresa na plataforma."
+              action={
+                <button
+                  type="button"
+                  className="admin-btn-primary text-[12px]"
+                  onClick={() => setOpenCreate(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Nova empresa
+                </button>
+              }
+            />
+          )
         ) : (
           <>
-            <div className="admin-table-wrap overflow-x-auto">
-              <table className="admin-table w-full min-w-[920px] border-collapse text-left text-[13px]">
-                <thead>
-                  <tr className="border-b border-white/[0.06]">
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
-                      Empresa
-                    </th>
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
-                      Plano / valor
-                    </th>
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
-                      Financeiro
-                    </th>
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
-                      Vencimento
-                    </th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
-                      Ações
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((t) => {
-                    const st = t.statusLabel || statusLabel[t.status] || t.status;
-                    const finLabel = t.financialStatusLabel || "—";
-                    const price =
-                      t.contractedPrice != null && Number.isFinite(Number(t.contractedPrice))
-                        ? formatCurrency(t.contractedPrice)
-                        : null;
-                    return (
-                      <tr
-                        key={t.id}
-                        className="border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.03]"
-                      >
-                        <td className="px-4 py-3 align-middle">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <CompanyMark
-                              name={t.name}
-                              logoUrl={t.logoUrl}
-                              color={t.primaryColor}
-                            />
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-[13.5px] font-semibold text-white">
-                                  {t.name}
-                                </p>
-                                <StatusBadge tone={statusToTone(t.status)} dot>
-                                  {st}
-                                </StatusBadge>
-                                {t.needsAttention && t.financialStatus === "OVERDUE" ? (
-                                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-red-300">
-                                    <AlertTriangle className="h-3 w-3" />
-                                    {t.daysOverdueLabel || "Atrasada"}
-                                  </span>
-                                ) : null}
+            {/* Tabela Desktop */}
+            <div className="hidden sm:block">
+              <div className="admin-table-wrap overflow-x-auto">
+                <table className="admin-table w-full min-w-[880px] border-collapse text-left text-[13px]">
+                  <thead>
+                    <tr className="border-b border-white/[0.06]">
+                      <th className="w-[38%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                        Empresa
+                      </th>
+                      <th className="w-[20%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                        Plano / valor
+                      </th>
+                      <th className="w-[16%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                        Financeiro
+                      </th>
+                      <th className="w-[14%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                        Vencimento
+                      </th>
+                      <th className="w-[12%] px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((t) => {
+                      const st = t.statusLabel || statusLabel[t.status] || t.status;
+                      const finLabel = t.financialStatusLabel || financialLabelMap[t.financialStatus || ""] || "—";
+                      const planInfo = formatPlanPriceColumn(t);
+                      const dueDate = formatDueDate(t);
+                      const userCount = t._count?.members ?? 1;
+                      const contactCount = t._count?.contacts ?? 0;
+                      const adminEmail = t.primaryAdmin?.email || "Sem administrador";
+
+                      return (
+                        <tr
+                          key={t.id}
+                          className="border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
+                        >
+                          {/* 1. Empresa */}
+                          <td className="px-4 py-3 align-middle">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-[13px] font-bold uppercase tracking-wider"
+                                style={{
+                                  backgroundColor: t.primaryColor
+                                    ? `${t.primaryColor}22`
+                                    : "rgba(139, 92, 246, 0.15)",
+                                  color: t.primaryColor || "#c4b5fd",
+                                  border: `1px solid ${t.primaryColor ? `${t.primaryColor}44` : "rgba(139, 92, 246, 0.25)"}`,
+                                }}
+                              >
+                                {getInitials(t.name)}
                               </div>
-                              <p className="mt-1 text-[12px] leading-snug text-gray-500">
-                                <span className="tabular-nums">
-                                  {t._count?.members ?? 0} usuário
-                                  {(t._count?.members ?? 0) === 1 ? "" : "s"}
-                                </span>
-                                <span className="text-gray-600"> · </span>
-                                <span className="tabular-nums">
-                                  {t._count?.contacts ?? 0} contatos
-                                </span>
-                                {t.primaryAdmin?.email ? (
-                                  <>
-                                    <span className="text-gray-600"> · </span>
-                                    <span className="truncate">{t.primaryAdmin.email}</span>
-                                  </>
-                                ) : null}
-                              </p>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Link
+                                    href={`/admin/tenants/${t.id}`}
+                                    className="truncate font-semibold text-white transition-colors hover:text-violet-300"
+                                  >
+                                    {t.name}
+                                  </Link>
+                                  <StatusBadge tone={statusToTone(t.status)} dot>
+                                    {st}
+                                  </StatusBadge>
+                                </div>
+                                <p className="mt-0.5 truncate text-[11.5px] text-gray-400">
+                                  {userCount} {userCount === 1 ? "usuário" : "usuários"} · {contactCount}{" "}
+                                  {contactCount === 1 ? "contato" : "contatos"} ·{" "}
+                                  <span className="text-gray-300">{adminEmail}</span>
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <p className="truncate text-[13px] font-medium text-gray-200">
-                            {t.plan?.name || "Sem plano"}
-                          </p>
-                          <p className="mt-0.5 text-[12px] tabular-nums text-gray-500">
-                            {price ? `${price}/mês` : "Valor não definido"}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <StatusBadge tone={financialToTone(t.financialStatus)}>
-                            {finLabel}
-                          </StatusBadge>
-                          {t.daysOverdue != null && t.daysOverdue > 0 ? (
-                            <p className="mt-1.5 text-[11px] font-medium text-red-300">
-                              {t.daysOverdueLabel}
+                          </td>
+
+                          {/* 2. Plano / Valor */}
+                          <td className="px-4 py-3 align-middle">
+                            <p className="truncate text-[13px] font-medium text-gray-200">
+                              {planInfo.planName}
                             </p>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-[12px]">
-                          {t.billingDueDayLabel ? (
-                            <>
-                              <p className="font-medium text-gray-300">{t.billingDueDayLabel}</p>
-                              <p className="mt-0.5 text-gray-500">
-                                Próx.{" "}
-                                <span className="tabular-nums text-gray-300">
-                                  {formatDateOnly(t.nextDueAt)}
-                                </span>
+                            <p className="mt-0.5 text-[11.5px] tabular-nums text-gray-400">
+                              {planInfo.priceText}
+                            </p>
+                          </td>
+
+                          {/* 3. Financeiro */}
+                          <td className="px-4 py-3 align-middle">
+                            <StatusBadge tone={financialToTone(t.financialStatus)}>
+                              {finLabel}
+                            </StatusBadge>
+                            {t.daysOverdue != null && t.daysOverdue > 0 ? (
+                              <p className="mt-1 text-[11px] font-medium text-red-300">
+                                {t.daysOverdueLabel || `${t.daysOverdue} dias em atraso`}
                               </p>
-                            </>
-                          ) : t.nextDueAt ? (
-                            <p className="text-gray-500">
-                              Próx.{" "}
-                              <span className="tabular-nums text-gray-300">
-                                {formatDateOnly(t.nextDueAt)}
-                              </span>
-                            </p>
-                          ) : (
-                            <p className="text-gray-600">Sem vencimento</p>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right">
+                            ) : null}
+                          </td>
+
+                          {/* 4. Vencimento */}
+                          <td className="px-4 py-3 align-middle text-[12.5px] text-gray-300">
+                            {dueDate}
+                          </td>
+
+                          {/* 5. Ações */}
+                          <td className="px-4 py-3 align-middle text-right">
+                            <Link
+                              href={`/admin/tenants/${t.id}`}
+                              className="admin-btn-secondary inline-flex h-8 items-center gap-1 px-3 text-[12px]"
+                            >
+                              Gerenciar
+                              <ArrowRight className="h-3 w-3 opacity-60" />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Visualização Mobile (Cards) */}
+            <div className="grid gap-3 p-3 sm:hidden">
+              {items.map((t) => {
+                const planInfo = formatPlanPriceColumn(t);
+                const dueDate = formatDueDate(t);
+                const userCount = t._count?.members ?? 1;
+                const contactCount = t._count?.contacts ?? 0;
+                const adminEmail = t.primaryAdmin?.email || "Sem administrador";
+                const st = t.statusLabel || statusLabel[t.status] || t.status;
+                const finLabel = t.financialStatusLabel || financialLabelMap[t.financialStatus || ""] || "—";
+
+                return (
+                  <div
+                    key={t.id}
+                    className="flex flex-col gap-3 rounded-xl border border-white/[0.08] bg-white/[0.025] p-3.5"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-[13px] font-bold uppercase tracking-wider"
+                        style={{
+                          backgroundColor: t.primaryColor
+                            ? `${t.primaryColor}22`
+                            : "rgba(139, 92, 246, 0.15)",
+                          color: t.primaryColor || "#c4b5fd",
+                          border: `1px solid ${t.primaryColor ? `${t.primaryColor}44` : "rgba(139, 92, 246, 0.25)"}`,
+                        }}
+                      >
+                        {getInitials(t.name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
                           <Link
                             href={`/admin/tenants/${t.id}`}
-                            className="admin-btn-secondary h-8 px-3 text-[12px]"
+                            className="truncate text-[14px] font-semibold text-white"
                           >
-                            Gerenciar
+                            {t.name}
                           </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          <StatusBadge tone={statusToTone(t.status)} dot>
+                            {st}
+                          </StatusBadge>
+                        </div>
+                        <p className="mt-0.5 truncate text-[11px] text-gray-400">
+                          {userCount} usu. · {contactCount} cont. · {adminEmail}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 rounded-lg bg-white/[0.02] p-2 text-[12px]">
+                      <div>
+                        <span className="block text-[10.5px] uppercase tracking-wider text-gray-500">
+                          Plano
+                        </span>
+                        <span className="font-medium text-white/90">{planInfo.planName}</span>
+                        <span className="block text-[11px] text-gray-400">{planInfo.priceText}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10.5px] uppercase tracking-wider text-gray-500">
+                          Financeiro
+                        </span>
+                        <StatusBadge tone={financialToTone(t.financialStatus)}>
+                          {finLabel}
+                        </StatusBadge>
+                        <span className="mt-0.5 block text-[11px] text-gray-400">{dueDate}</span>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/admin/tenants/${t.id}`}
+                      className="admin-btn-secondary h-8 w-full justify-center text-[12px]"
+                    >
+                      Gerenciar empresa
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                );
+              })}
             </div>
+
+            {/* Paginação */}
             {totalPages > 1 ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] px-4 py-3 text-[12px] text-gray-500">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] px-4 py-3 text-[12px] text-gray-400">
                 <span>
-                  {tenantsQuery.data?.total || 0} empresa
-                  {(tenantsQuery.data?.total || 0) === 1 ? "" : "s"}
+                  {total} {total === 1 ? "empresa" : "empresas"} no total
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="admin-btn-ghost h-8 px-3 disabled:opacity-40"
+                    className="admin-btn-ghost h-8 px-3 text-[12px] disabled:opacity-40"
                     disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    onClick={() => {
+                      setPage((p) => Math.max(1, p - 1));
+                      setParam("page", String(Math.max(1, page - 1)));
+                    }}
                   >
                     Anterior
                   </button>
-                  <span className="tabular-nums text-gray-400">
-                    {page}/{totalPages}
+                  <span className="text-gray-300">
+                    Página {page} de {totalPages}
                   </span>
                   <button
                     type="button"
-                    className="admin-btn-ghost h-8 px-3 disabled:opacity-40"
+                    className="admin-btn-ghost h-8 px-3 text-[12px] disabled:opacity-40"
                     disabled={page >= totalPages}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => {
+                      setPage((p) => Math.min(totalPages, p + 1));
+                      setParam("page", String(Math.min(totalPages, page + 1)));
+                    }}
                   >
                     Próxima
                   </button>
@@ -820,819 +726,313 @@ export default function AdminCompaniesPage() {
         )}
       </AdminSection>
 
-      {/* Criar */}
-      <Modal
+      {/* 5. Modal Nova Empresa */}
+      <CreateCompanyModal
         open={openCreate}
+        plans={plansQuery.data || []}
         onClose={() => setOpenCreate(false)}
-        title="Nova empresa"
-        size="lg"
-        variant="contextual"
-        initialFocus="panel"
-        footer={
-          <DialogFooter>
-            <button
-              type="button"
-              className="admin-btn-secondary"
-              onClick={() => setOpenCreate(false)}
-              disabled={createMutation.isPending}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              form="nf-admin-create-tenant"
-              className="admin-btn-primary"
-              disabled={createMutation.isPending}
-            >
-              {createMutation.isPending ? "Criando…" : "Criar empresa"}
-            </button>
-          </DialogFooter>
+        onCreated={(id) => {
+          setOpenCreate(false);
+          void qc.invalidateQueries({ queryKey: ["admin-tenants"] });
+          void qc.invalidateQueries({ queryKey: ["admin-overview"] });
+          toast({
+            title: "Empresa criada",
+            description: "A empresa foi cadastrada e já está disponível para gerenciamento.",
+            kind: "success",
+          });
+          router.push(`/admin/tenants/${id}`);
+        }}
+        onError={(msg) =>
+          toast({
+            title: "Não foi possível criar a empresa",
+            description: msg,
+            kind: "error",
+          })
         }
-      >
-        <form
-          id="nf-admin-create-tenant"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
-            void createMutation.mutateAsync();
-          }}
-          className="space-y-5"
-        >
-          <FormSection title="Empresa" surface>
-            <FormField label="Nome" required>
-              <input
-                className="input"
-                value={form.name}
-                onChange={(e) =>
-                  setForm({ ...form, name: e.target.value, forceSimilarName: false })
-                }
-                required
-                placeholder="Ex.: Fm Conteúdos"
-              />
-            </FormField>
-          </FormSection>
+      />
+    </div>
+  );
+}
 
-          <FormSection title="Administrador inicial" surface>
-            <FieldGrid>
-              <FormField label="Nome" required>
+function CreateCompanyModal({
+  open,
+  plans,
+  onClose,
+  onCreated,
+  onError,
+}: {
+  open: boolean;
+  plans: PlanRow[];
+  onClose: () => void;
+  onCreated: (id: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const [force, setForce] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const eligiblePlans = useMemo(() => selectablePlansForCompany(plans), [plans]);
+  const defaultPlanId = useMemo(() => defaultCompanyPlanId(eligiblePlans), [eligiblePlans]);
+  const [selectedPlanId, setSelectedPlanId] = useState(defaultPlanId);
+
+  useEffect(() => {
+    if (open) {
+      setForce(false);
+      setShowPassword(false);
+      setFieldErrors({});
+      setSelectedPlanId(defaultPlanId);
+    }
+  }, [open, defaultPlanId]);
+
+  const planOptions: SelectOption[] = useMemo(
+    () =>
+      eligiblePlans.map((p) => ({
+        value: p.id,
+        label: planSelectLabel(p),
+      })),
+    [eligiblePlans]
+  );
+
+  const mut = useMutation({
+    mutationFn: (payload: {
+      name: string;
+      adminName: string;
+      adminEmail: string;
+      adminPassword?: string;
+      planId?: string;
+      forceSimilarName?: boolean;
+    }) =>
+      api<{ id: string }>("/admin/tenants", {
+        method: "POST",
+        json: payload,
+      }),
+    onSuccess: (res) => onCreated(res.id),
+    onError: (e) => {
+      if (e instanceof ApiError) {
+        if (e.code === "SIMILAR_TENANT_NAME") {
+          setForce(true);
+          setFieldErrors((prev) => ({ ...prev, name: e.message }));
+          onError(e.message);
+          return;
+        }
+        if (e.code === "INVALID_NAME" || e.code === "SLUG_TAKEN") {
+          setFieldErrors((prev) => ({ ...prev, name: e.message }));
+        } else if (e.code === "INVALID_EMAIL") {
+          setFieldErrors((prev) => ({ ...prev, adminEmail: e.message }));
+        } else if (e.code === "INVALID_ADMIN_NAME") {
+          setFieldErrors((prev) => ({ ...prev, adminName: e.message }));
+        } else if (e.code === "WEAK_PASSWORD") {
+          setFieldErrors((prev) => ({ ...prev, adminPassword: e.message }));
+        } else if (e.code === "PLAN_UNAVAILABLE") {
+          setFieldErrors((prev) => ({ ...prev, planId: e.message }));
+        }
+      }
+      onError(e instanceof Error ? e.message : "Erro ao cadastrar a empresa.");
+    },
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFieldErrors({});
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get("name") || "").trim();
+    const adminName = String(fd.get("adminName") || "").trim();
+    const adminEmail = String(fd.get("adminEmail") || "").trim();
+    const adminPassword = String(fd.get("adminPassword") || "").trim();
+
+    const errs: Record<string, string> = {};
+    if (!name || name.length < 2) errs.name = "Nome da empresa deve ter pelo menos 2 caracteres.";
+    if (!adminName || adminName.length < 2)
+      errs.adminName = "Nome do administrador deve ter pelo menos 2 caracteres.";
+    if (!adminEmail || !adminEmail.includes("@")) errs.adminEmail = "E-mail inválido.";
+    if (adminPassword && adminPassword.length < 8)
+      errs.adminPassword = "A senha deve ter pelo menos 8 caracteres.";
+
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
+    }
+
+    mut.mutate({
+      name,
+      adminName,
+      adminEmail,
+      adminPassword: adminPassword || undefined,
+      planId: selectedPlanId || undefined,
+      forceSimilarName: force,
+    });
+  }
+
+  const inputStyle =
+    "w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 py-2 text-[13px] text-white placeholder-white/35 focus:border-violet-500/60 focus:outline-none";
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Nova empresa"
+      description="Cadastre a empresa, o administrador inicial e o plano de acesso."
+      size="md"
+      footer={
+        <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
+          <button type="button" className="admin-btn-ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            form="create-company-form"
+            className="admin-btn-primary"
+            disabled={mut.isPending}
+          >
+            {mut.isPending ? "Criando empresa…" : "Criar empresa"}
+          </button>
+        </div>
+      }
+    >
+      <form id="create-company-form" className="space-y-4 pt-1" onSubmit={onSubmit}>
+        {/* Seção 1: INFORMAÇÕES DA EMPRESA */}
+        <div>
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-violet-400">
+            Informações da empresa
+          </h3>
+          <div className="mt-2.5">
+            <label className="block text-[12px] font-medium text-gray-300 mb-1">
+              Nome da empresa
+            </label>
+            <input
+              name="name"
+              required
+              minLength={2}
+              placeholder="Ex.: Nexus Soluções"
+              className={cn(
+                inputStyle,
+                fieldErrors.name && "border-rose-500/60 focus:border-rose-500"
+              )}
+            />
+            {fieldErrors.name ? (
+              <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.name}</p>
+            ) : null}
+            {force ? (
+              <p className="mt-1 text-[11.5px] text-amber-300">
+                Nome semelhante detectado. Clique em &quot;Criar empresa&quot; novamente para confirmar.
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Divisor sutil */}
+        <div className="border-t border-white/[0.06]" />
+
+        {/* Seção 2: ADMINISTRADOR INICIAL */}
+        <div>
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-violet-400">
+            Administrador inicial
+          </h3>
+          <div className="mt-2.5 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-[12px] font-medium text-gray-300 mb-1">
+                  Nome do administrador
+                </label>
                 <input
-                  className="input"
-                  value={form.adminName}
-                  onChange={(e) => setForm({ ...form, adminName: e.target.value })}
+                  name="adminName"
                   required
-                  placeholder="Ex.: Maria Silva"
+                  minLength={2}
+                  placeholder="Ex.: Luiz Otávio"
+                  className={cn(
+                    inputStyle,
+                    fieldErrors.adminName && "border-rose-500/60 focus:border-rose-500"
+                  )}
                 />
-              </FormField>
-              <FormField label="E-mail" required>
+                {fieldErrors.adminName ? (
+                  <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.adminName}</p>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium text-gray-300 mb-1">
+                  E-mail
+                </label>
                 <input
-                  className="input"
+                  name="adminEmail"
                   type="email"
-                  value={form.adminEmail}
-                  onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
                   required
                   placeholder="admin@empresa.com"
+                  className={cn(
+                    inputStyle,
+                    fieldErrors.adminEmail && "border-rose-500/60 focus:border-rose-500"
+                  )}
                 />
-              </FormField>
-            </FieldGrid>
-            <FormField
-              label="Senha inicial"
-              hint="Opcional se o e-mail já existir."
-            >
-              <input
-                className="input"
-                type="password"
-                value={form.adminPassword}
-                onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
-                minLength={8}
-                placeholder="Mínimo 8 caracteres"
-              />
-            </FormField>
-          </FormSection>
+                {fieldErrors.adminEmail ? (
+                  <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.adminEmail}</p>
+                ) : null}
+              </div>
+            </div>
 
-          <FormSection title="Plano" surface>
-            <FormField label="Plano inicial">
-              <Select
-                value={form.planId || freePlanId || ""}
-                onChange={(planId) => setForm({ ...form, planId })}
-                options={
-                  planOptions.length > 0
-                    ? planOptions
-                    : freePlanId
-                      ? [{ value: freePlanId, label: "Gratuito" }]
-                      : [{ value: "", label: "Carregando…" }]
-                }
-                aria-label="Plano"
-              />
-            </FormField>
-          </FormSection>
-
-          {form.forceSimilarName ? (
-            <ConsequenceBanner tone="warning">
-              Já existe empresa com nome semelhante. Confirme criando novamente se for
-              intencional.
-            </ConsequenceBanner>
-          ) : null}
-        </form>
-      </Modal>
-
-      {/* Impersonar */}
-      <Modal
-        open={!!impTarget && !stepUpOpen}
-        onClose={() => setImpTarget(null)}
-        title="Acessar como esta empresa?"
-        description="Ações serão registradas. A Administração fica bloqueada durante o acesso."
-        variant="confirm"
-        size="sm"
-        footer={
-          <DialogFooter>
-            <button
-              type="button"
-              className="admin-btn-secondary"
-              onClick={() => setImpTarget(null)}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary"
-              disabled={impersonateMutation.isPending || !impTarget}
-              onClick={() => impTarget && impersonateMutation.mutate(impTarget.id)}
-            >
-              {impersonateMutation.isPending ? "Acessando…" : "Acessar empresa"}
-            </button>
-          </DialogFooter>
-        }
-      >
-        <p className="text-sm text-ink-secondary dark:text-gray-300">
-          Você navegará como usuário de{" "}
-          <strong className="text-ink dark:text-white">{impTarget?.name}</strong>.
-        </p>
-      </Modal>
-
-      {/* Step-up: reconfirmação de identidade */}
-      <Modal
-        open={stepUpOpen}
-        onClose={() => {
-          if (stepUpMutation.isPending || impersonateMutation.isPending) return;
-          setStepUpOpen(false);
-          setStepUpForm({ password: "", code: "" });
-        }}
-        title="Confirme sua identidade"
-        description="Por segurança, confirme a senha da conta de superadministrador para acessar a empresa."
-        variant="soft"
-        size="sm"
-        preventClose={stepUpMutation.isPending || impersonateMutation.isPending}
-        footer={
-          <DialogFooter>
-            <button
-              type="button"
-              className="admin-btn-secondary"
-              disabled={stepUpMutation.isPending}
-              onClick={() => {
-                setStepUpOpen(false);
-                setStepUpForm({ password: "", code: "" });
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary"
-              disabled={
-                stepUpMutation.isPending ||
-                impersonateMutation.isPending ||
-                !stepUpForm.password
-              }
-              onClick={() => stepUpMutation.mutate()}
-            >
-              {stepUpMutation.isPending || impersonateMutation.isPending
-                ? "Confirmando…"
-                : "Confirmar e acessar"}
-            </button>
-          </DialogFooter>
-        }
-      >
-        <div className="space-y-3">
-          <FormField label="Senha" required>
-            <input
-              className="input"
-              type="password"
-              autoComplete="current-password"
-              value={stepUpForm.password}
-              onChange={(e) =>
-                setStepUpForm((f) => ({ ...f, password: e.target.value }))
-              }
-            />
-          </FormField>
-          <FormField
-            label="Código MFA"
-            hint="Obrigatório se a autenticação em duas etapas estiver ativa."
-          >
-            <input
-              className="input"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="000000"
-              value={stepUpForm.code}
-              onChange={(e) =>
-                setStepUpForm((f) => ({ ...f, code: e.target.value }))
-              }
-            />
-          </FormField>
-        </div>
-      </Modal>
-
-      {/* Registrar pagamento — FINANCIAL ACTION */}
-      <Modal
-        open={actionKind === "payment" && !!actionTarget}
-        onClose={closeAction}
-        title="Registrar pagamento"
-        description={actionTarget?.name}
-        size="lg"
-        variant="contextual"
-        initialFocus="panel"
-        footer={
-          <DialogFooter>
-            <button type="button" className="admin-btn-secondary" onClick={closeAction}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary"
-              disabled={actionPending || !payForm.amount}
-              onClick={() => {
-                if (!actionTarget) return;
-                const amount = Number(String(payForm.amount).replace(",", "."));
-                if (!Number.isFinite(amount) || amount <= 0) {
-                  toast({ kind: "error", title: "Informe um valor válido" });
-                  return;
-                }
-                const paidAt = payForm.paidAt
-                  ? new Date(`${payForm.paidAt}T12:00:00.000Z`).toISOString()
-                  : undefined;
-                paymentMutation.mutate({
-                  id: actionTarget.id,
-                  json: {
-                    amount,
-                    paidAt,
-                    referencePeriod: payForm.referencePeriod || null,
-                    method: payForm.method || null,
-                    notes: payForm.notes || null,
-                    advanceDueDate: true,
-                  },
-                });
-              }}
-            >
-              {paymentMutation.isPending ? "Registrando…" : "Registrar pagamento"}
-            </button>
-          </DialogFooter>
-        }
-      >
-        <div className="space-y-5">
-          {actionTarget ? (
-            <EntitySummary
-              title={actionTarget.name}
-              subtitle={
-                actionTarget.plan?.name
-                  ? `Plano ${actionTarget.plan.name}`
-                  : "Sem plano"
-              }
-              meta={[
-                {
-                  label: "Valor contratado",
-                  value:
-                    actionTarget.contractedPrice != null
-                      ? `${formatCurrency(actionTarget.contractedPrice)}/mês`
-                      : "—",
-                },
-                {
-                  label: "Vencimento",
-                  value: actionTarget.billingDueDayLabel
-                    ? actionTarget.billingDueDayLabel
-                    : actionTarget.billingDueDay
-                      ? `Todo dia ${actionTarget.billingDueDay}`
-                      : "—",
-                },
-                {
-                  label: "Situação",
-                  value: actionTarget.financialStatusLabel || "—",
-                },
-                {
-                  label: "Próx. vencimento",
-                  value: actionTarget.nextDueAt
-                    ? formatDateOnly(actionTarget.nextDueAt)
-                    : "—",
-                },
-              ]}
-            />
-          ) : null}
-
-          <FormSection title="Pagamento" surface>
-            <FieldGrid>
-              <FormField label="Valor" required>
-                <MoneyInput
-                  value={payForm.amount}
-                  onChange={(amount) => setPayForm({ ...payForm, amount })}
-                  placeholder="699,00"
+            <div>
+              <label className="block text-[12px] font-medium text-gray-300 mb-0.5">
+                Senha inicial
+              </label>
+              <p className="text-[11px] text-gray-400 mb-1.5">
+                Opcional se o e-mail já possuir conta no NexaFlow (o usuário será vinculado como administrador sem alterar sua senha).
+              </p>
+              <div className="relative">
+                <input
+                  name="adminPassword"
+                  type={showPassword ? "text" : "password"}
+                  minLength={8}
+                  autoComplete="new-password"
+                  placeholder="Mínimo de 8 caracteres (ou deixe em branco se já cadastrado)"
+                  className={cn(
+                    inputStyle,
+                    "pr-9",
+                    fieldErrors.adminPassword && "border-rose-500/60 focus:border-rose-500"
+                  )}
                 />
-              </FormField>
-              <FormField label="Data" required>
-                <DateInput
-                  value={payForm.paidAt}
-                  onChange={(paidAt) => setPayForm({ ...payForm, paidAt })}
-                  aria-label="Data do pagamento"
-                />
-              </FormField>
-            </FieldGrid>
-            <FieldGrid>
-              <FormField label="Referência">
-                <Select
-                  value={payForm.referencePeriod}
-                  onChange={(referencePeriod) =>
-                    setPayForm({ ...payForm, referencePeriod })
-                  }
-                  options={(() => {
-                    const opts: { value: string; label: string }[] = [];
-                    const now = new Date();
-                    for (let i = -2; i <= 6; i++) {
-                      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-                      const y = d.getFullYear();
-                      const m = String(d.getMonth() + 1).padStart(2, "0");
-                      const value = `${y}-${m}`;
-                      const label = d.toLocaleDateString("pt-BR", {
-                        month: "long",
-                        year: "numeric",
-                      });
-                      opts.push({
-                        value,
-                        label: label.charAt(0).toUpperCase() + label.slice(1),
-                      });
-                    }
-                    if (
-                      payForm.referencePeriod &&
-                      !opts.some((o) => o.value === payForm.referencePeriod)
-                    ) {
-                      opts.unshift({
-                        value: payForm.referencePeriod,
-                        label: payForm.referencePeriod,
-                      });
-                    }
-                    return opts;
-                  })()}
-                  aria-label="Referência"
-                />
-              </FormField>
-              <FormField label="Método">
-                <Select
-                  value={payForm.method}
-                  onChange={(method) => setPayForm({ ...payForm, method })}
-                  options={[
-                    { value: "", label: "Não informado" },
-                    { value: "PIX", label: "PIX" },
-                    { value: "TRANSFER", label: "Transferência" },
-                    { value: "BOLETO", label: "Boleto" },
-                    { value: "CARD", label: "Cartão" },
-                    { value: "CASH", label: "Dinheiro" },
-                    { value: "OTHER", label: "Outro" },
-                  ]}
-                  aria-label="Método"
-                />
-              </FormField>
-            </FieldGrid>
-            <FormField label="Observação">
-              <textarea
-                className="input min-h-[64px]"
-                value={payForm.notes}
-                onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
-                placeholder="Opcional"
-              />
-            </FormField>
-          </FormSection>
-        </div>
-      </Modal>
-
-      {/* Alterar vencimento — QUICK ACTION */}
-      <Modal
-        open={actionKind === "due" && !!actionTarget}
-        onClose={closeAction}
-        title="Alterar vencimento"
-        description={actionTarget?.name}
-        size="sm"
-        variant="quick"
-        footer={
-          <DialogFooter>
-            <button type="button" className="admin-btn-secondary" onClick={closeAction}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary"
-              disabled={actionPending}
-              onClick={() => {
-                if (!actionTarget) return;
-                const day = Number(dueDay);
-                if (!Number.isInteger(day) || day < 1 || day > 31) {
-                  toast({ kind: "error", title: "Dia inválido (1–31)" });
-                  return;
-                }
-                patchMutation.mutate({
-                  id: actionTarget.id,
-                  json: { billingDueDay: day },
-                });
-              }}
-            >
-              Salvar vencimento
-            </button>
-          </DialogFooter>
-        }
-      >
-        <div className="space-y-4">
-          {actionTarget ? (
-            <EntitySummary
-              title={actionTarget.name}
-              meta={[
-                {
-                  label: "Atual",
-                  value: actionTarget.billingDueDayLabel
-                    ? actionTarget.billingDueDayLabel
-                    : actionTarget.billingDueDay
-                      ? `Todo dia ${actionTarget.billingDueDay}`
-                      : "—",
-                },
-                {
-                  label: "Próximo",
-                  value: actionTarget.nextDueAt
-                    ? formatDateOnly(actionTarget.nextDueAt)
-                    : "—",
-                },
-              ]}
-            />
-          ) : null}
-          <FormField label="Novo dia">
-            <Select
-              value={dueDay}
-              onChange={setDueDay}
-              options={[5, 10, 15, 20, 25, 1, 28].map((d) => ({
-                value: String(d),
-                label: `Todo dia ${d}`,
-              }))}
-              aria-label="Dia do vencimento"
-            />
-          </FormField>
-        </div>
-      </Modal>
-
-      {/* Alterar plano — FINANCIAL / comparativo */}
-      <Modal
-        open={actionKind === "plan" && !!actionTarget}
-        onClose={closeAction}
-        title="Alterar plano"
-        description={actionTarget?.name}
-        size="md"
-        variant="contextual"
-        initialFocus="panel"
-        footer={
-          <DialogFooter>
-            <button type="button" className="admin-btn-secondary" onClick={closeAction}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary"
-              disabled={actionPending || !planIdEdit}
-              onClick={() => {
-                if (!actionTarget) return;
-                const json: Record<string, unknown> = { planId: planIdEdit };
-                if (priceEdit.trim()) {
-                  const n = Number(String(priceEdit).replace(",", "."));
-                  if (Number.isFinite(n) && n >= 0) json.priceMonthly = n;
-                }
-                patchMutation.mutate({ id: actionTarget.id, json });
-              }}
-            >
-              Confirmar plano
-            </button>
-          </DialogFooter>
-        }
-      >
-        {(() => {
-          const currentPlan = plans.find((p) => p.id === actionTarget?.plan?.id);
-          const nextPlan = plans.find((p) => p.id === planIdEdit);
-          const curUsers = currentPlan?.maxUsers ?? null;
-          const nextUsers = nextPlan?.maxUsers ?? null;
-          const curContacts = currentPlan?.maxContacts ?? null;
-          const nextContacts = nextPlan?.maxContacts ?? null;
-          const curAgents = planLimitAgents(currentPlan);
-          const nextAgents = planLimitAgents(nextPlan);
-          const usageUsers = actionTarget?._count?.members ?? 0;
-          const usageContacts = actionTarget?._count?.contacts ?? 0;
-          const overages: string[] = [];
-          if (nextUsers != null && usageUsers > nextUsers) {
-            overages.push(`${usageUsers} usuários (limite ${nextUsers})`);
-          }
-          if (nextContacts != null && usageContacts > nextContacts) {
-            overages.push(
-              `${usageContacts.toLocaleString("pt-BR")} contatos (limite ${nextContacts.toLocaleString("pt-BR")})`
-            );
-          }
-          const showImpact =
-            !!nextPlan &&
-            (curUsers != null ||
-              nextUsers != null ||
-              curContacts != null ||
-              nextContacts != null ||
-              curAgents != null ||
-              nextAgents != null);
-
-          return (
-            <div className="space-y-4">
-              {actionTarget ? (
-                <EntitySummary
-                  title="Plano atual"
-                  subtitle={actionTarget.plan?.name || "Sem plano"}
-                  meta={[
-                    {
-                      label: "Valor",
-                      value:
-                        actionTarget.contractedPrice != null
-                          ? `${formatCurrency(actionTarget.contractedPrice)}/mês`
-                          : "—",
-                    },
-                    {
-                      label: "Situação",
-                      value: actionTarget.financialStatusLabel || "—",
-                    },
-                  ]}
-                />
-              ) : null}
-              <FormSection title="Novo plano" surface>
-                <FormField label="Plano">
-                  <Select
-                    value={planIdEdit}
-                    onChange={setPlanIdEdit}
-                    options={planOptions}
-                    aria-label="Plano"
-                  />
-                </FormField>
-                <FormField
-                  label="Valor contratado"
-                  hint="Em branco = manter valor atual ou do plano."
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                  aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
                 >
-                  <MoneyInput
-                    value={priceEdit}
-                    onChange={setPriceEdit}
-                    placeholder="699,00"
-                  />
-                </FormField>
-              </FormSection>
-
-              {showImpact ? (
-                <FormSection title="Impacto nos limites" surface>
-                  <dl className="grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-xl border border-black/[0.05] px-3 py-2 dark:border-white/[0.06]">
-                      <dt className="text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">
-                        Usuários
-                      </dt>
-                      <dd className="mt-0.5 text-[13px] font-semibold tabular-nums text-ink dark:text-white">
-                        {formatLimit(curUsers)} → {formatLimit(nextUsers)}
-                      </dd>
-                    </div>
-                    <div className="rounded-xl border border-black/[0.05] px-3 py-2 dark:border-white/[0.06]">
-                      <dt className="text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">
-                        Agentes
-                      </dt>
-                      <dd className="mt-0.5 text-[13px] font-semibold tabular-nums text-ink dark:text-white">
-                        {formatLimit(curAgents)} → {formatLimit(nextAgents)}
-                      </dd>
-                    </div>
-                    <div className="rounded-xl border border-black/[0.05] px-3 py-2 dark:border-white/[0.06]">
-                      <dt className="text-[10px] font-medium uppercase tracking-[0.06em] text-ink-faint">
-                        Contatos
-                      </dt>
-                      <dd className="mt-0.5 text-[13px] font-semibold tabular-nums text-ink dark:text-white">
-                        {formatLimit(curContacts)} → {formatLimit(nextContacts)}
-                      </dd>
-                    </div>
-                  </dl>
-                  {overages.length > 0 ? (
-                    <ConsequenceBanner tone="warning" className="mt-3">
-                      Uso atual excede o novo plano: {overages.join("; ")}. A troca pode
-                      ser bloqueada ou exigir redução de uso.
-                    </ConsequenceBanner>
-                  ) : null}
-                </FormSection>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {fieldErrors.adminPassword ? (
+                <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.adminPassword}</p>
               ) : null}
             </div>
-          );
-        })()}
-      </Modal>
+          </div>
+        </div>
 
-      {/* Bloquear / Suspender / Cancelar / Reativar / Unblock */}
-      <Modal
-        open={
-          !!actionTarget &&
-          (actionKind === "block" ||
-            actionKind === "unblock" ||
-            actionKind === "suspend" ||
-            actionKind === "reactivate" ||
-            actionKind === "cancel_sub")
-        }
-        onClose={closeAction}
-        icon={<ShieldOff className="h-4 w-4" strokeWidth={1.75} />}
-        title={
-          actionKind === "block"
-            ? "Bloquear acesso"
-            : actionKind === "unblock"
-              ? "Desbloquear empresa"
-              : actionKind === "suspend"
-                ? "Suspender empresa"
-                : actionKind === "reactivate"
-                  ? "Reativar empresa"
-                  : "Cancelar assinatura"
-        }
-        description={actionTarget?.name}
-        variant={
-          actionKind === "cancel_sub" || actionKind === "suspend" || actionKind === "block"
-            ? "danger"
-            : "confirm"
-        }
-        size="sm"
-        footer={
-          <DialogFooter>
-            <button type="button" className="admin-btn-secondary" onClick={closeAction}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className={cn( actionKind === "cancel_sub" || actionKind === "suspend" || actionKind === "block" ? "admin-btn-danger" : "admin-btn-primary" )}
-              disabled={
-                actionPending ||
-                ((actionKind === "block" ||
-                  actionKind === "suspend" ||
-                  actionKind === "cancel_sub") &&
-                  !actionReason.trim())
-              }
-              onClick={() => {
-                if (!actionTarget || !actionKind) return;
-                const map: Record<string, string> = {
-                  block: "block",
-                  unblock: "unblock",
-                  suspend: "suspend",
-                  reactivate: "reactivate",
-                  cancel_sub: "cancel_subscription",
-                };
-                const action = map[actionKind];
-                patchMutation.mutate({
-                  id: actionTarget.id,
-                  json: {
-                    action,
-                    suspendReason:
-                      actionKind === "suspend" ? actionReason.trim() : undefined,
-                    blockReason: actionKind === "block" ? actionReason.trim() : undefined,
-                    cancelReason:
-                      actionKind === "cancel_sub" ? actionReason.trim() : undefined,
-                  },
-                });
-              }}
-            >
-              {actionPending
-                ? "Aplicando…"
-                : actionKind === "block"
-                  ? "Bloquear acesso"
-                  : actionKind === "suspend"
-                    ? "Suspender empresa"
-                    : actionKind === "cancel_sub"
-                      ? "Cancelar assinatura"
-                      : actionKind === "reactivate"
-                        ? "Reativar empresa"
-                        : "Desbloquear"}
-            </button>
-          </DialogFooter>
-        }
-      >
-        <div className="space-y-3">
-          {actionTarget ? (
-            <EntitySummary
-              title={actionTarget.name}
-              subtitle={
-                actionTarget.plan?.name
-                  ? `Plano ${actionTarget.plan.name}`
-                  : undefined
-              }
-              meta={[
-                {
-                  label: "Status",
-                  value:
-                    actionTarget.statusLabel ||
-                    statusLabel[actionTarget.status] ||
-                    actionTarget.status,
-                },
-              ]}
-            />
-          ) : null}
-          {(actionKind === "block" ||
-            actionKind === "suspend" ||
-            actionKind === "cancel_sub") && (
-            <>
-              <ConsequenceBanner
-                tone={actionKind === "cancel_sub" ? "danger" : "warning"}
-              >
-                {actionKind === "block"
-                  ? "A empresa fica sem login. Os dados são preservados."
-                  : actionKind === "suspend"
-                    ? "A empresa fica sem acesso. Os dados são preservados."
-                    : "A assinatura é cancelada. A empresa e os dados permanecem."}
-              </ConsequenceBanner>
-              <FormField label="Motivo" required>
-                <textarea
-                  className="input min-h-[80px]"
-                  value={actionReason}
-                  onChange={(e) => setActionReason(e.target.value)}
-                  placeholder="Motivo"
-                />
-              </FormField>
-            </>
-          )}
-          {actionKind === "reactivate" || actionKind === "unblock" ? (
-            <p className="text-sm text-ink-secondary dark:text-gray-300">
-              O acesso de{" "}
-              <strong className="text-ink dark:text-white">{actionTarget?.name}</strong>{" "}
-              será restaurado.
+        {/* Divisor sutil */}
+        <div className="border-t border-white/[0.06]" />
+
+        {/* Seção 3: PLANO INICIAL */}
+        <div>
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.08em] text-violet-400">
+            Plano inicial
+          </h3>
+          <div className="mt-2.5">
+            <label className="block text-[12px] font-medium text-gray-300 mb-0.5">
+              Plano de acesso
+            </label>
+            <p className="text-[11px] text-gray-400 mb-1.5">
+              O valor contratado é congelado na criação da empresa.
             </p>
-          ) : null}
+            <PortalSelect
+              value={selectedPlanId}
+              onChange={setSelectedPlanId}
+              options={planOptions}
+              placeholder="Selecione o plano..."
+              triggerClassName="bg-[#0c0d12] border-white/[0.1] text-[13px]"
+            />
+            {fieldErrors.planId ? (
+              <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.planId}</p>
+            ) : null}
+          </div>
         </div>
-      </Modal>
-
-      {/* Exclusão (zona de perigo) */}
-      <Modal
-        open={actionKind === "delete" && !!actionTarget}
-        onClose={closeAction}
-        title={`Excluir ${actionTarget?.name || "empresa"}?`}
-        description="Digite o nome da empresa para confirmar."
-        variant="danger"
-        tone="danger"
-        size="sm"
-        footer={
-          <DialogFooter>
-            <button type="button" className="admin-btn-secondary" onClick={closeAction}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-danger"
-              disabled={
-                actionPending ||
-                !actionTarget ||
-                deleteConfirm.trim() !== actionTarget.name.trim()
-              }
-              onClick={() => {
-                if (!actionTarget) return;
-                deleteMutation.mutate({
-                  id: actionTarget.id,
-                  confirmName: deleteConfirm,
-                  reason: actionReason || undefined,
-                });
-              }}
-            >
-              {deleteMutation.isPending ? "Processando…" : "Excluir empresa"}
-            </button>
-          </DialogFooter>
-        }
-      >
-        <div className="space-y-3">
-          {actionTarget ? (
-            <EntitySummary
-              title={actionTarget.name}
-              subtitle={actionTarget.plan?.name || undefined}
-              meta={[
-                {
-                  label: "Impacto",
-                  value: "Acesso bloqueado · dados preservados",
-                },
-              ]}
-            />
-          ) : null}
-          <ConsequenceBanner tone="danger">
-            Agenda a exclusão. Os dados não são apagados nesta etapa.
-          </ConsequenceBanner>
-          <FormField label={`Digite "${actionTarget?.name || ""}"`} required>
-            <input
-              className="input"
-              value={deleteConfirm}
-              onChange={(e) => setDeleteConfirm(e.target.value)}
-              placeholder={actionTarget?.name}
-              autoComplete="off"
-            />
-          </FormField>
-          <FormField label="Motivo">
-            <textarea
-              className="input min-h-[64px]"
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-              placeholder="Opcional"
-            />
-          </FormField>
-        </div>
-      </Modal>
-    </div>
+      </form>
+    </Modal>
   );
 }
