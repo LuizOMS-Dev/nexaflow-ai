@@ -97,7 +97,8 @@ export class EasyPanelClient {
     procedure: string,
     input?: Record<string, unknown>,
     method: "GET" | "POST" = "POST",
-    overrideConfig?: { baseUrl: string; token: string }
+    overrideConfig?: { baseUrl: string; token: string },
+    timeoutMs?: number
   ): Promise<T> {
     const cfg = overrideConfig || (await this.getEffectiveConfig());
     if (!cfg.baseUrl || !cfg.token) {
@@ -114,18 +115,28 @@ export class EasyPanelClient {
       "Content-Type": "application/json",
     };
 
+    const effectiveTimeout =
+      timeoutMs ??
+      (method === "GET"
+        ? 25000
+        : procedure.toLowerCase().includes("deploy")
+        ? Number(process.env.EASYPANEL_DEPLOY_TIMEOUT_MS) || 900_000 // 15 minutos padrão para build/deploy no EasyPanel
+        : procedure.toLowerCase().includes("restart")
+        ? Number(process.env.EASYPANEL_RESTART_TIMEOUT_MS) || 180_000 // 3 minutos para restart
+        : 30000);
+
     let res: Response;
     if (method === "GET") {
       if (input && Object.keys(input).length > 0) {
         url.searchParams.set("input", JSON.stringify({ json: input }));
       }
-      res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+      res = await fetch(url, { headers, signal: AbortSignal.timeout(effectiveTimeout) });
     } else {
       res = await fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify({ json: input ?? {} }),
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(effectiveTimeout),
       });
     }
 
@@ -357,27 +368,35 @@ export class EasyPanelClient {
     );
   }
 
-  async deployService(projectName?: string, serviceName?: string) {
+  async deployService(projectName?: string, serviceName?: string, timeoutMs?: number) {
     const cfg = await this.getEffectiveConfig();
+    const deployTimeout =
+      timeoutMs ?? (Number(process.env.EASYPANEL_DEPLOY_TIMEOUT_MS) || 900_000);
     return this.trpc(
       "services.compose.deployService",
       {
         projectName: projectName || cfg.projectName,
         serviceName: serviceName || cfg.serviceName,
       },
-      "POST"
+      "POST",
+      undefined,
+      deployTimeout
     );
   }
 
-  async restartService(projectName?: string, serviceName?: string) {
+  async restartService(projectName?: string, serviceName?: string, timeoutMs?: number) {
     const cfg = await this.getEffectiveConfig();
+    const restartTimeout =
+      timeoutMs ?? (Number(process.env.EASYPANEL_RESTART_TIMEOUT_MS) || 180_000);
     return this.trpc(
       "services.compose.restartService",
       {
         projectName: projectName || cfg.projectName,
         serviceName: serviceName || cfg.serviceName,
       },
-      "POST"
+      "POST",
+      undefined,
+      restartTimeout
     );
   }
 }

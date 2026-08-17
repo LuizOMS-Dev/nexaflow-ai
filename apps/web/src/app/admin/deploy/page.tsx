@@ -38,6 +38,7 @@ import {
   StatusBadge,
 } from "@/components/admin";
 import { DialogFooter, FormField, Modal, useToast } from "@/components/ui";
+import { ActionMenu } from "@/components/ui-menu";
 
 type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE" | "CHECKING";
 
@@ -225,8 +226,7 @@ export default function AdminDeployPage() {
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [showAllCommits, setShowAllCommits] = useState(false);
-  const [copiedSha, setCopiedSha] = useState<string | null>(null);
+  const [visibleCommitCount, setVisibleCommitCount] = useState(5);
   const [isReplacingToken, setIsReplacingToken] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -299,8 +299,6 @@ export default function AdminDeployPage() {
 
   const copyToClipboard = (text: string, label: string) => {
     void navigator.clipboard.writeText(text);
-    setCopiedSha(text);
-    setTimeout(() => setCopiedSha(null), 2000);
     toast({
       title: "Copiado",
       description: `${label} copiado para a área de transferência.`,
@@ -446,7 +444,7 @@ export default function AdminDeployPage() {
   const isUnknown = status === "UNKNOWN";
 
   const allCommits = commitsQuery.data?.commits || [];
-  const displayedCommits = showAllCommits ? allCommits : allCommits.slice(0, 5);
+  const displayedCommits = allCommits.slice(0, visibleCommitCount);
 
   const historyItems = historyQuery.data?.items || [];
   const totalPages = historyQuery.data?.totalPages || 1;
@@ -496,7 +494,7 @@ export default function AdminDeployPage() {
             </button>
             <button
               type="button"
-              className="admin-btn-primary h-9 text-[12.5px]"
+              className="admin-btn-ghost h-9 text-[12.5px]"
               onClick={() => {
                 void overviewQuery.refetch();
                 void commitsQuery.refetch();
@@ -516,7 +514,7 @@ export default function AdminDeployPage() {
         }
       />
 
-      {/* 2. Grid de Métricas Principais */}
+      {/* 2. Grid de Métricas Principais (Compactos e Coerentes) */}
       <MetricGrid cols={4}>
         <MetricCard
           label="Ambiente"
@@ -529,14 +527,14 @@ export default function AdminDeployPage() {
 
         <MetricCard
           label="Versão em Produção"
-          value={current ? current.shortSha : "—"}
+          value={current ? current.shortSha : "Não identificada"}
           hint={
             current?.deployedAt
               ? `Implantado há ${formatRelativeTime(current.deployedAt)}`
-              : current ? "Versão base de implantação" : "Versão desconhecida"
+              : current ? "Versão base de implantação" : "Nenhum deploy registrado"
           }
           icon={<GitCommit className="h-4 w-4" />}
-          tone="brand"
+          tone={current ? "brand" : "neutral"}
           compact
         />
 
@@ -561,30 +559,30 @@ export default function AdminDeployPage() {
 
       {/* 3. Banner de Deploy Ativo (se houver) */}
       {active ? (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4.5 text-white">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4 text-white">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300">
-                <Rocket className="h-5 w-5 animate-pulse" />
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300">
+                <Rocket className="h-4.5 w-4.5 animate-pulse" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-white text-[14px]">Deploy em andamento</h3>
+                  <h3 className="font-semibold text-white text-[13.5px]">Deploy em andamento</h3>
                   <StatusBadge tone="warning" dot>
                     {deployStatusLabel(active.status)}
                   </StatusBadge>
                 </div>
-                <p className="mt-0.5 text-[12.5px] text-gray-300">
+                <p className="mt-0.5 text-[12px] text-gray-300">
                   Versão <code className="text-amber-300 font-mono">{active.commitShortSha}</code>: &quot;{active.commitMessage}&quot;
                 </p>
-                <p className="mt-1 text-[11.5px] text-gray-400">
+                <p className="mt-0.5 text-[11px] text-gray-400">
                   Iniciado por <strong className="text-gray-200">{active.startedByName}</strong> · decorridos {formatDuration(active.durationSeconds)}
                 </p>
               </div>
             </div>
             <button
               type="button"
-              className="admin-btn-secondary shrink-0 text-[12px]"
+              className="admin-btn-secondary shrink-0 text-[12px] h-8"
               onClick={() => setSelectedDetailId(active.id)}
             >
               <Terminal className="h-3.5 w-3.5" /> Ver logs em tempo real
@@ -593,222 +591,202 @@ export default function AdminDeployPage() {
         </div>
       ) : null}
 
-      {/* 4. Card de Ação Principal: Comparativo de Versão */}
-      <AdminSection
-        title="Status da Versão"
-        description="Comparação em tempo real entre a versão atual em produção e a branch principal no GitHub."
-      >
-        <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            {/* Lado Esquerdo: Detalhes dos Commits */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:flex-1">
-              {/* Commit Atual */}
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3.5">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                  Versão em Produção
+      {/* 4. Bloco Compacto: Status da Versão + CTA Principal */}
+      <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-4.5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Lado Esquerdo: 2 Colunas de Versão (Produção vs GitHub) */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:flex-1">
+            {/* Produção Atual */}
+            <div className="min-w-0">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                Versão em Produção
+              </span>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-violet-300">
+                  {current ? current.shortSha : "Não identificada"}
+                </code>
+                <span className="truncate text-[12.5px] text-gray-300" title={current?.message}>
+                  {current ? current.message : "Sem versão registrada"}
                 </span>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <code className="rounded bg-white/[0.08] px-2 py-0.5 font-mono text-[13px] font-bold text-violet-300">
-                    {current ? current.shortSha : "—"}
-                  </code>
-                  <span className="truncate text-[13px] font-medium text-gray-200" title={current?.message}>
-                    {current ? current.message : "Sem versão registrada"}
-                  </span>
-                </div>
-                <p className="mt-1.5 truncate text-[11.5px] text-gray-400">
-                  {current?.author ? `Autor: ${current.author}` : "—"}
-                  {current?.deployedAt ? ` · ${formatDate(current.deployedAt)}` : ""}
-                </p>
-              </div>
-
-              {/* Último no GitHub */}
-              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3.5">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                  Último no GitHub ({data.gitHub?.branch || "main"})
-                </span>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <code className="rounded bg-white/[0.08] px-2 py-0.5 font-mono text-[13px] font-bold text-emerald-300">
-                    {latest ? latest.shortSha : "—"}
-                  </code>
-                  <span className="truncate text-[13px] font-medium text-gray-200" title={latest?.message}>
-                    {latest ? latest.message : "Nenhum commit retornado"}
-                  </span>
-                </div>
-                <p className="mt-1.5 truncate text-[11.5px] text-gray-400">
-                  {latest?.author ? `Por ${latest.author}` : "—"}
-                  {latest?.date ? ` · há ${formatRelativeTime(latest.date)}` : ""}
-                </p>
               </div>
             </div>
 
-            {/* Lado Direito: Ações & Estado */}
-            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center lg:flex-col lg:items-end">
-              {isUpToDate ? (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/[0.1] px-3.5 py-2 text-emerald-300">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  <span className="text-[13px] font-semibold">Produção está atualizada</span>
-                </div>
-              ) : isUpdateAvailable ? (
-                <div className="flex items-center gap-2 rounded-lg bg-amber-500/[0.1] px-3.5 py-2 text-amber-300">
-                  <Sparkles className="h-4 w-4 shrink-0" />
-                  <span className="text-[13px] font-semibold">Nova versão disponível</span>
-                </div>
-              ) : isUnknown ? (
-                <div className="flex items-center gap-2 rounded-lg bg-white/[0.05] px-3.5 py-2 text-gray-300">
-                  <HelpCircle className="h-4 w-4 shrink-0 text-gray-400" />
-                  <span className="text-[13px] font-semibold">Não foi possível determinar a versão implantada</span>
-                </div>
-              ) : null}
-
-              {/* Botão de deploy: se houver versão nova ou se versão for desconhecida */}
-              {(isUpdateAvailable || isUnknown) ? (
-                <div className="flex flex-col items-end gap-1.5">
-                  <button
-                    type="button"
-                    className="admin-btn-primary h-10 px-5 text-[13px] font-semibold"
-                    disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel?.connected}
-                    onClick={() => {
-                      setSelectedCommitToDeploy(null);
-                      setConfirmOpen(true);
-                    }}
-                  >
-                    <Rocket className="h-4 w-4" />
-                    {isUnknown ? "Implantar versão" : "Implantar nova versão"}
-                  </button>
-
-                  {!data.easyPanel?.connected ? (
-                    <div className="flex items-center gap-1 text-[11px] text-gray-400">
-                      <span>{epHint}</span>
-                      <button
-                        type="button"
-                        className="text-violet-400 hover:underline"
-                        onClick={() => setConfigModalOpen(true)}
-                      >
-                        Configurar integração
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+            {/* Último no GitHub */}
+            <div className="min-w-0">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                Último no GitHub ({data.gitHub?.branch || "main"})
+              </span>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-emerald-300">
+                  {latest ? latest.shortSha : "—"}
+                </code>
+                <span className="truncate text-[12.5px] text-gray-300" title={latest?.message}>
+                  {latest ? latest.message : "Nenhum commit retornado"}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      </AdminSection>
 
-      {/* 5. Seção de Commits Recentes no GitHub */}
+          {/* Lado Direito: Status Semântico + CTA Único Principal */}
+          <div className="flex flex-wrap items-center gap-3 lg:shrink-0">
+            {isUpToDate ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/[0.1] px-3 py-1.5 text-emerald-300">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span className="text-[12.5px] font-semibold">Produção atualizada</span>
+              </div>
+            ) : isUpdateAvailable ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/[0.1] px-3 py-1.5 text-amber-300">
+                <Sparkles className="h-4 w-4 shrink-0" />
+                <span className="text-[12.5px] font-semibold">Atualização disponível</span>
+              </div>
+            ) : isUnknown ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-gray-300">
+                <HelpCircle className="h-4 w-4 shrink-0 text-gray-400" />
+                <span className="text-[12.5px] font-semibold">Versão atual não identificada</span>
+              </div>
+            ) : null}
+
+            {/* Único Botão de Ação Principal */}
+            {(isUpdateAvailable || isUnknown) ? (
+              <button
+                type="button"
+                className="admin-btn-primary h-9 px-4 text-[12.5px] font-semibold"
+                disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel?.connected}
+                onClick={() => {
+                  setSelectedCommitToDeploy(null);
+                  setConfirmOpen(true);
+                }}
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                {isUnknown ? "Implantar versão" : "Implantar versão mais recente"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {/* 5. Commits Recentes no GitHub (Compacto com Menu ⋯) */}
       <AdminSection
-        title="Atualizações Recentes no GitHub"
-        description="Lista de commits da branch principal obtidos em tempo real via API oficial do GitHub."
+        title="Commits Recentes"
+        description="Histórico recente da branch principal no GitHub."
         flush
       >
         {commitsQuery.isLoading ? (
           <div className="p-6 text-center text-[12px] text-gray-500">
-            <RefreshCw className="mx-auto h-5 w-5 animate-spin text-gray-400 mb-2" />
-            Buscando commits mais recentes no GitHub...
+            <RefreshCw className="mx-auto h-4 w-4 animate-spin text-gray-400 mb-1.5" />
+            Buscando commits recentes...
           </div>
         ) : allCommits.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-gray-400">
+          <div className="p-6 text-center text-[12px] text-gray-400">
             Nenhum commit encontrado no repositório.
           </div>
         ) : (
           <div>
             <div className="divide-y divide-white/[0.04]">
-              {displayedCommits.map((c) => {
+              {displayedCommits.map((c, index) => {
                 const isCurrent = current?.sha === c.sha || (current?.shortSha === c.shortSha);
-                const isCopied = copiedSha === c.shortSha;
+                const isLatest = index === 0 && !isCurrent && isUpdateAvailable;
+
                 return (
                   <div
                     key={c.sha}
-                    className="flex flex-col gap-2.5 px-4.5 py-3 transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between"
+                    className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.02]"
                   >
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-gray-400">
-                        <GitCommit className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="group flex items-center gap-1 rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12px] font-bold text-violet-300 hover:bg-violet-500/20"
-                            onClick={() => copyToClipboard(c.shortSha, "Hash do commit")}
-                            title="Clique para copiar o hash curto"
-                          >
-                            {c.shortSha}
-                            {isCopied ? (
-                              <Check className="h-3 w-3 text-emerald-400" />
-                            ) : (
-                              <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            )}
-                          </button>
-                          <span className="truncate text-[13px] font-medium text-gray-200" title={c.message}>
-                            {c.message}
-                          </span>
-                          {isCurrent ? (
-                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
-                              Em produção
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-0.5 text-[11.5px] text-gray-400">
-                          Por <strong className="text-gray-300">{c.author}</strong> · há {formatRelativeTime(c.date)}
-                        </p>
-                      </div>
+                    {/* Informações do Commit */}
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12px] font-bold text-violet-300 shrink-0">
+                        {c.shortSha}
+                      </code>
+
+                      <p className="truncate text-[13px] font-medium text-gray-200" title={c.message}>
+                        {c.message}
+                      </p>
+
+                      {isCurrent ? (
+                        <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 shrink-0">
+                          Em produção
+                        </span>
+                      ) : isLatest ? (
+                        <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 shrink-0">
+                          Mais recente
+                        </span>
+                      ) : null}
+
+                      <span className="hidden sm:inline text-[11.5px] text-gray-500 truncate shrink-0">
+                        · {c.author} · {formatRelativeTime(c.date)}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                      {c.url ? (
-                        <a
-                          href={c.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-white"
-                        >
-                          <ExternalLink className="h-3 w-3" /> Ver no GitHub
-                        </a>
-                      ) : null}
-
-                      {!isCurrent && !active && data.easyPanel?.connected ? (
-                        <button
-                          type="button"
-                          className="admin-btn-secondary h-7 px-2.5 text-[11.5px]"
-                          onClick={() => {
-                            setSelectedCommitToDeploy(c);
-                            setConfirmOpen(true);
-                          }}
-                        >
-                          <Rocket className="h-3 w-3" /> Implantar
-                        </button>
-                      ) : null}
+                    {/* Menu Contextual ⋯ */}
+                    <div className="shrink-0">
+                      <ActionMenu
+                        align="right"
+                        aria-label={`Ações para commit ${c.shortSha}`}
+                        items={[
+                          ...(c.url
+                            ? [
+                                {
+                                  label: "Ver no GitHub",
+                                  icon: ExternalLink,
+                                  onClick: () => window.open(c.url, "_blank", "noreferrer"),
+                                },
+                              ]
+                            : []),
+                          {
+                            label: "Copiar SHA",
+                            icon: Copy,
+                            onClick: () => copyToClipboard(c.sha, "SHA do commit"),
+                          },
+                          ...(!isCurrent
+                            ? [
+                                {
+                                  label: "Implantar esta versão",
+                                  icon: Rocket,
+                                  disabled: Boolean(active) || !data.easyPanel?.connected,
+                                  onClick: () => {
+                                    setSelectedCommitToDeploy(c);
+                                    setConfirmOpen(true);
+                                  },
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
                     </div>
                   </div>
                 );
               })}
             </div>
 
+            {/* Ação Expandir / Recolher */}
             {allCommits.length > 5 ? (
-              <div className="border-t border-white/[0.04] p-2.5 text-center">
-                <button
-                  type="button"
-                  className="admin-btn-ghost h-7 px-3 text-[12px] text-gray-400 hover:text-white"
-                  onClick={() => setShowAllCommits((s) => !s)}
-                >
-                  {showAllCommits ? (
-                    <>
-                      <ChevronUp className="h-3.5 w-3.5" /> Mostrar menos commits
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-3.5 w-3.5" /> Ver mais commits ({allCommits.length})
-                    </>
-                  )}
-                </button>
+              <div className="border-t border-white/[0.04] p-2 text-center">
+                {visibleCommitCount < allCommits.length ? (
+                  <button
+                    type="button"
+                    className="admin-btn-ghost h-7 px-3 text-[11.5px] text-gray-400 hover:text-white"
+                    onClick={() => setVisibleCommitCount((c) => Math.min(allCommits.length, c + 5))}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    Ver mais commits ({allCommits.length - visibleCommitCount} restantes)
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="admin-btn-ghost h-7 px-3 text-[11.5px] text-gray-400 hover:text-white"
+                    onClick={() => setVisibleCommitCount(5)}
+                  >
+                    <ChevronUp className="h-3.5 w-3.5" />
+                    Mostrar menos
+                  </button>
+                )}
               </div>
             ) : null}
           </div>
         )}
       </AdminSection>
 
-      {/* 6. Histórico de Implantações */}
+      {/* 6. Histórico de Implantações (Destaque Principal) */}
       <AdminSection
         title="Histórico de Deploys"
         description="Registro auditável de todas as implantações, durações e validações de saúde."
@@ -816,36 +794,36 @@ export default function AdminDeployPage() {
       >
         {historyItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-6 text-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-gray-400">
-              <History className="h-4.5 w-4.5" strokeWidth={1.5} />
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/[0.04] text-gray-400">
+              <History className="h-4 w-4" strokeWidth={1.5} />
             </div>
-            <p className="mt-2 text-[13px] font-medium text-gray-300">Nenhum deploy registrado</p>
-            <p className="mt-0.5 text-[11.5px] text-gray-500">
+            <p className="mt-1.5 text-[12.5px] font-medium text-gray-300">Nenhum deploy registrado</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">
               O histórico de implantações aparecerá aqui assim que o primeiro deploy for concluído.
             </p>
           </div>
         ) : (
           <>
             <div className="admin-table-wrap overflow-x-auto">
-              <table className="admin-table w-full min-w-[760px] border-collapse text-left text-[13px]">
+              <table className="admin-table w-full min-w-[720px] border-collapse text-left text-[12.5px]">
                 <thead>
                   <tr className="border-b border-white/[0.06]">
                     <th className="w-[18%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-                      Commit
+                      Versão
                     </th>
-                    <th className="w-[26%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-                      Mensagem
+                    <th className="w-[18%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                      Data
                     </th>
-                    <th className="w-[16%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                    <th className="w-[18%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
                       Responsável
                     </th>
                     <th className="w-[14%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-                      Data & Duração
+                      Duração
                     </th>
-                    <th className="w-[12%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                    <th className="w-[16%] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
                       Status
                     </th>
-                    <th className="w-[14%] px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+                    <th className="w-[16%] px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
                       Ações
                     </th>
                   </tr>
@@ -858,69 +836,57 @@ export default function AdminDeployPage() {
                         key={item.id}
                         className="border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.025]"
                       >
-                        <td className="px-4 py-3 align-middle">
-                          <div className="flex items-center gap-2">
-                            <code className="font-mono text-[12.5px] font-semibold text-violet-300">
+                        <td className="px-4 py-2.5 align-middle">
+                          <div className="flex items-center gap-1.5">
+                            <code className="font-mono text-[12px] font-semibold text-violet-300">
                               {item.commitShortSha}
                             </code>
                             {item.isRollback ? (
-                              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+                              <span className="rounded bg-amber-500/20 px-1 py-0.5 text-[9.5px] font-medium text-amber-300">
                                 Rollback
                               </span>
                             ) : null}
                           </div>
                         </td>
 
-                        <td className="px-4 py-3 align-middle">
-                          <p className="max-w-xs truncate text-[13px] font-medium text-gray-200" title={item.commitMessage}>
-                            {item.commitMessage}
-                          </p>
-                          {item.errorSummary ? (
-                            <p className="mt-0.5 max-w-xs truncate text-[11px] text-rose-400">
-                              {item.errorSummary}
-                            </p>
-                          ) : null}
+                        <td className="px-4 py-2.5 align-middle text-gray-300">
+                          {formatDate(item.startedAt)}
                         </td>
 
-                        <td className="px-4 py-3 align-middle text-[12.5px] text-gray-300">
+                        <td className="px-4 py-2.5 align-middle text-gray-300">
                           {item.startedBy}
                         </td>
 
-                        <td className="px-4 py-3 align-middle">
-                          <span className="block text-[12.5px] text-gray-300">
-                            {formatDate(item.startedAt)}
-                          </span>
-                          <span className="block text-[11px] text-gray-500">
-                            {formatDuration(item.durationSeconds)}
-                          </span>
+                        <td className="px-4 py-2.5 align-middle text-gray-400">
+                          {formatDuration(item.durationSeconds)}
                         </td>
 
-                        <td className="px-4 py-3 align-middle">
+                        <td className="px-4 py-2.5 align-middle">
                           <StatusBadge tone={deployStatusTone(item.status)} dot={item.status !== "COMPLETED" && item.status !== "FAILED"}>
                             {deployStatusLabel(item.status)}
                           </StatusBadge>
                         </td>
 
-                        <td className="px-4 py-3 align-middle text-right">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="px-4 py-2.5 align-middle text-right">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              className="admin-btn-ghost h-8 px-2.5 text-[12px]"
+                              className="admin-btn-ghost h-7 px-2 text-[11.5px]"
                               onClick={() => setSelectedDetailId(item.id)}
                             >
-                              <Terminal className="h-3.5 w-3.5" /> Detalhes
+                              <Terminal className="h-3 w-3" /> Detalhes
                             </button>
 
                             {item.status === "COMPLETED" && !isItemCurrent && !active && data.easyPanel?.connected ? (
                               <button
                                 type="button"
-                                className="admin-btn-ghost h-8 px-2.5 text-[12px] text-amber-300 hover:text-amber-200"
+                                className="admin-btn-ghost h-7 px-2 text-[11.5px] text-amber-300 hover:text-amber-200"
                                 onClick={() => {
                                   setRollbackTarget(item);
                                   setRollbackOpen(true);
                                 }}
                               >
-                                <RotateCcw className="h-3.5 w-3.5" /> Restaurar
+                                <RotateCcw className="h-3 w-3" /> Restaurar
                               </button>
                             ) : null}
                           </div>
@@ -934,12 +900,12 @@ export default function AdminDeployPage() {
 
             {/* Paginação */}
             {totalPages > 1 ? (
-              <div className="flex items-center justify-between border-t border-white/[0.06] px-4 py-3 text-[12px] text-gray-400">
+              <div className="flex items-center justify-between border-t border-white/[0.06] px-4 py-2.5 text-[11.5px] text-gray-400">
                 <span>Total de {historyQuery.data?.total || 0} deploys</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    className="admin-btn-ghost h-8 px-3 text-[12px] disabled:opacity-40"
+                    className="admin-btn-ghost h-7 px-2.5 text-[11.5px] disabled:opacity-40"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                   >
@@ -950,7 +916,7 @@ export default function AdminDeployPage() {
                   </span>
                   <button
                     type="button"
-                    className="admin-btn-ghost h-8 px-3 text-[12px] disabled:opacity-40"
+                    className="admin-btn-ghost h-7 px-2.5 text-[11.5px] disabled:opacity-40"
                     disabled={page >= totalPages}
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   >
@@ -1000,8 +966,8 @@ export default function AdminDeployPage() {
           </DialogFooter>
         }
       >
-        <div className="space-y-3.5 py-1 text-[13px]">
-          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+        <div className="space-y-3 py-1 text-[13px]">
+          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-400">Ambiente:</span>
               <span className="font-semibold text-emerald-400">Produção</span>
@@ -1009,11 +975,11 @@ export default function AdminDeployPage() {
             <div className="flex justify-between">
               <span className="text-gray-400">Produção atual:</span>
               <span className="font-mono text-gray-300">
-                {current ? current.shortSha : "Versão desconhecida"}
+                {current ? current.shortSha : "Não identificada"}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Versão selecionada:</span>
+              <span className="text-gray-400">Nova versão:</span>
               <code className="font-mono font-bold text-violet-300">
                 {selectedCommitToDeploy ? selectedCommitToDeploy.shortSha : latest ? latest.shortSha : "main"}
               </code>
@@ -1023,7 +989,7 @@ export default function AdminDeployPage() {
               <span className="font-medium text-white">{data.gitHub?.branch || "main"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Commit:</span>
+              <span className="text-gray-400">Mensagem:</span>
               <span
                 className="max-w-[240px] truncate text-right font-medium text-white"
                 title={selectedCommitToDeploy ? selectedCommitToDeploy.message : latest?.message}
@@ -1031,13 +997,9 @@ export default function AdminDeployPage() {
                 {selectedCommitToDeploy ? selectedCommitToDeploy.message : latest ? latest.message : "Última versão"}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Serviços afetados:</span>
-              <span className="font-mono text-[12px] text-gray-300">api, web</span>
-            </div>
           </div>
 
-          <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/[0.08] p-3 text-amber-200">
+          <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/[0.08] p-2.5 text-amber-200">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
             <p className="text-[12px] leading-relaxed">
               O NexaFlow iniciará o build automatizado no EasyPanel, atualizará os containers de API e Web e verificará os endpoints de integridade pós-deploy.
@@ -1077,8 +1039,8 @@ export default function AdminDeployPage() {
         }
       >
         {rollbackTarget ? (
-          <div className="space-y-3.5 py-1 text-[13px]">
-            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+          <div className="space-y-3 py-1 text-[13px]">
+            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-400">Versão alvo:</span>
                 <code className="font-mono font-bold text-amber-300">
@@ -1090,10 +1052,6 @@ export default function AdminDeployPage() {
                 <span className="max-w-[240px] truncate text-right font-medium text-white">
                   {rollbackTarget.commitMessage}
                 </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Serviços afetados:</span>
-                <span className="font-mono text-[12px] text-gray-300">api, web</span>
               </div>
             </div>
             <p className="text-[12px] text-gray-300">
@@ -1138,13 +1096,12 @@ export default function AdminDeployPage() {
           </div>
         }
       >
-        <div className="space-y-4 py-1">
+        <div className="space-y-3.5 py-1">
           {detailQuery.isLoading ? (
             <p className="text-gray-500 font-mono text-[12px]">Carregando detalhes do deploy…</p>
           ) : detailQuery.data ? (
             <>
-              {/* Resumo das etapas */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-[12px]">
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 text-[12px]">
                 <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
                   <span className="text-gray-400 text-[11px] block">Status</span>
                   <StatusBadge tone={deployStatusTone(detailQuery.data.status)}>
@@ -1165,8 +1122,7 @@ export default function AdminDeployPage() {
                 </div>
               </div>
 
-              {/* Logs */}
-              <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-4 text-[12px]">
+              <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-3.5 text-[12px]">
                 <span className="text-gray-400 text-[11px] uppercase tracking-wider block mb-2">Logs de Execução</span>
                 {detailQuery.data.logs ? (
                   <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap font-mono text-emerald-400 leading-relaxed scrollbar-thin">
@@ -1342,7 +1298,7 @@ export default function AdminDeployPage() {
           {testResult ? (
             <div
               className={cn(
-                "rounded-xl p-3.5 text-[12.5px] flex items-start gap-2.5 border transition-all",
+                "rounded-xl p-3 text-[12px] flex items-start gap-2.5 border transition-all",
                 testResult.success
                   ? "bg-emerald-500/[0.08] text-emerald-300 border-emerald-500/20"
                   : "bg-rose-500/[0.08] text-rose-300 border-rose-500/20"
@@ -1356,7 +1312,7 @@ export default function AdminDeployPage() {
               <div>
                 <p className="font-semibold">{testResult.message}</p>
                 {testResult.details ? (
-                  <p className="mt-1 text-[11px] opacity-80 leading-relaxed">
+                  <p className="mt-0.5 text-[11px] opacity-80 leading-relaxed">
                     URL: {testResult.details.urlAccessible ? "OK" : "Inacessível"} · Autenticação: {testResult.details.authValid ? "OK" : "Inválida"} · Projeto: {testResult.details.projectFound ? "OK" : "Não encontrado"} · Serviço: {testResult.details.serviceFound ? "OK" : "Não encontrado"}
                   </p>
                 ) : null}

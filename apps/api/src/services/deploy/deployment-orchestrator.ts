@@ -302,6 +302,7 @@ export class DeploymentOrchestrator {
       // Transição: BUILDING
       await safeUpdate({ status: "BUILDING" });
       log("Disparando comando de build e deploy no EasyPanel (serviço 'nexaflow')...");
+      log("Compilando containers Docker e atualizando serviços no servidor...");
       await flushLogs();
 
       // Em ambiente de teste, simula o pipeline sem acionar EasyPanel real nem esperar 15s
@@ -318,8 +319,25 @@ export class DeploymentOrchestrator {
       }
 
       // Dispara o deploy no EasyPanel em produção
-      await easyPanelClient.deployService();
-      log("✓ EasyPanel aceitou o comando de deploy. Iniciando compilação dos serviços...");
+      try {
+        await easyPanelClient.deployService();
+        log("✓ EasyPanel concluiu o comando de build e deploy dos serviços.");
+      } catch (deployErr: any) {
+        const isGatewayTimeout =
+          deployErr?.statusCode === 504 ||
+          deployErr?.statusCode === 502 ||
+          deployErr?.statusCode === 524 ||
+          /gateway|timeout|aborted/i.test(deployErr?.message || "");
+
+        if (isGatewayTimeout) {
+          log(
+            `⚠ Resposta direta do EasyPanel atingiu tempo limite de conexão (${deployErr.message || "timeout"}), mas a compilação do Docker segue em execução no servidor.`
+          );
+          log("Prosseguindo para validação dos serviços via Health Check...");
+        } else {
+          throw deployErr;
+        }
+      }
 
       await safeUpdate({ status: "DEPLOYING" });
       await flushLogs();
@@ -332,7 +350,7 @@ export class DeploymentOrchestrator {
       log("Aguardando reinicialização dos containers e iniciando verificação de integridade (Health Check)...");
       await flushLogs();
 
-      // Executa health check com retries (até 18 tentativas de 10s = 180s)
+      // Executa health check com retries (até 30 tentativas de 10s = 300s)
       const healthResult = await this.pollHealthCheck((attempt, max) => {
         log(`Health check: tentativa ${attempt}/${max}...`);
         void flushLogs();
@@ -416,18 +434,27 @@ export class DeploymentOrchestrator {
     webStatus?: number;
     error?: string;
   }> {
-    const apiUrl = process.env.PROD_API_HEALTH_URL || "https://nexaflow-api.161.97.107.241.sslip.io/health";
-    const webUrl = process.env.PROD_WEB_HEALTH_URL || "https://nexaflow.161.97.107.241.sslip.io/login";
+    const rawApiUrl =
+      process.env.PROD_API_HEALTH_URL ||
+      (process.env.API_URL ? `${process.env.API_URL.replace(/\/+$/, "")}/health` : "") ||
+      "https://nexaflow-api.161.97.107.241.sslip.io/health";
+    const rawWebUrl =
+      process.env.PROD_WEB_HEALTH_URL ||
+      (process.env.APP_PUBLIC_URL ? `${process.env.APP_PUBLIC_URL.replace(/\/+$/, "")}/login` : "") ||
+      "https://nexaflow.161.97.107.241.sslip.io/login";
 
-    const maxAttempts = 18;
+    const apiUrl = rawApiUrl.trim();
+    const webUrl = rawWebUrl.trim();
+
+    const maxAttempts = 30;
     const intervalMs = 10000;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       onAttempt?.(attempt, maxAttempts);
       try {
         const [apiRes, webRes] = await Promise.all([
-          fetch(apiUrl, { signal: AbortSignal.timeout(6000) }).catch(() => null),
-          fetch(webUrl, { signal: AbortSignal.timeout(6000) }).catch(() => null),
+          fetch(apiUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null),
+          fetch(webUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null),
         ]);
 
         if (apiRes && apiRes.ok && webRes && webRes.ok) {
@@ -446,7 +473,7 @@ export class DeploymentOrchestrator {
 
     return {
       healthy: false,
-      error: `Timeout após ${maxAttempts * 10} segundos sem resposta saudável de API ou Web.`,
+      error: `Timeout após ${maxAttempts * 10} segundos sem resposta saudável de API (${apiUrl}) ou Web (${webUrl}).`,
     };
   }
 
