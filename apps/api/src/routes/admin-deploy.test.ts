@@ -440,4 +440,81 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       where: { key: "github_history_cleared_at" },
     });
   });
+
+  it("15. Semântica de Saúde: status BUILDING não pode mostrar saúde OK ou HEALTHY", async () => {
+    // Cria um deployment em estado BUILDING
+    const buildingDep = await prisma.deployment.create({
+      data: {
+        environment: "production",
+        branch: "main",
+        commitSha: "1111111111111111111111111111111111111111",
+        commitShortSha: "1111111",
+        commitMessage: "Test building stage",
+        commitAuthor: "Superadmin",
+        startedById: superadminUser.id,
+        status: "BUILDING",
+        healthStatus: "PENDING_VALIDATION",
+        services: ["nexaflow"],
+        startedAt: new Date(),
+        logs: "Building containers...",
+      },
+    });
+
+    // Consulta detalhes do deploy
+    const detailRes = await app.inject({
+      method: "GET",
+      url: `/admin/deploy/${buildingDep.id}`,
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+
+    expect(detailRes.statusCode).toBe(200);
+    const detailJson = detailRes.json();
+    expect(detailJson.status).toBe("BUILDING");
+    expect(detailJson.stage).toBe("BUILDING");
+    expect(detailJson.healthStatus).toBe("PENDING_VALIDATION");
+    expect(detailJson.apiHealth).toBe("PENDING");
+    expect(detailJson.webHealth).toBe("PENDING");
+    expect(detailJson.healthStatus).not.toBe("HEALTHY");
+    expect(detailJson.healthStatus).not.toBe("OK");
+
+    // Limpeza
+    await prisma.deployment.delete({ where: { id: buildingDep.id } });
+  });
+
+  it("16. Validação independente de API e Web no Health Check pós-deploy", async () => {
+    const completedDep = await prisma.deployment.create({
+      data: {
+        environment: "production",
+        branch: "main",
+        commitSha: "2222222222222222222222222222222222222222",
+        commitShortSha: "2222222",
+        commitMessage: "Test verified health",
+        commitAuthor: "Superadmin",
+        startedById: superadminUser.id,
+        status: "COMPLETED",
+        healthStatus: "HEALTHY",
+        services: ["nexaflow"],
+        startedAt: new Date(Date.now() - 60000),
+        finishedAt: new Date(),
+        durationSeconds: 60,
+        logs: "Deploy complete.",
+      },
+    });
+
+    const detailRes = await app.inject({
+      method: "GET",
+      url: `/admin/deploy/${completedDep.id}`,
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+
+    expect(detailRes.statusCode).toBe(200);
+    const json = detailRes.json();
+    expect(json.status).toBe("COMPLETED");
+    expect(json.healthStatus).toBe("HEALTHY");
+    expect(json.apiHealth).toBe("HEALTHY");
+    expect(json.webHealth).toBe("HEALTHY");
+
+    // Limpeza
+    await prisma.deployment.delete({ where: { id: completedDep.id } });
+  });
 }, 30_000);
