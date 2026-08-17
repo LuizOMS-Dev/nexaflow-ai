@@ -21,8 +21,42 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const q = request.query as { limit?: string };
     const limit = Math.min(30, Math.max(1, Number(q.limit) || 10));
-    const commits = await githubClient.listRecentCommits(limit);
-    return { commits };
+    try {
+      const commits = await githubClient.listRecentCommits(limit);
+      return { commits };
+    } catch (e: any) {
+      return {
+        commits: [],
+        error: e instanceof Error ? e.message : "Não foi possível carregar os commits do GitHub no momento.",
+      };
+    }
+  });
+
+  // 2.1 Limpar histórico visual de atualizações do GitHub no painel
+  app.post("/admin/deploy/commits/clear", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const user = request.user;
+    if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
+
+    const result = await githubClient.clearVisualHistory(user.sub, user.email);
+
+    await audit({
+      action: "github.update_history.cleared",
+      userId: user.sub,
+      ip: request.ip,
+      metadata: {
+        clearedAt: result.clearedAt,
+        hiddenCount: result.hiddenCount,
+        lastClearedSha: result.lastClearedSha,
+      },
+    });
+
+    return {
+      success: true,
+      message: "Histórico visual de atualizações do GitHub limpo com sucesso.",
+      clearedAt: result.clearedAt,
+      hiddenCount: result.hiddenCount,
+    };
   });
 
   // 3. Obter configuração atual do EasyPanel (WRITE-ONLY: NUNCA expor o token, preview ou ciphertext)

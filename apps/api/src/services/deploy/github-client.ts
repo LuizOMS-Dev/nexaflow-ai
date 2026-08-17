@@ -74,6 +74,73 @@ export class GitHubClient {
     };
   }
 
+  async getHistoryClearedMarker(): Promise<{
+    clearedAt: string | null;
+    lastClearedSha: string | null;
+  }> {
+    try {
+      const setting = await prisma.platformSetting.findUnique({
+        where: { key: "github_history_cleared_at" },
+      });
+      if (setting?.value && typeof setting.value === "object") {
+        const v = setting.value as any;
+        return {
+          clearedAt: v.clearedAt || null,
+          lastClearedSha: v.lastClearedSha || null,
+        };
+      }
+    } catch {}
+
+    return { clearedAt: null, lastClearedSha: null };
+  }
+
+  async clearVisualHistory(userId: string, email?: string): Promise<{
+    clearedAt: string;
+    hiddenCount: number;
+    lastClearedSha?: string;
+  }> {
+    // 1. Obtém os commits atuais para marcar o SHA mais recente
+    let currentCommits: GitHubCommitInfo[] = [];
+    try {
+      currentCommits = await this.listRecentCommitsRaw(30);
+    } catch {}
+
+    const nowIso = new Date().toISOString();
+    const lastClearedSha = currentCommits[0]?.sha;
+
+    // 2. Persiste o marcador administrativo
+    await prisma.platformSetting.upsert({
+      where: { key: "github_history_cleared_at" },
+      create: {
+        key: "github_history_cleared_at",
+        value: {
+          clearedAt: nowIso,
+          clearedById: userId,
+          clearedByEmail: email,
+          lastClearedSha,
+          hiddenCount: currentCommits.length,
+          updatedAt: nowIso,
+        },
+      },
+      update: {
+        value: {
+          clearedAt: nowIso,
+          clearedById: userId,
+          clearedByEmail: email,
+          lastClearedSha,
+          hiddenCount: currentCommits.length,
+          updatedAt: nowIso,
+        },
+      },
+    });
+
+    return {
+      clearedAt: nowIso,
+      hiddenCount: currentCommits.length,
+      lastClearedSha,
+    };
+  }
+
   async getLatestCommit(): Promise<GitHubCommitInfo> {
     const cfg = await this.getEffectiveConfig();
     const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/commits/${cfg.branch}`;
@@ -112,7 +179,7 @@ export class GitHubClient {
     };
   }
 
-  async listRecentCommits(limit = 10): Promise<GitHubCommitInfo[]> {
+  private async listRecentCommitsRaw(limit = 20): Promise<GitHubCommitInfo[]> {
     const cfg = await this.getEffectiveConfig();
     const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/commits?sha=${cfg.branch}&per_page=${limit}`;
     const headers: Record<string, string> = {
@@ -145,11 +212,32 @@ export class GitHubClient {
         sha: fullSha,
         shortSha: fullSha.slice(0, 7),
         message: (d.commit?.message || "Sem mensagem").split("\n")[0].trim(),
-        author: d.commit?.author?.name || "Desconhecido",
+        author: data ? d.commit?.author?.name || "Desconhecido" : "Desconhecido",
         date: d.commit?.author?.date || new Date().toISOString(),
         url: d.html_url,
       };
     });
+  }
+
+  async listRecentCommits(limit = 10): Promise<GitHubCommitInfo[]> {
+    const rawCommits = await this.listRecentCommitsRaw(Math.max(limit, 20));
+    const marker = await this.getHistoryClearedMarker();
+
+    if (!marker.clearedAt) {
+      return rawCommits.slice(0, limit);
+    }
+
+    const clearedTime = new Date(marker.clearedAt).getTime();
+
+    // Filtra commits criados estritamente APÓS a data da limpeza
+    const filtered = rawCommits.filter((c) => {
+      const commitTime = new Date(c.date).getTime();
+      // Se for anterior ou igual ao momento da limpeza, ou tiver o mesmo SHA marcado, oculta do histórico visual
+      if (marker.lastClearedSha && c.sha === marker.lastClearedSha) return false;
+      return commitTime > clearedTime;
+    });
+
+    return filtered.slice(0, limit);
   }
 
   async getRepoStatus(): Promise<GitHubRepoStatus> {

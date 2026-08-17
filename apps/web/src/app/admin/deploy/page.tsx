@@ -23,6 +23,7 @@ import {
   Settings,
   Sparkles,
   Terminal,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
@@ -226,6 +227,7 @@ export default function AdminDeployPage() {
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [visibleCommitCount, setVisibleCommitCount] = useState(5);
   const [isReplacingToken, setIsReplacingToken] = useState(false);
   const [page, setPage] = useState(1);
@@ -305,6 +307,30 @@ export default function AdminDeployPage() {
       kind: "success",
     });
   };
+
+  // Mutação: Limpar histórico visual de commits do GitHub
+  const clearHistoryMut = useMutation({
+    mutationFn: () =>
+      api<{ success: boolean; message: string }>("/admin/deploy/commits/clear", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      setClearHistoryOpen(false);
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
+      toast({
+        title: "Histórico de atualizações limpo",
+        description: "Os commits continuam disponíveis normalmente no GitHub.",
+        kind: "success",
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Não foi possível limpar o histórico",
+        description: e instanceof Error ? e.message : "Erro interno ao limpar histórico visual.",
+        kind: "error",
+      });
+    },
+  });
 
   // Mutação: Testar conexão
   const testConnMut = useMutation({
@@ -665,10 +691,22 @@ export default function AdminDeployPage() {
         </div>
       </div>
 
-      {/* 5. Commits Recentes no GitHub (Compacto com Menu ⋯) */}
+      {/* 5. Commits Recentes no GitHub (Compacto com Menu ⋯ e Ação Limpar Histórico) */}
       <AdminSection
-        title="Commits Recentes"
+        title="Atualizações Recentes no GitHub"
         description="Histórico recente da branch principal no GitHub."
+        action={
+          allCommits.length > 0 ? (
+            <button
+              type="button"
+              className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-rose-400"
+              onClick={() => setClearHistoryOpen(true)}
+              title="Limpar histórico visual de atualizações exibido neste painel"
+            >
+              <Trash2 className="h-3 w-3" /> Limpar histórico
+            </button>
+          ) : null
+        }
         flush
       >
         {commitsQuery.isLoading ? (
@@ -677,8 +715,14 @@ export default function AdminDeployPage() {
             Buscando commits recentes...
           </div>
         ) : allCommits.length === 0 ? (
-          <div className="p-6 text-center text-[12px] text-gray-400">
-            Nenhum commit encontrado no repositório.
+          <div className="flex flex-col items-center justify-center p-6 text-center">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/[0.04] text-gray-400">
+              <GitCommit className="h-4 w-4" strokeWidth={1.5} />
+            </div>
+            <p className="mt-1.5 text-[12.5px] font-medium text-gray-300">Nenhuma atualização nova</p>
+            <p className="mt-0.5 text-[11px] text-gray-500">
+              Novos commits da branch main aparecerão aqui.
+            </p>
           </div>
         ) : (
           <div>
@@ -1319,6 +1363,40 @@ export default function AdminDeployPage() {
               </div>
             </div>
           ) : null}
+        </div>
+      </Modal>
+
+      {/* MODAL 5: Confirmação de Limpeza do Histórico Visual de Commits */}
+      <Modal
+        open={clearHistoryOpen}
+        onClose={() => setClearHistoryOpen(false)}
+        title="Limpar histórico de atualizações?"
+        description="Os commits atualmente exibidos serão removidos deste painel. Nenhuma alteração será feita no GitHub, no código-fonte ou nas versões implantadas."
+        size="sm"
+        footer={
+          <DialogFooter>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9"
+              onClick={() => setClearHistoryOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500"
+              disabled={clearHistoryMut.isPending}
+              onClick={() => clearHistoryMut.mutate()}
+            >
+              {clearHistoryMut.isPending ? "Limpando…" : "Limpar histórico"}
+            </button>
+          </DialogFooter>
+        }
+      >
+        <div className="py-2 text-[12.5px] text-gray-300">
+          <p>
+            Esta ação limpa exclusivamente a lista de visualização do painel. Novos commits enviados para a branch principal voltarão a aparecer aqui automaticamente.
+          </p>
         </div>
       </Modal>
     </div>

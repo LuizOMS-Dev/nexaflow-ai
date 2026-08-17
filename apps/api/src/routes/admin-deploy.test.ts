@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { buildApp } from "../app";
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../services/security/password";
+import { githubClient } from "../services/deploy/github-client";
 import type { FastifyInstance } from "fastify";
 
 describe("Módulo de Deploy Admin (/admin/deploy)", () => {
@@ -246,21 +247,29 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
   });
 
   it("10. Regra de Comparação: SHA igual resulta em UP_TO_DATE e SHA diferente em UPDATE_AVAILABLE", async () => {
-    // 1. Cria um deployment concluído com o MESMO SHA que o latest do GitHub
-    const statusBefore = await app.inject({
-      method: "GET",
-      url: "/admin/deploy/status",
-      headers: { authorization: `Bearer ${superadminToken}` },
-    });
-    const latestGhSha = (statusBefore.json() as any)?.latestGitHubCommit?.sha;
+    const mockCommit = {
+      sha: "73bd95b68fbb709d4616c56db7d35b224d1cc602",
+      shortSha: "73bd95b",
+      message: "Latest commit for test",
+      author: "Superadmin",
+      date: new Date().toISOString(),
+    };
 
-    if (latestGhSha) {
+    const spy = vi.spyOn(githubClient, "getRepoStatus").mockResolvedValue({
+      connected: true,
+      owner: "LuizOMS-Dev",
+      repo: "nexaflow-ai",
+      branch: "main",
+      latestCommit: mockCommit,
+    });
+
+    try {
       const upToDateDep = await prisma.deployment.create({
         data: {
           environment: "production",
           branch: "main",
-          commitSha: latestGhSha,
-          commitShortSha: latestGhSha.slice(0, 7),
+          commitSha: mockCommit.sha,
+          commitShortSha: mockCommit.shortSha,
           commitMessage: "Latest deployed commit",
           startedById: superadminUser.id,
           status: "COMPLETED",
@@ -292,6 +301,8 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
 
       // Limpeza
       await prisma.deployment.delete({ where: { id: upToDateDep.id } });
+    } finally {
+      spy.mockRestore();
     }
   });
 
@@ -386,5 +397,47 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       const rawLog = JSON.stringify(log);
       expect(rawLog).not.toContain(testSecret);
     }
+  });
+
+  it("14. Limpar histórico visual de commits: limpa visualização sem alterar GitHub ou Deployments", async () => {
+    // 1. Usuário comum é bloqueado (403)
+    const blockedRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/commits/clear",
+      headers: { authorization: `Bearer ${regularUserToken}` },
+    });
+    expect(blockedRes.statusCode).toBe(403);
+
+    // 2. Superadmin executa a limpeza visual
+    const clearRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/commits/clear",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json().success).toBe(true);
+    expect(clearRes.json().clearedAt).toBeDefined();
+
+    // 3. Verifica que os commits anteriores não aparecem mais em GET /admin/deploy/commits
+    const commitsRes = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/commits",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(commitsRes.statusCode).toBe(200);
+    expect(commitsRes.json().commits).toEqual([]);
+
+    // 4. Verifica auditoria registrada
+    const clearAudit = await prisma.auditLog.findFirst({
+      where: { action: "github.update_history.cleared" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(clearAudit).toBeDefined();
+    expect(clearAudit?.userId).toBe(superadminUser.id);
+
+    // 5. Restaura marcador para não afetar outros testes
+    await prisma.platformSetting.deleteMany({
+      where: { key: "github_history_cleared_at" },
+    });
   });
 }, 30_000);
