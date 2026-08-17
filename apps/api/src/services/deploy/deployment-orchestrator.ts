@@ -47,12 +47,14 @@ export type DeployOverview = {
   activeDeployment: {
     id: string;
     status: DeploymentStatus;
+    stage: DeploymentStatus;
     branch: string;
     commitShortSha: string;
     commitMessage: string;
     startedAt: Date;
     startedByName: string;
     durationSeconds: number;
+    healthStatus: string;
   } | null;
 };
 
@@ -136,6 +138,7 @@ export class DeploymentOrchestrator {
       ? {
           id: activeDeployment.id,
           status: activeDeployment.status as DeploymentStatus,
+          stage: activeDeployment.status as DeploymentStatus,
           branch: activeDeployment.branch,
           commitShortSha: activeDeployment.commitShortSha,
           commitMessage: activeDeployment.commitMessage,
@@ -145,6 +148,10 @@ export class DeploymentOrchestrator {
             0,
             Math.round((Date.now() - activeDeployment.startedAt.getTime()) / 1000)
           ),
+          healthStatus:
+            activeDeployment.status === "VALIDATING"
+              ? "VERIFYING"
+              : "PENDING_VALIDATION",
         }
       : null;
 
@@ -201,27 +208,39 @@ export class DeploymentOrchestrator {
     const branch = input.branch || "main";
     let targetCommit: GitHubCommitInfo;
 
-    try {
-      if (input.commitSha) {
+    if (input.commitSha && input.commitSha !== "main" && input.commitSha !== "latest") {
+      targetCommit = {
+        sha: input.commitSha,
+        shortSha: input.commitSha.slice(0, 7),
+        message: input.isRollback ? `Rollback para ${input.commitSha.slice(0, 7)}` : "Deploy manual de versão",
+        author: "Superadmin",
+        date: new Date().toISOString(),
+      };
+    } else {
+      try {
+        targetCommit = await githubClient.getLatestCommit();
+      } catch (e: any) {
+        // Fallback resiliente: se a API REST do GitHub estiver inacessível ou em rate-limit,
+        // NÃO bloqueia o deploy! O EasyPanel fará o git pull diretamente na branch main via Git.
+        const latestFromDb = await prisma.deployment.findFirst({
+          orderBy: { createdAt: "desc" },
+          select: { commitSha: true, commitShortSha: true, commitMessage: true },
+        });
+
+        const fallbackSha = process.env.NEXAFLOW_GIT_SHA || latestFromDb?.commitSha || "main";
         targetCommit = {
-          sha: input.commitSha,
-          shortSha: input.commitSha.slice(0, 7),
-          message: input.isRollback ? `Rollback para ${input.commitSha.slice(0, 7)}` : "Deploy manual de commit",
+          sha: fallbackSha,
+          shortSha: fallbackSha.slice(0, 7),
+          message: "Deploy automático da branch main",
           author: "Superadmin",
           date: new Date().toISOString(),
         };
-      } else {
-        targetCommit = await githubClient.getLatestCommit();
       }
-    } catch (e) {
-      throw new AppError(
-        `Não foi possível consultar os commits no GitHub: ${e instanceof Error ? e.message : "Erro de conexão"}`,
-        400,
-        "GITHUB_UNAVAILABLE"
-      );
     }
 
-    // 3. Cria o registro de Deployment no banco com status PREPARING
+    const now = new Date();
+
+    // 3. Cria o registro de Deployment no banco com status PREPARING e healthStatus PENDING_VALIDATION
     const deployment = await prisma.deployment.create({
       data: {
         environment: "production",
@@ -232,11 +251,12 @@ export class DeploymentOrchestrator {
         commitAuthor: targetCommit.author,
         startedById: actor.sub,
         status: "PREPARING",
+        healthStatus: "PENDING_VALIDATION",
         services: ["nexaflow"],
         isRollback: Boolean(input.isRollback),
         rollbackFromSha: input.rollbackFromSha,
-        startedAt: new Date(),
-        logs: `[${new Date().toISOString()}] Deploy iniciado por usuário ID: ${actor.sub}\n[${new Date().toISOString()}] Versão alvo: ${targetCommit.shortSha} (${targetCommit.sha})\n[${new Date().toISOString()}] Mensagem: "${targetCommit.message}"\n`,
+        startedAt: now,
+        logs: `[${now.toISOString()}] [PREPARING] Deploy iniciado por usuário ID: ${actor.sub}\n[${now.toISOString()}] [PREPARING] Versão alvo: ${targetCommit.shortSha} (${targetCommit.sha})\n[${now.toISOString()}] [PREPARING] Mensagem: "${targetCommit.message}"\n`,
       },
     });
 
@@ -268,15 +288,16 @@ export class DeploymentOrchestrator {
   }
 
   /**
-   * Pipeline de execução assíncrona: EasyPanel Deploy -> Polling Health Check -> Finalização
+   * Pipeline de execução assíncrona com transições estritas:
+   * PREPARING -> BUILDING -> DEPLOYING -> VALIDATING -> COMPLETED (ou FAILED)
    */
   private async runDeploymentPipeline(
     deploymentId: string,
     actor: { sub: string; ip?: string }
   ) {
     let logBuffer = "";
-    const log = (msg: string) => {
-      const line = `[${new Date().toISOString()}] ${msg}\n`;
+    const log = (stage: string, msg: string) => {
+      const line = `[${new Date().toISOString()}] [${stage}] ${msg}\n`;
       logBuffer += line;
     };
 
@@ -296,18 +317,18 @@ export class DeploymentOrchestrator {
     };
 
     try {
-      log("Preparando conexão com o EasyPanel...");
+      log("PREPARING", "Validando credenciais e preparando conexão com o EasyPanel...");
       await flushLogs();
 
-      // Transição: BUILDING
-      await safeUpdate({ status: "BUILDING" });
-      log("Disparando comando de build e deploy no EasyPanel (serviço 'nexaflow')...");
-      log("Compilando containers Docker e atualizando serviços no servidor...");
+      // Transição 1: BUILDING
+      await safeUpdate({ status: "BUILDING", healthStatus: "PENDING_VALIDATION" });
+      log("BUILDING", "Disparando comando de build e deploy no EasyPanel (serviço 'nexaflow')...");
+      log("BUILDING", "Compilando containers Docker da aplicação...");
       await flushLogs();
 
       // Em ambiente de teste, simula o pipeline sem acionar EasyPanel real nem esperar 15s
       if (process.env.NODE_ENV === "test") {
-        log("✓ [MODO TESTE] Deploy simulado com sucesso.");
+        log("SUCCESS", "✓ [MODO TESTE] Build e implantação simulados com sucesso.");
         await safeUpdate({
           status: "COMPLETED",
           healthStatus: "HEALTHY",
@@ -321,7 +342,7 @@ export class DeploymentOrchestrator {
       // Dispara o deploy no EasyPanel em produção
       try {
         await easyPanelClient.deployService();
-        log("✓ EasyPanel concluiu o comando de build e deploy dos serviços.");
+        log("BUILDING", "✓ EasyPanel confirmou a compilação do compose.");
       } catch (deployErr: any) {
         const isGatewayTimeout =
           deployErr?.statusCode === 504 ||
@@ -331,28 +352,42 @@ export class DeploymentOrchestrator {
 
         if (isGatewayTimeout) {
           log(
-            `⚠ Resposta direta do EasyPanel atingiu tempo limite de conexão (${deployErr.message || "timeout"}), mas a compilação do Docker segue em execução no servidor.`
+            "BUILDING",
+            `⚠ Resposta direta do EasyPanel atingiu tempo limite de conexão (${deployErr.message || "timeout"}), mas a compilação segue em execução no servidor.`
           );
-          log("Prosseguindo para validação dos serviços via Health Check...");
         } else {
-          throw deployErr;
+          const errMsg = `Falha durante a compilação: ${deployErr?.message || "Erro de build"}`;
+          log("FAILED", `✕ ${errMsg}`);
+          await safeUpdate({
+            status: "FAILED",
+            healthStatus: "FAILED",
+            errorSummary: "Falha durante a compilação",
+            finishedAt: new Date(),
+            logs: logBuffer,
+          });
+          return;
         }
       }
 
-      await safeUpdate({ status: "DEPLOYING" });
+      // Transição 2: DEPLOYING
+      await safeUpdate({ status: "DEPLOYING", healthStatus: "PENDING_VALIDATION" });
+      log("DEPLOYING", "Iniciando atualização dos containers de API e Web no servidor...");
       await flushLogs();
 
       // Aguarda 15s antes de iniciar a validação para o container iniciar o ciclo de rebuild
       await new Promise((r) => setTimeout(r, 15000));
 
-      // Transição: VALIDATING
-      await safeUpdate({ status: "VALIDATING" });
-      log("Aguardando reinicialização dos containers e iniciando verificação de integridade (Health Check)...");
+      // Transição 3: VALIDATING
+      await safeUpdate({ status: "VALIDATING", healthStatus: "VERIFYING" });
+      log("VERIFYING", "Aguardando reinicialização dos containers e iniciando verificação de integridade (Health Check)...");
       await flushLogs();
 
       // Executa health check com retries (até 30 tentativas de 10s = 300s)
-      const healthResult = await this.pollHealthCheck((attempt, max) => {
-        log(`Health check: tentativa ${attempt}/${max}...`);
+      const healthResult = await this.pollHealthCheck((attempt, max, apiSt, webSt) => {
+        log(
+          "VERIFYING",
+          `Health check (${attempt}/${max}): API ${apiSt ? `status ${apiSt}` : "verificando..."}, Web ${webSt ? `status ${webSt}` : "verificando..."}`
+        );
         void flushLogs();
       });
 
@@ -361,9 +396,10 @@ export class DeploymentOrchestrator {
       const durationSeconds = dep ? Math.max(1, Math.round((finishedAt.getTime() - dep.startedAt.getTime()) / 1000)) : 0;
 
       if (healthResult.healthy) {
-        log(`✓ Validação de saúde bem-sucedida! API (${healthResult.apiStatus}) e Web (${healthResult.webStatus}) operacionais.`);
-        log(`✓ Deploy concluído com sucesso em ${durationSeconds} segundos.`);
+        log("SUCCESS", `✓ Validação de saúde bem-sucedida! API (${healthResult.apiStatus}) e Web (${healthResult.webStatus}) operacionais.`);
+        log("SUCCESS", `✓ Deploy concluído com sucesso em ${durationSeconds} segundos.`);
 
+        // Transição 4: COMPLETED
         await safeUpdate({
           status: "COMPLETED",
           healthStatus: "HEALTHY",
@@ -380,13 +416,14 @@ export class DeploymentOrchestrator {
           metadata: { deploymentId, durationSeconds, commitSha: dep?.commitSha },
         });
       } else {
-        const err = healthResult.error || "A implantação foi concluída, mas a aplicação não ficou saudável.";
-        log(`✕ Falha no Health Check: ${err}`);
+        const err = healthResult.error || "Falha na validação de saúde";
+        log("FAILED", `✕ Falha no Health Check: ${err}`);
 
+        // Transição 4: FAILED (por health)
         await safeUpdate({
           status: "FAILED",
           healthStatus: "UNHEALTHY",
-          errorSummary: err,
+          errorSummary: "Falha na validação de saúde",
           healthCheckedAt: finishedAt,
           finishedAt,
           durationSeconds,
@@ -403,14 +440,15 @@ export class DeploymentOrchestrator {
     } catch (e) {
       const finishedAt = new Date();
       const errMessage = e instanceof Error ? e.message : "Erro desconhecido durante o deploy.";
-      log(`✕ Erro fatal durante a orquestração: ${errMessage}`);
+      log("FAILED", `✕ Erro fatal durante a orquestração: ${errMessage}`);
 
       const dep = await prisma.deployment.findUnique({ where: { id: deploymentId } }).catch(() => null);
       const durationSeconds = dep ? Math.max(1, Math.round((finishedAt.getTime() - dep.startedAt.getTime()) / 1000)) : 0;
 
       await safeUpdate({
         status: "FAILED",
-        errorSummary: errMessage,
+        healthStatus: "FAILED",
+        errorSummary: errMessage.includes("compilação") ? "Falha durante a compilação" : errMessage.includes("implantação") ? "Falha durante a implantação" : "Falha na validação de saúde",
         finishedAt,
         durationSeconds,
         logs: logBuffer,
@@ -426,9 +464,11 @@ export class DeploymentOrchestrator {
   }
 
   /**
-   * Polling de Health Check real
+   * Polling de Health Check real validando individualmente API e Web
    */
-  private async pollHealthCheck(onAttempt?: (attempt: number, max: number) => void): Promise<{
+  private async pollHealthCheck(
+    onAttempt?: (attempt: number, max: number, apiStatus?: number, webStatus?: number) => void
+  ): Promise<{
     healthy: boolean;
     apiStatus?: number;
     webStatus?: number;
@@ -449,22 +489,49 @@ export class DeploymentOrchestrator {
     const maxAttempts = 30;
     const intervalMs = 10000;
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      onAttempt?.(attempt, maxAttempts);
-      try {
-        const [apiRes, webRes] = await Promise.all([
-          fetch(apiUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null),
-          fetch(webUrl, { signal: AbortSignal.timeout(8000) }).catch(() => null),
-        ]);
+    let lastApiStatus: number | undefined;
+    let lastWebStatus: number | undefined;
 
-        if (apiRes && apiRes.ok && webRes && webRes.ok) {
-          return {
-            healthy: true,
-            apiStatus: apiRes.status,
-            webStatus: webRes.status,
-          };
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let apiOk = false;
+      let webOk = false;
+
+      try {
+        const resApi = await fetch(apiUrl, {
+          signal: AbortSignal.timeout(6000),
+          headers: { Accept: "application/json" },
+        });
+        lastApiStatus = resApi.status;
+        if (resApi.ok) {
+          apiOk = true;
         }
-      } catch {}
+      } catch {
+        lastApiStatus = undefined;
+      }
+
+      try {
+        const resWeb = await fetch(webUrl, {
+          signal: AbortSignal.timeout(6000),
+        });
+        lastWebStatus = resWeb.status;
+        if (resWeb.ok) {
+          webOk = true;
+        }
+      } catch {
+        lastWebStatus = undefined;
+      }
+
+      if (onAttempt) {
+        onAttempt(attempt, maxAttempts, lastApiStatus, lastWebStatus);
+      }
+
+      if (apiOk && webOk) {
+        return {
+          healthy: true,
+          apiStatus: lastApiStatus,
+          webStatus: lastWebStatus,
+        };
+      }
 
       if (attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, intervalMs));
@@ -473,28 +540,102 @@ export class DeploymentOrchestrator {
 
     return {
       healthy: false,
-      error: `Timeout após ${maxAttempts * 10} segundos sem resposta saudável de API (${apiUrl}) ou Web (${webUrl}).`,
+      apiStatus: lastApiStatus,
+      webStatus: lastWebStatus,
+      error: `Timeout de validação de saúde após ${maxAttempts * (intervalMs / 1000)}s. API (${lastApiStatus || "sem resposta"}), Web (${lastWebStatus || "sem resposta"}).`,
     };
   }
 
   /**
-   * Histórico paginado de deploys
+   * Retorna os detalhes de um deployment específico
    */
-  async listHistory(page = 1, limit = 15) {
+  async getDeployment(id: string) {
+    const deployment = assertFound(
+      await prisma.deployment.findUnique({
+        where: { id },
+        include: {
+          startedBy: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      }),
+      "Deploy não encontrado."
+    );
+
+    const isFinished = deployment.status === "COMPLETED" || deployment.status === "FAILED";
+    const durationSeconds =
+      deployment.durationSeconds ||
+      (deployment.finishedAt
+        ? Math.max(1, Math.round((deployment.finishedAt.getTime() - deployment.startedAt.getTime()) / 1000))
+        : Math.max(0, Math.round((Date.now() - deployment.startedAt.getTime()) / 1000)));
+
+    // Determina o status individual da API e Web de forma precisa
+    let apiHealth = "PENDING";
+    let webHealth = "PENDING";
+
+    if (deployment.status === "COMPLETED" || deployment.healthStatus === "HEALTHY") {
+      apiHealth = "HEALTHY";
+      webHealth = "HEALTHY";
+    } else if (deployment.status === "VALIDATING") {
+      apiHealth = "VERIFYING";
+      webHealth = "VERIFYING";
+    } else if (deployment.healthStatus === "UNHEALTHY") {
+      apiHealth = "UNHEALTHY";
+      webHealth = "UNHEALTHY";
+    }
+
+    return {
+      id: deployment.id,
+      environment: deployment.environment,
+      branch: deployment.branch,
+      commitSha: deployment.commitSha,
+      commitShortSha: deployment.commitShortSha,
+      commitMessage: deployment.commitMessage,
+      commitAuthor: deployment.commitAuthor,
+      startedBy: deployment.startedBy?.name || "Superadmin",
+      startedByEmail: deployment.startedBy?.email,
+      status: deployment.status as DeploymentStatus,
+      stage: deployment.status as DeploymentStatus,
+      services: deployment.services,
+      startedAt: deployment.startedAt,
+      finishedAt: deployment.finishedAt,
+      durationSeconds,
+      errorSummary: deployment.errorSummary,
+      logs: deployment.logs,
+      healthStatus: deployment.healthStatus,
+      apiHealth,
+      webHealth,
+      healthCheckedAt: deployment.healthCheckedAt,
+      isRollback: deployment.isRollback,
+      rollbackFromSha: deployment.rollbackFromSha,
+    };
+  }
+
+  /**
+   * Lista o histórico paginado de deployments
+   */
+  async listHistory(page = 1, limit = 10) {
     const skip = (page - 1) * limit;
-    const [items, total] = await Promise.all([
+
+    const [total, items] = await Promise.all([
+      prisma.deployment.count(),
       prisma.deployment.findMany({
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
         include: {
-          startedBy: { select: { id: true, name: true, email: true } },
+          startedBy: {
+            select: { id: true, name: true, email: true },
+          },
         },
       }),
-      prisma.deployment.count(),
     ]);
 
     return {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
       items: items.map((d) => ({
         id: d.id,
         environment: d.environment,
@@ -503,7 +644,7 @@ export class DeploymentOrchestrator {
         commitShortSha: d.commitShortSha,
         commitMessage: d.commitMessage,
         commitAuthor: d.commitAuthor,
-        startedBy: d.startedBy?.name || "Desconhecido",
+        startedBy: d.startedBy?.name || "Superadmin",
         startedByEmail: d.startedBy?.email,
         status: d.status,
         startedAt: d.startedAt,
@@ -514,46 +655,6 @@ export class DeploymentOrchestrator {
         isRollback: d.isRollback,
         rollbackFromSha: d.rollbackFromSha,
       })),
-      total,
-      page,
-      limit,
-      totalPages: Math.max(1, Math.ceil(total / limit)),
-    };
-  }
-
-  /**
-   * Detalhes e logs de um deployment específico
-   */
-  async getDeployment(id: string) {
-    const d = assertFound(
-      await prisma.deployment.findUnique({
-        where: { id },
-        include: { startedBy: { select: { id: true, name: true, email: true } } },
-      }),
-      "Registro de deploy não encontrado."
-    );
-
-    return {
-      id: d.id,
-      environment: d.environment,
-      branch: d.branch,
-      commitSha: d.commitSha,
-      commitShortSha: d.commitShortSha,
-      commitMessage: d.commitMessage,
-      commitAuthor: d.commitAuthor,
-      startedBy: d.startedBy?.name || "Desconhecido",
-      startedByEmail: d.startedBy?.email,
-      status: d.status,
-      services: d.services,
-      startedAt: d.startedAt,
-      finishedAt: d.finishedAt,
-      durationSeconds: d.durationSeconds,
-      errorSummary: d.errorSummary,
-      logs: d.logs || "",
-      healthStatus: d.healthStatus,
-      healthCheckedAt: d.healthCheckedAt,
-      isRollback: d.isRollback,
-      rollbackFromSha: d.rollbackFromSha,
     };
   }
 }

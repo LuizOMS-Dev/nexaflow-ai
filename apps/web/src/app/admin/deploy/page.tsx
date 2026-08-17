@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -16,6 +16,7 @@ import {
   History,
   KeyRound,
   Layers,
+  Loader2,
   RefreshCw,
   Rocket,
   RotateCcw,
@@ -42,6 +43,15 @@ import { DialogFooter, FormField, Modal, useToast } from "@/components/ui";
 import { ActionMenu } from "@/components/ui-menu";
 
 type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE" | "CHECKING";
+
+type DeploymentStatus =
+  | "PENDING"
+  | "PREPARING"
+  | "BUILDING"
+  | "DEPLOYING"
+  | "VALIDATING"
+  | "COMPLETED"
+  | "FAILED";
 
 type DeployOverviewResponse = {
   environment: string;
@@ -85,13 +95,15 @@ type DeployOverviewResponse = {
   };
   activeDeployment: {
     id: string;
-    status: string;
+    status: DeploymentStatus;
+    stage: DeploymentStatus;
     branch: string;
     commitShortSha: string;
     commitMessage: string;
     startedAt: string;
     startedByName: string;
     durationSeconds: number;
+    healthStatus: string;
   } | null;
 };
 
@@ -134,7 +146,7 @@ type HistoryItem = {
   commitAuthor?: string;
   startedBy: string;
   startedByEmail?: string;
-  status: string;
+  status: DeploymentStatus;
   startedAt: string;
   finishedAt?: string;
   durationSeconds?: number;
@@ -153,7 +165,9 @@ type DeploymentDetail = {
   commitMessage: string;
   commitAuthor?: string;
   startedBy: string;
-  status: string;
+  startedByEmail?: string;
+  status: DeploymentStatus;
+  stage: DeploymentStatus;
   services: string[];
   startedAt: string;
   finishedAt?: string;
@@ -161,29 +175,57 @@ type DeploymentDetail = {
   errorSummary?: string;
   logs: string;
   healthStatus?: string;
+  apiHealth?: string;
+  webHealth?: string;
   healthCheckedAt?: string;
   isRollback?: boolean;
+  rollbackFromSha?: string;
 };
 
+const STAGES: Array<{ id: DeploymentStatus; label: string }> = [
+  { id: "PREPARING", label: "Preparando" },
+  { id: "BUILDING", label: "Compilando" },
+  { id: "DEPLOYING", label: "Implantando" },
+  { id: "VALIDATING", label: "Verificando" },
+];
+
+function getStageIndex(status: DeploymentStatus): number {
+  switch (status) {
+    case "PENDING":
+    case "PREPARING":
+      return 0;
+    case "BUILDING":
+      return 1;
+    case "DEPLOYING":
+      return 2;
+    case "VALIDATING":
+      return 3;
+    case "COMPLETED":
+      return 4;
+    case "FAILED":
+      return -1;
+    default:
+      return 0;
+  }
+}
+
 function formatDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) return "—";
+  if (!seconds || seconds <= 0) return "0s";
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}m ${s}s`;
+  return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-function deployStatusTone(st: string): "brand" | "neutral" | "success" | "warning" | "danger" {
+function deployStatusTone(st: DeploymentStatus): "brand" | "neutral" | "success" | "warning" | "danger" {
   switch (st) {
     case "COMPLETED":
-    case "SUCCESS":
       return "success";
     case "FAILED":
       return "danger";
     case "BUILDING":
     case "DEPLOYING":
     case "VALIDATING":
-    case "VERIFYING":
       return "brand";
     case "PREPARING":
     case "PENDING":
@@ -193,11 +235,10 @@ function deployStatusTone(st: string): "brand" | "neutral" | "success" | "warnin
   }
 }
 
-function deployStatusLabel(st: string): string {
+function deployStatusLabel(st: DeploymentStatus): string {
   switch (st) {
     case "COMPLETED":
-    case "SUCCESS":
-      return "Sucesso";
+      return "Concluído";
     case "FAILED":
       return "Falhou";
     case "BUILDING":
@@ -205,8 +246,7 @@ function deployStatusLabel(st: string): string {
     case "DEPLOYING":
       return "Implantando";
     case "VALIDATING":
-    case "VERIFYING":
-      return "Validando saúde";
+      return "Verificando";
     case "PREPARING":
       return "Preparando";
     case "PENDING":
@@ -214,6 +254,19 @@ function deployStatusLabel(st: string): string {
     default:
       return st;
   }
+}
+
+function healthStatusLabel(status: DeploymentStatus, health?: string): string {
+  if (status === "COMPLETED" || health === "HEALTHY") {
+    return "Saudável";
+  }
+  if (status === "VALIDATING" || health === "VERIFYING") {
+    return "Verificando";
+  }
+  if (status === "FAILED") {
+    return health === "UNHEALTHY" ? "Falha na validação" : "Falha na execução";
+  }
+  return "Aguardando validação";
 }
 
 export default function AdminDeployPage() {
@@ -230,7 +283,10 @@ export default function AdminDeployPage() {
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [visibleCommitCount, setVisibleCommitCount] = useState(5);
   const [isReplacingToken, setIsReplacingToken] = useState(false);
+  const [autoScrollLogs, setAutoScrollLogs] = useState(true);
   const [page, setPage] = useState(1);
+
+  const logContainerRef = useRef<HTMLPreElement | null>(null);
 
   // Form states do Modal de Configuração do EasyPanel (Write-Only)
   const [cfgUrl, setCfgUrl] = useState("");
@@ -246,7 +302,7 @@ export default function AdminDeployPage() {
     enabled: user?.platformRole === "SUPERADMIN",
     refetchInterval: (query) => {
       const data = query.state.data;
-      return data?.activeDeployment ? 4000 : 20000;
+      return data?.activeDeployment ? 3000 : 20000;
     },
   });
 
@@ -269,7 +325,7 @@ export default function AdminDeployPage() {
         totalPages: number;
       }>(`/admin/deploy/history?page=${page}&limit=10`),
     enabled: user?.platformRole === "SUPERADMIN",
-    refetchInterval: () => (overviewQuery.data?.activeDeployment ? 5000 : false),
+    refetchInterval: () => (overviewQuery.data?.activeDeployment ? 4000 : false),
   });
 
   // 4. Detalhes do deploy selecionado
@@ -278,7 +334,7 @@ export default function AdminDeployPage() {
     queryFn: () => api<DeploymentDetail>(`/admin/deploy/${selectedDetailId}`),
     enabled: Boolean(selectedDetailId) && user?.platformRole === "SUPERADMIN",
     refetchInterval: () =>
-      overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 3000 : false,
+      overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 2500 : false,
   });
 
   // 5. Configuração salva do EasyPanel (Write-Only)
@@ -298,6 +354,13 @@ export default function AdminDeployPage() {
       setTestResult(null);
     }
   }, [configQuery.data]);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (autoScrollLogs && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [detailQuery.data?.logs, autoScrollLogs]);
 
   const copyToClipboard = (text: string, label: string) => {
     void navigator.clipboard.writeText(text);
@@ -502,6 +565,8 @@ export default function AdminDeployPage() {
   const isFetchingAny = overviewQuery.isFetching || commitsQuery.isFetching;
   const tokenIsSaved = Boolean(configQuery.data?.tokenConfigured);
 
+  const activeStageIdx = active ? getStageIndex(active.stage || active.status) : 0;
+
   return (
     <div className="space-y-5">
       {/* 1. Header */}
@@ -583,36 +648,90 @@ export default function AdminDeployPage() {
         />
       </MetricGrid>
 
-      {/* 3. Banner de Deploy Ativo (se houver) */}
+      {/* 3. Painel de Deploy Ativo (Experiência Premium com Stepper Horizontal) */}
       {active ? (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] p-4 text-white">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300">
-                <Rocket className="h-4.5 w-4.5 animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-white text-[13.5px]">Deploy em andamento</h3>
-                  <StatusBadge tone="warning" dot>
-                    {deployStatusLabel(active.status)}
-                  </StatusBadge>
+        <div className="rounded-xl border border-violet-500/25 bg-[#0e1017] p-4 text-white shadow-[0_8px_24px_-8px_rgba(124,58,237,0.15)]">
+          <div className="flex flex-col gap-3.5">
+            {/* Topo: Título + Botão Ver Detalhes */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-400">
+                  <Rocket className="h-3.5 w-3.5 animate-pulse" />
                 </div>
-                <p className="mt-0.5 text-[12px] text-gray-300">
-                  Versão <code className="text-amber-300 font-mono">{active.commitShortSha}</code>: &quot;{active.commitMessage}&quot;
-                </p>
-                <p className="mt-0.5 text-[11px] text-gray-400">
-                  Iniciado por <strong className="text-gray-200">{active.startedByName}</strong> · decorridos {formatDuration(active.durationSeconds)}
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-white text-[13.5px]">Implantação em andamento</h3>
+                    <code className="rounded bg-violet-500/20 px-1.5 py-0.5 font-mono text-[11.5px] font-bold text-violet-300">
+                      {active.commitShortSha}
+                    </code>
+                  </div>
+                  <p className="text-[11.5px] text-gray-400 truncate max-w-lg">
+                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · há {formatDuration(active.durationSeconds)}
+                  </p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                className="admin-btn-secondary h-7.5 px-3 text-[11.5px] shrink-0"
+                onClick={() => setSelectedDetailId(active.id)}
+              >
+                <Terminal className="h-3 w-3" /> Ver detalhes
+              </button>
             </div>
-            <button
-              type="button"
-              className="admin-btn-secondary shrink-0 text-[12px] h-8"
-              onClick={() => setSelectedDetailId(active.id)}
-            >
-              <Terminal className="h-3.5 w-3.5" /> Ver logs em tempo real
-            </button>
+
+            {/* Stepper Horizontal Discreto */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 pt-1">
+              {STAGES.map((st, idx) => {
+                const isPast = activeStageIdx > idx;
+                const isCurrent = activeStageIdx === idx;
+                const isFuture = activeStageIdx < idx;
+
+                return (
+                  <div
+                    key={st.id}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] border transition-all",
+                      isCurrent
+                        ? "bg-violet-500/[0.12] border-violet-500/30 text-white font-medium shadow-[0_0_12px_rgba(139,92,246,0.1)]"
+                        : isPast
+                        ? "bg-white/[0.02] border-white/[0.06] text-gray-300"
+                        : "bg-transparent border-transparent text-gray-500"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10.5px] font-bold transition-all",
+                        isPast
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : isCurrent
+                          ? "bg-violet-500 text-white"
+                          : "bg-white/[0.06] text-gray-400"
+                      )}
+                    >
+                      {isPast ? (
+                        <Check className="h-3 w-3 stroke-[2.5]" />
+                      ) : isCurrent ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        idx + 1
+                      )}
+                    </div>
+                    <span className="truncate">{st.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Rodapé Informativo */}
+            <div className="flex flex-wrap items-center justify-between text-[11.5px] text-gray-400 pt-1">
+              <span>
+                Etapa atual: <strong className="text-violet-300 font-semibold">{deployStatusLabel(active.stage || active.status)}</strong>
+              </span>
+              <span>
+                Saúde final: <strong className="text-gray-300">{healthStatusLabel(active.status, active.healthStatus)}</strong>
+              </span>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1105,34 +1224,36 @@ export default function AdminDeployPage() {
         ) : null}
       </Modal>
 
-      {/* MODAL 3: Visualizador de Detalhes & Logs */}
+      {/* MODAL 3: Visualizador Operacional de Detalhes da Implantação (Redesenhado) */}
       <Modal
         open={Boolean(selectedDetailId)}
         onClose={() => setSelectedDetailId(null)}
         title="Detalhes da Implantação"
         description={
           detailQuery.data
-            ? `Deploy ${detailQuery.data.commitShortSha} — ${deployStatusLabel(detailQuery.data.status)}`
+            ? `${detailQuery.data.commitShortSha} · ${deployStatusLabel(detailQuery.data.stage || detailQuery.data.status)} — "${detailQuery.data.commitMessage}"`
             : "Carregando detalhes…"
         }
-        size="xl"
+        size="lg"
         footer={
           <div className="flex w-full justify-between items-center">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="admin-btn-ghost h-8 px-2.5 text-[11.5px]"
+                onClick={() => {
+                  if (detailQuery.data?.logs) {
+                    void navigator.clipboard.writeText(detailQuery.data.logs);
+                    toast({ title: "Copiado", description: "Logs copiados para a área de transferência.", kind: "success" });
+                  }
+                }}
+              >
+                <Copy className="h-3 w-3" /> Copiar logs
+              </button>
+            </div>
             <button
               type="button"
-              className="admin-btn-ghost h-9 text-[12px]"
-              onClick={() => {
-                if (detailQuery.data?.logs) {
-                  void navigator.clipboard.writeText(detailQuery.data.logs);
-                  toast({ title: "Copiado", description: "Logs copiados para a área de transferência.", kind: "success" });
-                }
-              }}
-            >
-              <Copy className="h-3.5 w-3.5" /> Copiar logs
-            </button>
-            <button
-              type="button"
-              className="admin-btn-secondary h-9 text-[12px]"
+              className="admin-btn-secondary h-8 px-4 text-[12px]"
               onClick={() => setSelectedDetailId(null)}
             >
               Fechar
@@ -1140,41 +1261,190 @@ export default function AdminDeployPage() {
           </div>
         }
       >
-        <div className="space-y-3.5 py-1">
+        <div className="space-y-4 py-1">
           {detailQuery.isLoading ? (
-            <p className="text-gray-500 font-mono text-[12px]">Carregando detalhes do deploy…</p>
+            <p className="text-gray-500 font-mono text-[12px] py-4 text-center">Carregando detalhes do deploy…</p>
           ) : detailQuery.data ? (
             <>
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 text-[12px]">
-                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
-                  <span className="text-gray-400 text-[11px] block">Status</span>
-                  <StatusBadge tone={deployStatusTone(detailQuery.data.status)}>
-                    {deployStatusLabel(detailQuery.data.status)}
-                  </StatusBadge>
-                </div>
-                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
-                  <span className="text-gray-400 text-[11px] block">Duração</span>
-                  <span className="font-semibold text-white">{formatDuration(detailQuery.data.durationSeconds)}</span>
-                </div>
-                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
-                  <span className="text-gray-400 text-[11px] block">Saúde Final</span>
-                  <span className="font-semibold text-emerald-400">{detailQuery.data.healthStatus || "OK"}</span>
-                </div>
-                <div className="rounded-lg bg-white/[0.03] p-2.5 border border-white/[0.06]">
-                  <span className="text-gray-400 text-[11px] block">Iniciado Por</span>
-                  <span className="font-semibold text-white truncate block">{detailQuery.data.startedBy}</span>
+              {/* 1. Progresso (Stepper Horizontal) */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">Progresso</span>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {STAGES.map((st, idx) => {
+                    const detailStageIdx = getStageIndex(detailQuery.data!.stage || detailQuery.data!.status);
+                    const isPast = detailStageIdx > idx;
+                    const isCurrent = detailStageIdx === idx && detailQuery.data!.status !== "COMPLETED" && detailQuery.data!.status !== "FAILED";
+                    const isFailed = detailQuery.data!.status === "FAILED" && detailStageIdx === idx;
+
+                    return (
+                      <div
+                        key={st.id}
+                        className={cn(
+                          "flex items-center gap-2 rounded-lg px-2.5 py-2 text-[11.5px] border transition-all",
+                          isCurrent
+                            ? "bg-violet-500/[0.12] border-violet-500/30 text-white font-medium shadow-[0_0_12px_rgba(139,92,246,0.1)]"
+                            : isFailed
+                            ? "bg-rose-500/[0.12] border-rose-500/30 text-rose-300 font-medium"
+                            : isPast
+                            ? "bg-white/[0.02] border-white/[0.06] text-gray-300"
+                            : "bg-transparent border-transparent text-gray-500"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-all",
+                            isPast
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : isCurrent
+                              ? "bg-violet-500 text-white"
+                              : isFailed
+                              ? "bg-rose-500 text-white"
+                              : "bg-white/[0.06] text-gray-400"
+                          )}
+                        >
+                          {isPast ? (
+                            <Check className="h-3 w-3 stroke-[2.5]" />
+                          ) : isCurrent ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : isFailed ? (
+                            <XCircle className="h-3 w-3" />
+                          ) : (
+                            idx + 1
+                          )}
+                        </div>
+                        <span className="truncate">{st.label}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-3.5 text-[12px]">
-                <span className="text-gray-400 text-[11px] uppercase tracking-wider block mb-2">Logs de Execução</span>
-                {detailQuery.data.logs ? (
-                  <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap font-mono text-emerald-400 leading-relaxed scrollbar-thin">
-                    {detailQuery.data.logs}
-                  </pre>
-                ) : (
-                  <p className="text-gray-500 font-mono">Nenhum log registrado para este deploy.</p>
-                )}
+              {/* 2. Informações Gerais da Implantação */}
+              <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 text-[12.5px] space-y-2">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                  <div>
+                    <span className="text-gray-400 text-[11px] block">Versão</span>
+                    <code className="font-mono font-bold text-violet-300">{detailQuery.data.commitShortSha}</code>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 text-[11px] block">Branch</span>
+                    <span className="font-medium text-white">{detailQuery.data.branch}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 text-[11px] block">Iniciado por</span>
+                    <span className="font-medium text-white truncate block">{detailQuery.data.startedBy}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 text-[11px] block">Início</span>
+                    <span className="text-gray-300">{formatDate(detailQuery.data.startedAt)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 text-[11px] block">Tempo decorrido</span>
+                    <span className="font-medium text-white">{formatDuration(detailQuery.data.durationSeconds)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 text-[11px] block">Serviços afetados</span>
+                    <span className="font-mono text-gray-300 text-[11.5px]">api, web</span>
+                  </div>
+                </div>
+
+                {detailQuery.data.errorSummary ? (
+                  <div className="mt-2 rounded-lg bg-rose-500/[0.08] p-2.5 text-[12px] text-rose-300 border border-rose-500/20">
+                    <strong className="block text-rose-200">Motivo da falha:</strong>
+                    {detailQuery.data.errorSummary}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* 3. Validação de Saúde dos Serviços */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">Validação de Saúde</span>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-[12.5px]">
+                  {/* API */}
+                  <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3">
+                    <span className="font-medium text-white">NexaFlow API</span>
+                    {detailQuery.data.apiHealth === "HEALTHY" ? (
+                      <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[12px]">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Saudável
+                      </span>
+                    ) : detailQuery.data.apiHealth === "VERIFYING" ? (
+                      <span className="flex items-center gap-1 text-violet-400 font-medium text-[12px]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando
+                      </span>
+                    ) : detailQuery.data.apiHealth === "UNHEALTHY" ? (
+                      <span className="flex items-center gap-1 text-rose-400 font-semibold text-[12px]">
+                        <XCircle className="h-3.5 w-3.5" /> Inacessível
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 text-[12px]">Aguardando validação</span>
+                    )}
+                  </div>
+
+                  {/* Web */}
+                  <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3">
+                    <span className="font-medium text-white">NexaFlow Web</span>
+                    {detailQuery.data.webHealth === "HEALTHY" ? (
+                      <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[12px]">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Saudável
+                      </span>
+                    ) : detailQuery.data.webHealth === "VERIFYING" ? (
+                      <span className="flex items-center gap-1 text-violet-400 font-medium text-[12px]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando
+                      </span>
+                    ) : detailQuery.data.webHealth === "UNHEALTHY" ? (
+                      <span className="flex items-center gap-1 text-rose-400 font-semibold text-[12px]">
+                        <XCircle className="h-3.5 w-3.5" /> Inacessível
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 text-[12px]">Aguardando validação</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Logs Operacionais Refinados */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.06em] text-gray-400">
+                  <span>Logs de Execução</span>
+                  <button
+                    type="button"
+                    className="text-[11px] text-violet-400 hover:underline lowercase tracking-normal"
+                    onClick={() => setAutoScrollLogs((s) => !s)}
+                  >
+                    Auto-scroll: {autoScrollLogs ? "ativo" : "pausado"}
+                  </button>
+                </div>
+                <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-3.5 text-[11.5px]">
+                  {detailQuery.data.logs ? (
+                    <pre
+                      ref={logContainerRef}
+                      className="max-h-[30vh] overflow-y-auto whitespace-pre-wrap font-mono text-gray-300 leading-relaxed scrollbar-thin selection:bg-violet-500/30"
+                    >
+                      {detailQuery.data.logs.split("\n").map((line, lIdx) => {
+                        if (!line) return null;
+                        const isSuccess = line.includes("✓") || line.includes("[SUCCESS]");
+                        const isFailed = line.includes("✕") || line.includes("[FAILED]") || line.includes("Falha");
+                        const isWarn = line.includes("⚠") || line.includes("timeout");
+
+                        return (
+                          <div
+                            key={lIdx}
+                            className={cn(
+                              "py-0.5",
+                              isSuccess && "text-emerald-400 font-medium",
+                              isFailed && "text-rose-400 font-medium",
+                              isWarn && "text-amber-300"
+                            )}
+                          >
+                            {line}
+                          </div>
+                        );
+                      })}
+                    </pre>
+                  ) : (
+                    <p className="text-gray-500 font-mono text-[11.5px]">Nenhum log registrado para este deploy.</p>
+                  )}
+                </div>
               </div>
             </>
           ) : null}
