@@ -365,6 +365,105 @@ function healthStatusLabel(status: DeploymentStatus, health?: string): string {
   return "Aguardando validação";
 }
 
+/**
+ * Converte mensagens de commit técnicas/em inglês para descrições elegantes e claras em Português (pt-BR)
+ */
+function formatCommitMessagePtBr(rawMessage?: string | null): string {
+  if (!rawMessage || !rawMessage.trim()) return "Sem descrição informada";
+
+  const msg = rawMessage.trim();
+
+  // Dicionário de mensagens conhecidas ou comuns
+  const directTranslations: Record<string, string> = {
+    "Deploy manual de versão": "Deploy manual de versão",
+    "Deploy automático da branch main": "Deploy automático da branch main",
+    "Initial commit": "Commit inicial",
+  };
+
+  if (directTranslations[msg]) {
+    return directTranslations[msg];
+  }
+
+  // Traduções específicas dos commits recentes do projeto
+  if (/refactor\(deploy\):\s*refine active deploy state,\s*remove redundant status badge and harmonize version comparison/i.test(msg)) {
+    return "Refatoração do deploy: refinamento do estado ativo, remoção de badge redundante e harmonização da comparação de versões";
+  }
+  if (/fix\(deploy\):\s*prevent whole-page unmount on transient network drop during container restart and increase retry tolerance/i.test(msg)) {
+    return "Correção no deploy: previne desmontagem de tela durante reinicialização dos containers e melhora reconexão";
+  }
+  if (/feat\(deploy\):\s*real-time automatic deployment status tracking,\s*live logs,\s*visibility-aware polling and post-deploy auto-sync/i.test(msg)) {
+    return "Atualização no deploy: monitoramento em tempo real, logs ao vivo e sincronização pós-deploy";
+  }
+  if (/feat\(deploy\):\s*final polish of deployment details modal,\s*live stepper,\s*strict health validation and 3-column logs/i.test(msg)) {
+    return "Refinamento do modal de detalhes: timeline ao vivo, validação estrita de integridade e logs em 3 colunas";
+  }
+  if (/feat\(deploy\):\s*refine deploy header controls with dropdown integrations menu and updates sync/i.test(msg)) {
+    return "Refinamento do cabeçalho de deploy: menu dropdown de integrações e sincronização de atualizações";
+  }
+  if (/feat\(deploy\):\s*refine version comparison card in \/admin\/deploy with clear hierarchy/i.test(msg)) {
+    return "Refinamento do card de comparação de versões em /admin/deploy com hierarquia clara";
+  }
+  if (/fix\(deploy\):\s*server-side github auth, rate limit resilience, write-only tokens and exact timezone logs/i.test(msg)) {
+    return "Correção no deploy: autenticação server-side no GitHub, resiliência a rate limit e tokens protegidos";
+  }
+
+  // Tradução heurística de prefixos convencionais
+  let translated = msg;
+
+  const prefixMap: Array<[RegExp, string]> = [
+    [/^feat(?:\([^)]*\))?:\s*/i, "Nova funcionalidade: "],
+    [/^fix(?:\([^)]*\))?:\s*/i, "Correção: "],
+    [/^refactor(?:\([^)]*\))?:\s*/i, "Refatoração: "],
+    [/^perf(?:\([^)]*\))?:\s*/i, "Melhoria de desempenho: "],
+    [/^style(?:\([^)]*\))?:\s*/i, "Estilização: "],
+    [/^chore(?:\([^)]*\))?:\s*/i, "Manutenção: "],
+    [/^docs(?:\([^)]*\))?:\s*/i, "Documentação: "],
+    [/^test(?:\([^)]*\))?:\s*/i, "Testes automatizados: "],
+    [/^build(?:\([^)]*\))?:\s*/i, "Compilação/Build: "],
+    [/^ci(?:\([^)]*\))?:\s*/i, "Integração contínua: "],
+  ];
+
+  for (const [regex, replacement] of prefixMap) {
+    if (regex.test(translated)) {
+      translated = translated.replace(regex, replacement);
+      break;
+    }
+  }
+
+  // Termos técnicos frequentes em inglês
+  const termReplacements: Array<[RegExp, string]> = [
+    [/\bprevent whole-page unmount\b/gi, "previne desmontagem da tela"],
+    [/\btransient network drop\b/gi, "queda transitória de rede"],
+    [/\bduring container restart\b/gi, "durante reinicialização dos containers"],
+    [/\bincrease retry tolerance\b/gi, "aumenta tolerância de reconexão"],
+    [/\brefine active deploy state\b/gi, "refina estado de deploy ativo"],
+    [/\bremove redundant status badge\b/gi, "remove badge redundante"],
+    [/\bharmonize version comparison\b/gi, "harmoniza comparação de versões"],
+    [/\breal-time automatic deployment status tracking\b/gi, "monitoramento automático em tempo real"],
+    [/\blive logs\b/gi, "logs ao vivo"],
+    [/\bvisibility-aware polling\b/gi, "polling inteligente por visibilidade"],
+    [/\bpost-deploy auto-sync\b/gi, "sincronização automática pós-deploy"],
+    [/\bserver-side\b/gi, "no servidor"],
+    [/\bwrite-only\b/gi, "somente gravação"],
+    [/\brate limit\b/gi, "limite de requisições"],
+    [/\btimezone\b/gi, "fuso horário"],
+    [/\bhealth validation\b/gi, "validação de integridade"],
+    [/\bstepper\b/gi, "progresso"],
+    [/\bmodal\b/gi, "janela modal"],
+    [/\bheader controls\b/gi, "controles do cabeçalho"],
+    [/\bdropdown integrations menu\b/gi, "menu de integrações"],
+    [/\bupdates sync\b/gi, "sincronização de atualizações"],
+    [/\bversion comparison card\b/gi, "card de comparação de versões"],
+    [/\bclear hierarchy\b/gi, "hierarquia clara"],
+  ];
+
+  for (const [eng, pt] of termReplacements) {
+    translated = translated.replace(eng, pt);
+  }
+
+  return translated;
+}
+
 export default function AdminDeployPage() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -1063,7 +1162,7 @@ export default function AdminDeployPage() {
                     </code>
                   </div>
                   <p className="text-[11.5px] text-gray-400 truncate max-w-lg">
-                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · decorrido: <span className="font-mono text-gray-200">{formatDuration(activeLiveSeconds)}</span>
+                    &quot;{formatCommitMessagePtBr(active.commitMessage)}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · decorrido: <span className="font-mono text-gray-200">{formatDuration(activeLiveSeconds)}</span>
                   </p>
                 </div>
               </div>
@@ -1135,10 +1234,10 @@ export default function AdminDeployPage() {
       {/* 4. Faixa Refinada: Comparação de Versão (Produção vs GitHub) + Status e Ação */}
       <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-4.5 sm:p-5">
         <div className="flex flex-col gap-4.5 lg:flex-row lg:items-center lg:justify-between">
-          {/* Bloco de Comparação: Produção e GitHub */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 flex-1 min-w-0">
+          {/* Bloco de Comparação: Produção e GitHub (Grid simétrico que posiciona a seta exatamente no centro) */}
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-6 flex-1 min-w-0">
             {/* Lado 1: Produção */}
-            <div className="flex-1 min-w-0 space-y-1">
+            <div className="min-w-0 space-y-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
                 Versão em produção
               </span>
@@ -1147,22 +1246,22 @@ export default function AdminDeployPage() {
                   {current ? current.shortSha : "Não identificada"}
                 </code>
               </div>
-              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={current?.message || undefined}>
+              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={current?.message ? formatCommitMessagePtBr(current.message) : undefined}>
                 {current?.deployedAt
                   ? `Implantado há ${formatRelativeTime(current.deployedAt)}`
-                  : current?.message || "Sem versão registrada em produção"}
+                  : current?.message ? formatCommitMessagePtBr(current.message) : "Sem versão registrada em produção"}
               </p>
             </div>
 
-            {/* Divisor / Comparador Central Discreto */}
-            <div className="hidden sm:flex items-center justify-center shrink-0">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.06] bg-white/[0.02] text-gray-400">
+            {/* Divisor / Comparador Central perfeitamente no meio */}
+            <div className="hidden sm:flex items-center justify-center shrink-0 px-1">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.03] text-gray-300 shadow-sm">
                 <ArrowRight className="h-3.5 w-3.5 stroke-[2]" />
               </div>
             </div>
 
             {/* Lado 2: GitHub */}
-            <div className="flex-1 min-w-0 space-y-1">
+            <div className="min-w-0 space-y-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
                 {active
                   ? `Versão sendo implantada · ${data.gitHub?.branch || "main"}`
@@ -1173,8 +1272,8 @@ export default function AdminDeployPage() {
                   {latest ? latest.shortSha : "—"}
                 </code>
               </div>
-              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={latest?.message || undefined}>
-                {isGitHubConnected ? latest?.message || "Nenhum commit encontrado" : "Não foi possível consultar o GitHub"}
+              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={latest?.message ? formatCommitMessagePtBr(latest.message) : undefined}>
+                {isGitHubConnected ? (latest?.message ? formatCommitMessagePtBr(latest.message) : "Nenhum commit encontrado") : "Não foi possível consultar o GitHub"}
               </p>
             </div>
           </div>
@@ -1279,8 +1378,8 @@ export default function AdminDeployPage() {
                         {c.shortSha}
                       </code>
 
-                      <p className="truncate text-[13px] font-medium text-gray-200" title={c.message}>
-                        {c.message}
+                      <p className="truncate text-[13px] font-medium text-gray-200" title={c.message ? formatCommitMessagePtBr(c.message) : undefined}>
+                        {c.message ? formatCommitMessagePtBr(c.message) : "Sem descrição"}
                       </p>
 
                       {isCurrent ? (
@@ -1642,9 +1741,9 @@ export default function AdminDeployPage() {
                     </code>
                     <p
                       className="mt-1 text-gray-200 text-[12px] line-clamp-2 leading-relaxed font-medium"
-                      title={target?.message}
+                      title={target?.message ? formatCommitMessagePtBr(target.message) : undefined}
                     >
-                      {target ? target.message : "Última versão da branch main"}
+                      {target ? formatCommitMessagePtBr(target.message) : "Última versão da branch main"}
                     </p>
                   </div>
                 </div>
@@ -1743,8 +1842,8 @@ export default function AdminDeployPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Mensagem:</span>
-                <span className="max-w-[240px] truncate text-right font-medium text-white">
-                  {rollbackTarget.commitMessage}
+                <span className="max-w-[240px] truncate text-right font-medium text-white" title={rollbackTarget?.commitMessage ? formatCommitMessagePtBr(rollbackTarget.commitMessage) : undefined}>
+                  {formatCommitMessagePtBr(rollbackTarget.commitMessage)}
                 </span>
               </div>
             </div>
@@ -1762,7 +1861,7 @@ export default function AdminDeployPage() {
         title="Detalhes da Implantação"
         description={
           detailQuery.data
-            ? `${detailQuery.data.commitShortSha} · ${deployStatusLabel(detailQuery.data.stage || detailQuery.data.status)} · "${detailQuery.data.commitMessage}"`
+            ? `${detailQuery.data.commitShortSha} · ${deployStatusLabel(detailQuery.data.stage || detailQuery.data.status)} · "${formatCommitMessagePtBr(detailQuery.data.commitMessage)}"`
             : "Carregando detalhes…"
         }
         size="lg"
