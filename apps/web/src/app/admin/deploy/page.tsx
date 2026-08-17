@@ -256,7 +256,58 @@ function formatDuration(seconds?: number): string {
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}m ${s.toString().padStart(2, "0")}s`;
+  if (m < 60) {
+    return `${m}m ${s.toString().padStart(2, "0")}s`;
+  }
+  const h = Math.floor(m / 60);
+  const remM = m % 60;
+  return `${h}h ${remM.toString().padStart(2, "0")}m ${s.toString().padStart(2, "0")}s`;
+}
+
+function useLiveElapsedSeconds(
+  startedAt?: string | Date | null,
+  isFinished?: boolean,
+  fallbackSeconds?: number
+): number {
+  const [elapsed, setElapsed] = useState<number>(() => {
+    if (isFinished && typeof fallbackSeconds === "number") return fallbackSeconds;
+    if (!startedAt) return fallbackSeconds || 0;
+    const startMs = new Date(startedAt).getTime();
+    if (isNaN(startMs)) return fallbackSeconds || 0;
+    return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+  });
+
+  useEffect(() => {
+    if (isFinished) {
+      if (typeof fallbackSeconds === "number") {
+        setElapsed(fallbackSeconds);
+      }
+      return;
+    }
+
+    if (!startedAt) {
+      setElapsed(fallbackSeconds || 0);
+      return;
+    }
+
+    const startMs = new Date(startedAt).getTime();
+    if (isNaN(startMs)) {
+      setElapsed(fallbackSeconds || 0);
+      return;
+    }
+
+    // Atualiza imediatamente
+    setElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+
+    // Timer preciso de 1 segundo para contagem fluida em tempo real
+    const interval = setInterval(() => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [startedAt, isFinished, fallbackSeconds]);
+
+  return elapsed;
 }
 
 function deployStatusTone(st: DeploymentStatus): "brand" | "neutral" | "success" | "warning" | "danger" {
@@ -741,6 +792,21 @@ export default function AdminDeployPage() {
 
   const activeStageIdx = active ? getStageIndex(active.stage || active.status) : 0;
 
+  // Timers em tempo real (1s) para contagem fluida e sem congelamentos/saltos
+  const activeLiveSeconds = useLiveElapsedSeconds(
+    active?.startedAt,
+    !active,
+    active?.durationSeconds
+  );
+
+  const isDetailFinished =
+    detailQuery.data?.status === "COMPLETED" || detailQuery.data?.status === "FAILED";
+  const detailLiveSeconds = useLiveElapsedSeconds(
+    detailQuery.data?.startedAt,
+    isDetailFinished,
+    detailQuery.data?.durationSeconds
+  );
+
   return (
     <div className="space-y-5">
       {/* 1. Header */}
@@ -853,7 +919,7 @@ export default function AdminDeployPage() {
                     </code>
                   </div>
                   <p className="text-[11.5px] text-gray-400 truncate max-w-lg">
-                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · há {formatDuration(active.durationSeconds)}
+                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · decorrido: <span className="font-mono text-gray-200">{formatDuration(activeLiveSeconds)}</span>
                   </p>
                 </div>
               </div>
@@ -1644,7 +1710,7 @@ export default function AdminDeployPage() {
                   </div>
                   <div>
                     <span className="text-gray-400 text-[11px] block">Tempo decorrido</span>
-                    <span className="font-medium text-white">{formatDuration(detailQuery.data.durationSeconds)}</span>
+                    <span className="font-medium text-white font-mono">{formatDuration(detailLiveSeconds)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 text-[11px] block">Serviços afetados</span>
