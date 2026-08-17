@@ -2394,7 +2394,7 @@ export default function AdminDeployPage() {
           setRollbackTarget(null);
         }}
         title="Confirmar reversão em produção"
-        description={`A versão ${rollbackTarget?.commitShortSha} substituirá a versão atualmente ativa em produção. Confirme os dados abaixo para continuar.`}
+        description="Você está prestes a substituir a versão atualmente ativa pela versão selecionada. Revise os dados e confirme a operação."
         size="md"
         footer={
           <DialogFooter>
@@ -2435,10 +2435,7 @@ export default function AdminDeployPage() {
                   <span>Iniciando reversão…</span>
                 </>
               ) : (
-                <>
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  <span>Executar reversão</span>
-                </>
+                <span>Executar reversão</span>
               )}
             </button>
           </DialogFooter>
@@ -2446,18 +2443,18 @@ export default function AdminDeployPage() {
       >
         {rollbackTarget ? (
           <div className="space-y-3.5 py-1 text-[12.5px]">
-            {/* Resumo */}
+            {/* Resumo com estilo idêntico ao modal de limpeza */}
             <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
               <div className="flex items-center justify-between text-gray-300">
-                <span className="text-gray-400">Ambiente</span>
-                <span className="font-semibold text-emerald-300">Produção</span>
+                <span className="text-gray-400 font-normal">Ambiente</span>
+                <span className="font-semibold text-emerald-400">Produção</span>
               </div>
               <div className="flex items-center justify-between text-gray-300">
-                <span className="text-gray-400">Versão atual</span>
+                <span className="text-gray-400 font-normal">Versão atual</span>
                 <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11.5px] text-violet-300 border border-violet-500/20 font-semibold">{current?.shortSha || "Não identificada"}</code>
               </div>
               <div className="flex items-center justify-between text-gray-300">
-                <span className="text-gray-400">Versão alvo</span>
+                <span className="text-gray-400 font-normal">Versão que será restaurada</span>
                 <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11.5px] text-amber-300 border border-amber-500/25 font-bold">{rollbackTarget.commitShortSha}</code>
               </div>
             </div>
@@ -2480,7 +2477,7 @@ export default function AdminDeployPage() {
             {/* 2. Card da Confirmação Textual */}
             <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
               <label htmlFor="rollback-sha-input" className="block text-[12px] font-medium text-gray-300">
-                Digite <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all border border-amber-500/25">{rollbackTarget.commitShortSha}</code> para confirmar
+                Para confirmar, digite <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all border border-amber-500/25">{rollbackTarget.commitShortSha}</code>
               </label>
               <div className="relative">
                 <input
@@ -2490,7 +2487,7 @@ export default function AdminDeployPage() {
                   onChange={(e) => setRollbackConfirmInput(e.target.value)}
                   placeholder={rollbackTarget.commitShortSha}
                   className={cn(
-                    "admin-input h-9 w-full font-mono text-[12.5px] bg-[#08090d] border-white/10 transition-colors pr-8",
+                    "input h-9 w-full text-[13px] bg-[#08090d] border-white/10 transition-colors pr-8",
                     rollbackConfirmInput.trim().toLowerCase() === rollbackTarget.commitShortSha.toLowerCase()
                       ? "border-emerald-500/40 focus:border-emerald-500/60"
                       : "focus:border-amber-500/50"
