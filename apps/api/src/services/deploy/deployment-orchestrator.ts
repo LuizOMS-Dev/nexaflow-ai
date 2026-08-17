@@ -188,6 +188,16 @@ export class DeploymentOrchestrator {
     },
     actor: { sub: string; ip?: string }
   ) {
+    // 0. Pré-check do EasyPanel: Verifica se a integração está configurada
+    const epCfg = await easyPanelClient.getEffectiveConfig();
+    if (!epCfg.baseUrl || !epCfg.token) {
+      throw new AppError(
+        "EasyPanel não está configurado ou conectado. Configure a integração antes de implantar.",
+        400,
+        "EASYPANEL_NOT_CONFIGURED"
+      );
+    }
+
     // 1. Lock de Concorrência: Verifica se já existe um deploy ativo nos últimos 15 min
     const active = await prisma.deployment.findFirst({
       where: {
@@ -198,7 +208,7 @@ export class DeploymentOrchestrator {
 
     if (active) {
       throw new AppError(
-        "Já existe um deploy em andamento no momento. Aguarde a conclusão.",
+        "Já existe uma implantação em andamento no momento. Aguarde a conclusão.",
         409,
         "DEPLOYMENT_IN_PROGRESS"
       );

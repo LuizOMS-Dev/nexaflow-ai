@@ -1092,12 +1092,14 @@ export default function AdminDeployPage() {
         )}
       </AdminSection>
 
-      {/* MODAL 1: Confirmação de Deploy */}
+      {/* MODAL 1: Confirmação de Deploy (Refinado e Seguro) */}
       <Modal
         open={confirmOpen}
         onClose={() => {
-          setConfirmOpen(false);
-          setSelectedCommitToDeploy(null);
+          if (!startDeployMut.isPending) {
+            setConfirmOpen(false);
+            setSelectedCommitToDeploy(null);
+          }
         }}
         title="Implantar em produção?"
         description="Confirme os detalhes da versão antes de enviar o comando ao EasyPanel."
@@ -1107,6 +1109,7 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-secondary h-9"
+              disabled={startDeployMut.isPending}
               onClick={() => {
                 setConfirmOpen(false);
                 setSelectedCommitToDeploy(null);
@@ -1117,58 +1120,157 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-primary h-9"
-              disabled={startDeployMut.isPending}
-              onClick={() =>
-                startDeployMut.mutate({
-                  commitSha: selectedCommitToDeploy?.sha,
-                })
+              disabled={
+                startDeployMut.isPending ||
+                Boolean(active) ||
+                !data.easyPanel?.connected ||
+                !(selectedCommitToDeploy || latest)
               }
+              onClick={() => {
+                const targetCommit = selectedCommitToDeploy || latest;
+                startDeployMut.mutate({
+                  commitSha: targetCommit?.sha,
+                  branch: data.gitHub?.branch || "main",
+                });
+              }}
             >
-              {startDeployMut.isPending ? "Iniciando deploy…" : "Implantar em produção"}
+              {startDeployMut.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Iniciando implantação…
+                </>
+              ) : (
+                "Implantar em produção"
+              )}
             </button>
           </DialogFooter>
         }
       >
-        <div className="space-y-3 py-1 text-[13px]">
-          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Ambiente:</span>
-              <span className="font-semibold text-emerald-400">Produção</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Produção atual:</span>
-              <span className="font-mono text-gray-300">
-                {current ? current.shortSha : "Não identificada"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Nova versão:</span>
-              <code className="font-mono font-bold text-violet-300">
-                {selectedCommitToDeploy ? selectedCommitToDeploy.shortSha : latest ? latest.shortSha : "main"}
-              </code>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Branch:</span>
-              <span className="font-medium text-white">{data.gitHub?.branch || "main"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Mensagem:</span>
-              <span
-                className="max-w-[240px] truncate text-right font-medium text-white"
-                title={selectedCommitToDeploy ? selectedCommitToDeploy.message : latest?.message}
-              >
-                {selectedCommitToDeploy ? selectedCommitToDeploy.message : latest ? latest.message : "Última versão"}
-              </span>
-            </div>
-          </div>
+        {(() => {
+          const target = selectedCommitToDeploy || latest;
+          const isEasyPanelOk = Boolean(data.easyPanel?.connected);
+          const hasActive = Boolean(active);
 
-          <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/[0.08] p-2.5 text-amber-200">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
-            <p className="text-[12px] leading-relaxed">
-              O NexaFlow iniciará o build automatizado no EasyPanel, atualizará os containers de API e Web e verificará os endpoints de integridade pós-deploy.
-            </p>
-          </div>
-        </div>
+          return (
+            <div className="space-y-3.5 py-1 text-[12.5px]">
+              {/* Bloco Estruturado de Informações */}
+              <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-3">
+                {/* Linha 1: Ambiente e Branch */}
+                <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-white/[0.05]">
+                  <div>
+                    <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                      Ambiente
+                    </span>
+                    <div className="mt-1 flex items-center gap-1.5 font-semibold text-emerald-400 text-[12.5px]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Produção
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                      Branch
+                    </span>
+                    <span className="mt-1 font-mono text-gray-200 text-[12.5px] block">
+                      {data.gitHub?.branch || "main"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Linha 2: Versão Atual */}
+                <div className="pb-2.5 border-b border-white/[0.05]">
+                  <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                    Versão Atual
+                  </span>
+                  {current?.isKnown ? (
+                    <div className="mt-1 flex items-center gap-2">
+                      <code className="font-mono font-semibold text-violet-300">
+                        {current.shortSha}
+                      </code>
+                      {current.deployedAt ? (
+                        <span className="text-gray-400 text-[11.5px]">
+                          (implantado há {formatRelativeTime(current.deployedAt)})
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      <span className="text-gray-300 font-medium">Versão atual não identificada</span>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        O NexaFlow passará a registrar a versão após uma implantação concluída com sucesso.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Linha 3: Nova Versão / Commit */}
+                <div className="pb-2.5 border-b border-white/[0.05]">
+                  <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                    Nova Versão
+                  </span>
+                  <div className="mt-1">
+                    <code className="rounded bg-violet-500/20 px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-violet-300">
+                      {target ? target.shortSha : "main"}
+                    </code>
+                    <p
+                      className="mt-1 text-gray-200 text-[12px] line-clamp-2 leading-relaxed font-medium"
+                      title={target?.message}
+                    >
+                      {target ? target.message : "Última versão da branch main"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Linha 4: Serviços Afetados */}
+                <div>
+                  <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold mb-1.5">
+                    Serviços Afetados
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 font-mono text-[11.5px] font-semibold text-gray-200">
+                      API
+                    </span>
+                    <span className="rounded-md border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 font-mono text-[11.5px] font-semibold text-gray-200">
+                      Web
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Aviso Operacional Discreto */}
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.04] p-2.5 text-amber-200/90 text-[11.5px] leading-relaxed">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400/90" />
+                <p>
+                  O EasyPanel executará o build e atualizará os serviços selecionados. Após a implantação, o NexaFlow validará API e Web antes de marcar o processo como concluído.
+                </p>
+              </div>
+
+              {/* Alertas de Pré-checks (se houver impedimentos) */}
+              {!isEasyPanelOk ? (
+                <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.08] p-2.5 text-rose-300 text-[11.5px] flex items-center gap-2">
+                  <XCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                  <span>EasyPanel não está conectado. Configure a integração antes de implantar.</span>
+                </div>
+              ) : hasActive ? (
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.08] p-2.5 text-amber-300 text-[11.5px] flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                  <span>Já existe uma implantação em andamento no momento.</span>
+                </div>
+              ) : null}
+
+              {/* Erro inline da mutação se houver */}
+              {startDeployMut.isError ? (
+                <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.08] p-2.5 text-rose-300 text-[11.5px] flex items-center gap-2">
+                  <XCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                  <span>
+                    {startDeployMut.error instanceof Error
+                      ? startDeployMut.error.message
+                      : "Não foi possível iniciar o deploy."}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* MODAL 2: Confirmação de Rollback */}

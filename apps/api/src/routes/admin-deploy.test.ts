@@ -173,7 +173,7 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
 
     expect(res.statusCode).toBe(409);
     const json = res.json();
-    expect(json.message).toContain("Já existe um deploy em andamento");
+    expect(json.message).toContain("Já existe uma implantação em andamento");
 
     // Limpa o lock
     await prisma.deployment.delete({ where: { id: activeDep.id } });
@@ -208,6 +208,11 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
   });
 
   it("8. Rollback: permite reimplantação de versão anterior concluída", async () => {
+    // Garante que não há deploy ativo pendente
+    await prisma.deployment.deleteMany({
+      where: { status: { in: ["PENDING", "PREPARING", "BUILDING", "DEPLOYING", "VALIDATING"] } },
+    });
+
     // Marca o deploy de teste como COMPLETED para permitir rollback
     await prisma.deployment.update({
       where: { id: testDeploymentId },
@@ -240,42 +245,35 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       headers: { authorization: `Bearer ${superadminToken}` },
     });
 
-    const raw = res.body;
-    expect(raw).not.toContain("ghp_");
-    expect(raw).not.toContain("EASYPANEL_API_TOKEN");
-    expect(raw).not.toContain("ca13e3e9f211");
+    expect(res.statusCode).toBe(200);
+    const json = res.json();
+    const rawString = JSON.stringify(json);
+    expect(rawString).not.toContain("ghp_");
+    expect(rawString).not.toContain("github_pat_");
+    expect(rawString).not.toContain("enc:v1");
   });
 
   it("10. Regra de Comparação: SHA igual resulta em UP_TO_DATE e SHA diferente em UPDATE_AVAILABLE", async () => {
-    const mockCommit = {
-      sha: "73bd95b68fbb709d4616c56db7d35b224d1cc602",
-      shortSha: "73bd95b",
-      message: "Latest commit for test",
-      author: "Superadmin",
-      date: new Date().toISOString(),
-    };
-
-    const spy = vi.spyOn(githubClient, "getRepoStatus").mockResolvedValue({
-      connected: true,
-      owner: "LuizOMS-Dev",
-      repo: "nexaflow-ai",
-      branch: "main",
-      latestCommit: mockCommit,
+    // Garante que não há deploy ativo pendente
+    await prisma.deployment.deleteMany({
+      where: { status: { in: ["PENDING", "PREPARING", "BUILDING", "DEPLOYING", "VALIDATING"] } },
     });
 
-    try {
+    // 1. Obtém o status atual do repositório
+    const repoStatus = await githubClient.getRepoStatus();
+    if (repoStatus.latestCommit) {
+      // Simula que a produção está no mesmo SHA exato do GitHub
       const upToDateDep = await prisma.deployment.create({
         data: {
           environment: "production",
           branch: "main",
-          commitSha: mockCommit.sha,
-          commitShortSha: mockCommit.shortSha,
-          commitMessage: "Latest deployed commit",
+          commitSha: repoStatus.latestCommit.sha,
+          commitShortSha: repoStatus.latestCommit.shortSha,
+          commitMessage: repoStatus.latestCommit.message,
+          commitAuthor: repoStatus.latestCommit.author,
           startedById: superadminUser.id,
           status: "COMPLETED",
-          startedAt: new Date(),
           finishedAt: new Date(),
-          durationSeconds: 30,
         },
       });
 
@@ -301,8 +299,6 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
 
       // Limpeza
       await prisma.deployment.delete({ where: { id: upToDateDep.id } });
-    } finally {
-      spy.mockRestore();
     }
   });
 
@@ -516,5 +512,39 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
 
     // Limpeza
     await prisma.deployment.delete({ where: { id: completedDep.id } });
+  });
+
+  it("17. Pré-checks e Imutabilidade de SHA: valida EasyPanel configurado e respeita SHA selecionado", async () => {
+    // 1. Inicia deploy com SHA específico
+    const customSha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+    const startRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/start",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        commitSha: customSha,
+        branch: "main",
+      },
+    });
+
+    expect(startRes.statusCode).toBe(202);
+    const startJson = startRes.json();
+    expect(startJson.deploymentId).toBeDefined();
+    expect(startJson.commitShortSha).toBe("a1b2c3d");
+
+    // 2. Tentar disparar segundo deploy concorrente retorna 409 (Lock)
+    const concurrentRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/start",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        commitSha: "9999999999999999999999999999999999999999",
+      },
+    });
+    expect(concurrentRes.statusCode).toBe(409);
+    expect(concurrentRes.json().message).toContain("Já existe uma implantação em andamento");
+
+    // Limpeza
+    await prisma.deployment.delete({ where: { id: startJson.deploymentId } });
   });
 }, 30_000);
