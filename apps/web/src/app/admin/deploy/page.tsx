@@ -1047,7 +1047,7 @@ export default function AdminDeployPage() {
 
       {/* 3. Painel de Deploy Ativo (Stepper Horizontal) */}
       {active ? (
-        <div className="rounded-xl border border-violet-500/25 bg-[#0e1017] p-4 text-white shadow-[0_8px_24px_-8px_rgba(124,58,237,0.15)]">
+        <div className="rounded-xl border border-violet-500/20 bg-[#0e1017] p-4 text-white shadow-sm">
           <div className="flex flex-col gap-3.5">
             {/* Topo: Título + Botão Ver Detalhes */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
@@ -1089,7 +1089,7 @@ export default function AdminDeployPage() {
                     className={cn(
                       "flex items-center gap-2 rounded-lg px-2.5 py-2 text-[12px] border transition-all",
                       isCurrent
-                        ? "bg-violet-500/[0.12] border-violet-500/30 text-white font-medium shadow-[0_0_12px_rgba(139,92,246,0.1)]"
+                        ? "bg-violet-500/[0.1] border-violet-500/25 text-white font-medium shadow-[0_0_10px_rgba(139,92,246,0.08)]"
                         : isPast
                         ? "bg-white/[0.02] border-white/[0.06] text-gray-300"
                         : "bg-transparent border-transparent text-gray-500"
@@ -1102,7 +1102,7 @@ export default function AdminDeployPage() {
                           ? "bg-emerald-500/20 text-emerald-400"
                           : isCurrent
                           ? "bg-violet-500 text-white"
-                          : "bg-white/[0.06] text-gray-400"
+                          : "bg-white/[0.05] text-gray-500"
                       )}
                     >
                       {isPast ? (
@@ -1125,7 +1125,7 @@ export default function AdminDeployPage() {
                 Etapa atual: <strong className="text-violet-300 font-semibold">{deployStatusLabel(active.stage || active.status)}</strong>
               </span>
               <span>
-                Saúde: <strong className="text-gray-300">{healthStatusLabel(active.status, active.healthStatus)}</strong>
+                Saúde: <strong className="text-gray-400 font-normal">{healthStatusLabel(active.status, active.healthStatus)}</strong>
               </span>
             </div>
           </div>
@@ -1164,7 +1164,9 @@ export default function AdminDeployPage() {
             {/* Lado 2: GitHub */}
             <div className="flex-1 min-w-0 space-y-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
-                Último no GitHub · {data.gitHub?.branch || "main"}
+                {active
+                  ? `Versão sendo implantada · ${data.gitHub?.branch || "main"}`
+                  : `Último no GitHub · ${data.gitHub?.branch || "main"}`}
               </span>
               <div className="flex items-center gap-2">
                 <code className={cn("font-mono text-[14px] font-bold", isGitHubConnected ? "text-emerald-300" : "text-gray-400")}>
@@ -1181,9 +1183,9 @@ export default function AdminDeployPage() {
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 pt-3 border-t border-white/[0.06] lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-white/[0.08] shrink-0">
             {/* Status Semântico Discreto */}
             {active ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/[0.1] px-3 py-1.5 text-violet-300 border border-violet-500/20">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span className="text-[12px] font-medium">Implantação em andamento</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 text-violet-300 text-[12px] font-medium">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
+                <span>Em implantação</span>
               </div>
             ) : !isGitHubConnected ? (
               <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-gray-400 border border-white/[0.06]">
@@ -1207,12 +1209,12 @@ export default function AdminDeployPage() {
               </div>
             ) : null}
 
-            {/* CTA Principal de Implantação */}
-            {isGitHubConnected && (isUpdateAvailable || isUnknown) ? (
+            {/* CTA Principal de Implantação (apenas quando não houver deploy ativo) */}
+            {!active && isGitHubConnected && (isUpdateAvailable || isUnknown) ? (
               <button
                 type="button"
                 className="admin-btn-primary h-9 px-4 text-[12.5px] font-semibold shadow-sm"
-                disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel?.connected}
+                disabled={startDeployMut.isPending || !data.easyPanel?.connected}
                 onClick={() => {
                   setSelectedCommitToDeploy(null);
                   setConfirmOpen(true);
