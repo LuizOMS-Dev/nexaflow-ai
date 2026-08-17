@@ -866,6 +866,9 @@ export default function AdminDeployPage() {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [clearDeployHistoryOpen, setClearDeployHistoryOpen] = useState(false);
+  const [clearDeployConfirmOpen, setClearDeployConfirmOpen] = useState(false);
+  const [clearDeployCheckbox, setClearDeployCheckbox] = useState(false);
+  const [clearDeployInput, setClearDeployInput] = useState("");
   const [visibleCommitCount, setVisibleCommitCount] = useState(5);
   const [isReplacingToken, setIsReplacingToken] = useState(false);
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
@@ -1064,14 +1067,14 @@ export default function AdminDeployPage() {
       void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
       toast({
         title: "Atualizações recentes limpas",
-        description: "Nenhuma alteração foi realizada no repositório GitHub.",
+        description: "Nenhum commit ou arquivo foi removido do GitHub.",
         kind: "success",
       });
     },
     onError: (e) => {
       toast({
-        title: "Não foi possível limpar o histórico",
-        description: e instanceof Error ? e.message : "Erro interno ao limpar histórico visual.",
+        title: "Não foi possível limpar as atualizações",
+        description: e instanceof Error ? e.message : "Erro interno ao limpar atualizações recentes.",
         kind: "error",
       });
     },
@@ -1085,7 +1088,10 @@ export default function AdminDeployPage() {
         { method: "POST" }
       ),
     onSuccess: () => {
+      setClearDeployConfirmOpen(false);
       setClearDeployHistoryOpen(false);
+      setClearDeployCheckbox(false);
+      setClearDeployInput("");
       void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
       toast({
@@ -1667,7 +1673,7 @@ export default function AdminDeployPage() {
         </div>
       </div>
 
-      {/* 5. Atualizações Recentes no GitHub (Compacto com Menu ⋯ e Ação Limpar Histórico) */}
+      {/* 5. Atualizações Recentes no GitHub (Compacto com Ação Limpar Atualizações) */}
       <AdminSection
         title="Atualizações Recentes no GitHub"
         description="Histórico recente da branch principal no GitHub."
@@ -1677,9 +1683,9 @@ export default function AdminDeployPage() {
               type="button"
               className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-rose-400"
               onClick={() => setClearHistoryOpen(true)}
-              title="Limpar histórico visual de atualizações exibido neste painel"
+              title="Ocultar commits exibidos nesta seção"
             >
-              <Trash2 className="h-3 w-3" /> Limpar histórico
+              <Trash2 className="h-3 w-3" /> Limpar atualizações
             </button>
           ) : null
         }
@@ -1815,7 +1821,12 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-rose-400"
-              onClick={() => setClearDeployHistoryOpen(true)}
+              onClick={() => {
+                setClearDeployCheckbox(false);
+                setClearDeployInput("");
+                setClearDeployConfirmOpen(false);
+                setClearDeployHistoryOpen(true);
+              }}
               title="Limpar todos os registros de implantações passadas deste painel"
             >
               <Trash2 className="h-3 w-3" /> Limpar histórico
@@ -3174,12 +3185,12 @@ export default function AdminDeployPage() {
         </div>
       </Modal>
 
-      {/* MODAL 5: Confirmação de Limpeza do Histórico Visual de Commits */}
+      {/* MODAL 5: Limpar Atualizações Recentes no GitHub (Confirmação Simples) */}
       <Modal
         open={clearHistoryOpen}
         onClose={() => setClearHistoryOpen(false)}
         title="Limpar atualizações recentes?"
-        description="Os commits exibidos nesta seção serão ocultados do histórico recente do NexaFlow. Nenhum commit, branch ou arquivo será removido do GitHub."
+        description="Os commits exibidos nesta seção serão ocultados do histórico recente do NexaFlow. Nenhum commit, branch, tag ou arquivo será removido do GitHub."
         size="sm"
         footer={
           <DialogFooter>
@@ -3193,32 +3204,42 @@ export default function AdminDeployPage() {
             </button>
             <button
               type="button"
-              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500"
+              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2"
               disabled={clearHistoryMut.isPending}
               onClick={() => clearHistoryMut.mutate()}
             >
-              {clearHistoryMut.isPending ? "Limpando…" : "Limpar histórico"}
+              {clearHistoryMut.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Limpando…</span>
+                </>
+              ) : (
+                <span>Limpar atualizações</span>
+              )}
             </button>
           </DialogFooter>
         }
       >
         <div className="space-y-2.5 py-1">
-          <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 text-[12px] text-gray-300">
-            <Info className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
-            <p className="leading-relaxed">
-              Novos commits publicados depois desta limpeza continuarão aparecendo normalmente.
-            </p>
+          <div className="flex items-start gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-gray-300 text-[12px] leading-relaxed">
+            <Info className="h-4 w-4 shrink-0 mt-0.5 text-blue-400" />
+            <div>
+              <p className="font-semibold text-gray-200">Sincronização futura</p>
+              <p className="mt-0.5 text-gray-400">
+                Novas atualizações publicadas depois desta limpeza continuarão aparecendo normalmente.
+              </p>
+            </div>
           </div>
         </div>
       </Modal>
 
-      {/* MODAL 6: Confirmação de Limpeza do Histórico de Deploys */}
+      {/* MODAL 6: Limpar Histórico de Implantações (Etapa 1 de 2) */}
       <Modal
         open={clearDeployHistoryOpen}
         onClose={() => setClearDeployHistoryOpen(false)}
         title="Limpar histórico de implantações?"
-        description="Os registros exibidos no histórico serão removidos deste painel. Isso não altera a versão atualmente em produção, o código no GitHub ou qualquer serviço no EasyPanel."
-        size="sm"
+        description="Os registros exibidos neste painel serão removidos do histórico administrativo do NexaFlow. Esta ação não altera a versão atualmente em produção, não remove commits do GitHub e não afeta nenhum serviço no EasyPanel."
+        size="md"
         footer={
           <DialogFooter>
             <button
@@ -3231,21 +3252,124 @@ export default function AdminDeployPage() {
             </button>
             <button
               type="button"
-              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500"
-              disabled={clearDeployHistoryMut.isPending}
-              onClick={() => clearDeployHistoryMut.mutate()}
+              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2"
+              onClick={() => {
+                setClearDeployCheckbox(false);
+                setClearDeployInput("");
+                setClearDeployHistoryOpen(false);
+                setClearDeployConfirmOpen(true);
+              }}
             >
-              {clearDeployHistoryMut.isPending ? "Limpando…" : "Limpar histórico"}
+              <span>Continuar</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </DialogFooter>
         }
       >
         <div className="space-y-2.5 py-1">
-          <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 text-[12px] text-gray-300">
-            <Info className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
-            <p className="leading-relaxed">
-              Esta ação remove apenas o histórico administrativo exibido no NexaFlow.
-            </p>
+          <div className="flex items-start gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 text-gray-300 text-[12px] leading-relaxed">
+            <Info className="h-4 w-4 shrink-0 mt-0.5 text-blue-400" />
+            <div>
+              <p className="font-semibold text-gray-200">Preservação de integridade</p>
+              <p className="mt-0.5 text-gray-400">
+                Esta ação remove apenas o histórico exibido no painel. Logs técnicos, backups e versões já implantadas continuam preservados.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* MODAL 6.1: Confirmação Crítica de Limpeza do Histórico de Deploys (Etapa 2 de 2) */}
+      <Modal
+        open={clearDeployConfirmOpen}
+        onClose={() => {
+          setClearDeployConfirmOpen(false);
+          setClearDeployHistoryOpen(true);
+        }}
+        title="Confirmar limpeza do histórico de deploys"
+        description="Você está prestes a apagar o histórico administrativo de implantações exibido no NexaFlow. Isso pode dificultar consultas futuras de auditoria e acompanhamento operacional."
+        size="md"
+        footer={
+          <DialogFooter>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9"
+              disabled={clearDeployHistoryMut.isPending}
+              onClick={() => {
+                setClearDeployConfirmOpen(false);
+                setClearDeployHistoryOpen(true);
+              }}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={
+                !clearDeployCheckbox ||
+                clearDeployInput.trim() !== "LIMPAR DEPLOYS" ||
+                clearDeployHistoryMut.isPending
+              }
+              onClick={() => clearDeployHistoryMut.mutate()}
+            >
+              {clearDeployHistoryMut.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Limpando…</span>
+                </>
+              ) : (
+                <span>Limpar histórico</span>
+              )}
+            </button>
+          </DialogFooter>
+        }
+      >
+        <div className="space-y-4 py-1 text-[12.5px]">
+          {/* Resumo curto */}
+          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
+            <div className="flex items-center justify-between text-gray-300">
+              <span className="text-gray-400">Afeta apenas:</span>
+              <span className="font-semibold text-rose-300">Histórico visível do painel</span>
+            </div>
+            <div className="flex items-center justify-between text-gray-300">
+              <span className="text-gray-400">Não afeta:</span>
+              <span className="text-emerald-400 font-medium">Produção atual, GitHub e EasyPanel</span>
+            </div>
+            <div className="flex items-center justify-between text-gray-300">
+              <span className="text-gray-400">Preservação:</span>
+              <span className="text-gray-300">Backups e logs técnicos preservados</span>
+            </div>
+          </div>
+
+          {/* Fatores de dupla confirmação combinados */}
+          <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-3.5 space-y-3.5">
+            {/* 1. Checkbox obrigatório */}
+            <label className="flex items-start gap-2.5 cursor-pointer text-gray-200 text-[12px] select-none leading-tight">
+              <input
+                type="checkbox"
+                checked={clearDeployCheckbox}
+                onChange={(e) => setClearDeployCheckbox(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/5 text-rose-500 focus:ring-rose-500/30"
+              />
+              <span className="font-medium text-gray-200">
+                Entendo que o histórico visível de deploys será removido deste painel.
+              </span>
+            </label>
+
+            {/* 2. Campo de confirmação textual */}
+            <div className="space-y-1.5 pt-1 border-t border-white/[0.06]">
+              <label className="block text-[11.5px] font-medium text-gray-300">
+                Digite <code className="rounded bg-rose-500/20 px-1 py-0.5 font-mono font-bold text-rose-300 select-all">LIMPAR DEPLOYS</code> para confirmar:
+              </label>
+              <input
+                type="text"
+                value={clearDeployInput}
+                onChange={(e) => setClearDeployInput(e.target.value)}
+                placeholder="Digite LIMPAR DEPLOYS para confirmar"
+                className="admin-input h-9 w-full font-mono text-[12.5px] bg-[#08090d] border-white/10 focus:border-rose-500/50"
+                autoFocus
+              />
+            </div>
           </div>
         </div>
       </Modal>

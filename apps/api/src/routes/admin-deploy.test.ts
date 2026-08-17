@@ -422,7 +422,7 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
 
     // 4. Verifica auditoria registrada
     const clearAudit = await prisma.auditLog.findFirst({
-      where: { action: "github.update_history.cleared" },
+      where: { action: "github_updates.cleared" },
       orderBy: { createdAt: "desc" },
     });
     expect(clearAudit).toBeDefined();
@@ -601,7 +601,7 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
 
     // 5. Auditoria registrada
     const auditLog = await prisma.auditLog.findFirst({
-      where: { action: "deployment.history.cleared" },
+      where: { action: "deployment_history.cleared" },
       orderBy: { createdAt: "desc" },
     });
     expect(auditLog).toBeDefined();

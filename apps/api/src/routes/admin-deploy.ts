@@ -38,25 +38,41 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     const user = request.user;
     if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
 
-    const result = await githubClient.clearVisualHistory(user.sub, user.email);
-
     await audit({
-      action: "github.update_history.cleared",
+      action: "github_updates.clear_requested",
       userId: user.sub,
       ip: request.ip,
-      metadata: {
-        clearedAt: result.clearedAt,
-        hiddenCount: result.hiddenCount,
-        lastClearedSha: result.lastClearedSha,
-      },
     });
 
-    return {
-      success: true,
-      message: "Histórico visual de atualizações do GitHub limpo com sucesso.",
-      clearedAt: result.clearedAt,
-      hiddenCount: result.hiddenCount,
-    };
+    try {
+      const result = await githubClient.clearVisualHistory(user.sub, user.email);
+
+      await audit({
+        action: "github_updates.cleared",
+        userId: user.sub,
+        ip: request.ip,
+        metadata: {
+          clearedAt: result.clearedAt,
+          hiddenCount: result.hiddenCount,
+          lastClearedSha: result.lastClearedSha,
+        },
+      });
+
+      return {
+        success: true,
+        message: "Histórico visual de atualizações do GitHub limpo com sucesso.",
+        clearedAt: result.clearedAt,
+        hiddenCount: result.hiddenCount,
+      };
+    } catch (e: any) {
+      await audit({
+        action: "github_updates.clear_failed",
+        userId: user.sub,
+        ip: request.ip,
+        metadata: { error: e instanceof Error ? e.message : "Erro desconhecido" },
+      });
+      throw e;
+    }
   });
 
   // 2.2 Sincronizar e buscar atualizações diretamente do GitHub (Bypass de cache + Refresh real)
@@ -318,18 +334,34 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     return deploymentOrchestrator.listHistory(page, limit);
   });
 
-  // 7.1 Limpar histórico de deploys (apenas finalizados)
+  // 7.1 Limpar histórico de deploys (apenas finalizados) com auditoria específica
   app.post("/admin/deploy/history/clear", async (request, reply) => {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const user = request.user;
     if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
 
-    const result = await deploymentOrchestrator.clearHistory(user.sub, request.ip);
-    return {
-      success: true,
-      message: "Histórico de implantações limpo com sucesso.",
-      count: result.count,
-    };
+    await audit({
+      action: "deployment_history.clear_requested",
+      userId: user.sub,
+      ip: request.ip,
+    });
+
+    try {
+      const result = await deploymentOrchestrator.clearHistory(user.sub, request.ip);
+      return {
+        success: true,
+        message: "Histórico de implantações limpo com sucesso.",
+        count: result.count,
+      };
+    } catch (e: any) {
+      await audit({
+        action: "deployment_history.clear_failed",
+        userId: user.sub,
+        ip: request.ip,
+        metadata: { error: e instanceof Error ? e.message : "Erro desconhecido" },
+      });
+      throw e;
+    }
   });
 
   // 8. Detalhes e logs de um deployment específico (com suporte a cursor incremental)
