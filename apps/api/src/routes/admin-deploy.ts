@@ -65,6 +65,17 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     const user = request.user;
     if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
 
+    if (githubClient.isRateLimited()) {
+      const rateInfo = githubClient.getRateLimitInfo();
+      return {
+        success: false,
+        rateLimited: true,
+        retryAt: rateInfo.resetAt,
+        count: 0,
+        message: "GitHub temporariamente limitado. O NexaFlow aguardará o período indicado pelo GitHub antes de sincronizar novamente.",
+      };
+    }
+
     try {
       const commits = await githubClient.listRecentCommits(15, true);
       const latest = await githubClient.getLatestCommit(true);
@@ -73,21 +84,105 @@ export async function adminDeployRoutes(app: FastifyInstance) {
         success: true,
         count: commits.length,
         latestCommit: latest,
+        rateLimit: githubClient.getRateLimitInfo(),
         message:
           commits.length > 0
             ? `${commits.length} commits sincronizados com sucesso do GitHub.`
             : "Repositório sincronizado com sucesso. Nenhuma nova atualização pendente.",
       };
     } catch (e: any) {
-      const errMsg = e instanceof Error ? e.message : "Erro desconhecido ao consultar o GitHub.";
+      const isRate = githubClient.isRateLimited() || /rate limit|secondary rate/i.test(e?.message || "");
+      const rateInfo = githubClient.getRateLimitInfo();
       return {
         success: false,
+        rateLimited: isRate,
+        retryAt: rateInfo.resetAt,
         count: 0,
-        message: errMsg.includes("rate limit")
-          ? "Limite de requisições anônimas do GitHub atingido temporariamente. Tente novamente em alguns minutos."
-          : `Não foi possível sincronizar com o GitHub: ${errMsg}`,
+        message: isRate
+          ? "GitHub temporariamente limitado. O NexaFlow aguardará o período indicado pelo GitHub antes de sincronizar novamente."
+          : `Não foi possível sincronizar com o GitHub: ${e instanceof Error ? e.message : "Erro desconhecido"}`,
       };
     }
+  });
+
+  // 2.3 Obter configuração atual do GitHub (WRITE-ONLY: NUNCA expor o token, preview ou caracteres)
+  app.get("/admin/deploy/github/config", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    reply.header("Pragma", "no-cache");
+    return githubClient.getConfigSanitized();
+  });
+
+  // 2.4 Salvar/Substituir configuração do GitHub (Criptografando o token com AES-256-GCM)
+  app.post("/admin/deploy/github/config", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const bodySchema = z.object({
+      owner: z.string().optional(),
+      repo: z.string().optional(),
+      branch: z.string().optional(),
+      token: z.string().optional(),
+    });
+
+    const parsed = bodySchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      throw new AppError("Parâmetros de configuração do GitHub inválidos.", 400, "INVALID_GITHUB_CONFIG");
+    }
+
+    const user = request.user;
+    if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
+
+    const hasNewToken = Boolean(parsed.data.token && parsed.data.token.trim());
+    await githubClient.saveConfig(parsed.data);
+
+    await audit({
+      action: hasNewToken ? "github.token.rotated" : "github.configuration.updated",
+      userId: user.sub,
+      ip: request.ip,
+      metadata: {
+        owner: parsed.data.owner || "LuizOMS-Dev",
+        repo: parsed.data.repo || "nexaflow-ai",
+        branch: parsed.data.branch || "main",
+        tokenRotated: hasNewToken,
+      },
+    });
+
+    return { success: true, message: "Configuração do GitHub salva com sucesso." };
+  });
+
+  // 2.5 Testar conexão com o GitHub de forma real e granular
+  app.post("/admin/deploy/github/test", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const bodySchema = z.object({
+      owner: z.string().optional(),
+      repo: z.string().optional(),
+      branch: z.string().optional(),
+      token: z.string().optional(),
+    });
+
+    const parsed = bodySchema.safeParse(request.body || {});
+    if (!parsed.success) {
+      throw new AppError("Parâmetros de teste inválidos.", 400, "INVALID_GITHUB_TEST_PAYLOAD");
+    }
+
+    const user = request.user;
+    const result = await githubClient.testConnection(parsed.data);
+
+    if (user) {
+      await audit({
+        action: "github.connection.tested",
+        userId: user.sub,
+        ip: request.ip,
+        metadata: {
+          owner: parsed.data.owner || "LuizOMS-Dev",
+          repo: parsed.data.repo || "nexaflow-ai",
+          branch: parsed.data.branch || "main",
+          success: result.success,
+          state: result.state,
+          testedCustomToken: Boolean(parsed.data.token),
+        },
+      });
+    }
+
+    return result;
   });
 
   // 3. Obter configuração atual do EasyPanel (WRITE-ONLY: NUNCA expor o token, preview ou ciphertext)

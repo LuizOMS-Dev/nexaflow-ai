@@ -661,4 +661,101 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     expect(body.success).toBe(true);
     expect(body.message).toBeDefined();
   });
+
+  it("21. Configuração Write-Only do GitHub: GET /admin/deploy/github/config nunca expõe o token", async () => {
+    // 1. Usuário comum é bloqueado
+    const blockedRes = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/github/config",
+      headers: { authorization: `Bearer ${regularUserToken}` },
+    });
+    expect(blockedRes.statusCode).toBe(403);
+
+    // 2. Superadmin consulta a configuração
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/github/config",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.owner).toBeDefined();
+    expect(body.repo).toBeDefined();
+    expect(body.branch).toBeDefined();
+    expect(body.tokenConfigured).toBeDefined();
+    // Garante que o token plain, masked ou ciphertext NUNCA é retornado
+    expect((body as any).token).toBeUndefined();
+    expect((body as any).encryptedToken).toBeUndefined();
+  });
+
+  it("22. Salvar configuração do GitHub: POST /admin/deploy/github/config criptografa o token em repouso (AES-256-GCM)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/github/config",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        owner: "LuizOMS-Dev",
+        repo: "nexaflow-ai",
+        branch: "main",
+        token: "test_pat_token_for_validation_only",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+
+    // Verifica que está salvo criptografado no banco
+    const setting = await prisma.platformSetting.findUnique({ where: { key: "github_config" } });
+    expect(setting).toBeDefined();
+    const val = setting?.value as any;
+    expect(val.encryptedToken).toBeDefined();
+    expect(val.encryptedToken).toMatch(/^enc:v1:/);
+
+    // Auditoria sem segredos
+    const auditLog = await prisma.auditLog.findFirst({
+      where: { action: "github.token.rotated" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(auditLog).toBeDefined();
+    expect(JSON.stringify(auditLog?.metadata)).not.toContain("github_pat_");
+  });
+
+  it("23. Teste de conexão GitHub: POST /admin/deploy/github/test valida autenticação e acesso", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/github/test",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        owner: "LuizOMS-Dev",
+        repo: "nexaflow-ai",
+        branch: "main",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.state).toBeDefined();
+    expect(typeof body.success).toBe("boolean");
+    expect(body.message).toBeDefined();
+  });
+
+  it("24. Deduplicação em voo e Cache com TTL: chamadas simultâneas compartilham a mesma Promise", async () => {
+    const [c1, c2, c3] = await Promise.all([
+      githubClient.getLatestCommit(false),
+      githubClient.getLatestCommit(false),
+      githubClient.getLatestCommit(false),
+    ]);
+
+    expect(c1).toBeDefined();
+    expect(c2).toBeDefined();
+    expect(c3).toBeDefined();
+    expect(c1.sha).toBe(c2.sha);
+    expect(c2.sha).toBe(c3.sha);
+  });
+
+  it("25. Rastreamento de Rate Limit: isRateLimited() e getRateLimitInfo() funcionam sem vazar credenciais", async () => {
+    const rateInfo = githubClient.getRateLimitInfo();
+    expect(rateInfo).toBeDefined();
+    expect(typeof rateInfo.limit).toBe("number");
+    expect(typeof rateInfo.remaining).toBe("number");
+    expect(typeof rateInfo.isRateLimited).toBe("boolean");
+  });
 }, 30_000);

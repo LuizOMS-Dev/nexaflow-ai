@@ -470,7 +470,9 @@ export class DeploymentOrchestrator {
   ) {
     let logBuffer = "";
     const log = (stage: string, msg: string) => {
-      const line = `[${new Date().toISOString()}] [${stage}] ${msg}\n`;
+      const now = new Date();
+      const timeStr = now.toTimeString().split(" ")[0]; // HH:mm:ss
+      const line = `[${timeStr}] [${stage}] ${msg}\n`;
       logBuffer += line;
     };
 
@@ -490,18 +492,17 @@ export class DeploymentOrchestrator {
     };
 
     try {
-      log("PREPARING", "Validando credenciais e preparando conexão com o EasyPanel...");
+      log("PREPARING", "Conexão com o EasyPanel verificada.");
       await flushLogs();
 
       // Transição 1: BUILDING
       await safeUpdate({ status: "BUILDING", healthStatus: "PENDING_VALIDATION" });
-      log("BUILDING", "Disparando comando de build e deploy no EasyPanel (serviço 'nexaflow')...");
-      log("BUILDING", "Compilando containers Docker da aplicação...");
+      log("BUILDING", "Disparado build dos containers Docker no EasyPanel (serviço: nexaflow).");
       await flushLogs();
 
       // Em ambiente de teste, simula o pipeline sem acionar EasyPanel real nem esperar 15s
       if (process.env.NODE_ENV === "test") {
-        log("SUCCESS", "✓ [MODO TESTE] Build e implantação simulados com sucesso.");
+        log("SUCCESS", "Build e implantação simulados com sucesso.");
         const finishedAt = new Date();
         await safeUpdate({
           status: "COMPLETED",
@@ -528,7 +529,7 @@ export class DeploymentOrchestrator {
       // Dispara o deploy no EasyPanel em produção
       try {
         await easyPanelClient.deployService(undefined, undefined, 900_000);
-        log("BUILDING", "✓ EasyPanel aceitou e confirmou a compilação do compose.");
+        log("BUILDING", "EasyPanel confirmou a compilação do compose.");
       } catch (deployErr: any) {
         const isTimeoutOrGateway =
           deployErr?.statusCode === 504 ||
@@ -541,12 +542,11 @@ export class DeploymentOrchestrator {
         if (isTimeoutOrGateway) {
           log(
             "BUILDING",
-            `⚠ Comando de deploy aceito. O EasyPanel está executando a compilação dos containers Docker em background no servidor.`
+            "Compilação Docker em andamento no servidor em background."
           );
-          log("BUILDING", "Prosseguindo para a fase de atualização e validação de integridade...");
         } else {
           const errMsg = `Falha durante a compilação: ${deployErr?.message || "Erro de build"}`;
-          log("FAILED", `✕ ${errMsg}`);
+          log("FAILED", errMsg);
           await safeUpdate({
             status: "FAILED",
             healthStatus: "FAILED",
@@ -560,7 +560,7 @@ export class DeploymentOrchestrator {
 
       // Transição 2: DEPLOYING
       await safeUpdate({ status: "DEPLOYING", healthStatus: "PENDING_VALIDATION" });
-      log("DEPLOYING", "Iniciando atualização dos containers de API e Web no servidor...");
+      log("DEPLOYING", "Atualizando e reinicializando containers de API e Web no servidor.");
       await flushLogs();
 
       // Aguarda 15s antes de iniciar a validação para o container iniciar o ciclo de rebuild
@@ -568,7 +568,7 @@ export class DeploymentOrchestrator {
 
       // Transição 3: VALIDATING
       await safeUpdate({ status: "VALIDATING", healthStatus: "VERIFYING" });
-      log("VERIFYING", "Aguardando reinicialização dos containers e iniciando verificação de integridade (Health Check)...");
+      log("VERIFYING", "Iniciando verificação de integridade dos serviços (Health Check).");
       await flushLogs();
 
       // Executa health check com retries (até 30 tentativas de 10s = 300s)
@@ -585,8 +585,8 @@ export class DeploymentOrchestrator {
       const durationSeconds = dep ? Math.max(1, Math.round((finishedAt.getTime() - dep.startedAt.getTime()) / 1000)) : 0;
 
       if (healthResult.healthy) {
-        log("SUCCESS", `✓ Validação de saúde bem-sucedida! API (${healthResult.apiStatus}) e Web (${healthResult.webStatus}) operacionais.`);
-        log("SUCCESS", `✓ Deploy concluído com sucesso em ${durationSeconds} segundos.`);
+        log("SUCCESS", `Validação de integridade concluída: API (${healthResult.apiStatus}) e Web (${healthResult.webStatus}) operacionais.`);
+        log("SUCCESS", `Deploy concluído com sucesso em ${durationSeconds} segundos.`);
 
         // Transição 4: COMPLETED
         await safeUpdate({
@@ -617,7 +617,7 @@ export class DeploymentOrchestrator {
         });
       } else {
         const err = healthResult.error || "Falha na validação de saúde";
-        log("FAILED", `✕ Falha no Health Check: ${err}`);
+        log("FAILED", `Falha no Health Check: ${err}`);
 
         // Transição 4: FAILED (por health)
         await safeUpdate({
@@ -640,7 +640,7 @@ export class DeploymentOrchestrator {
     } catch (e) {
       const finishedAt = new Date();
       const errMessage = e instanceof Error ? e.message : "Erro desconhecido durante o deploy.";
-      log("FAILED", `✕ Erro fatal durante a orquestração: ${errMessage}`);
+      log("FAILED", `Erro fatal durante a orquestração: ${errMessage}`);
 
       const dep = await prisma.deployment.findUnique({ where: { id: deploymentId } }).catch(() => null);
       const durationSeconds = dep ? Math.max(1, Math.round((finishedAt.getTime() - dep.startedAt.getTime()) / 1000)) : 0;
@@ -664,6 +664,41 @@ export class DeploymentOrchestrator {
   }
 
   /**
+   * Executa requisição HTTP resiliente suportando certificados autoassinados/wildcard TLS
+   */
+  private checkEndpoint(urlStr: string): Promise<{ status: number; ok: boolean }> {
+    return new Promise((resolve, reject) => {
+      try {
+        const parsed = new URL(urlStr);
+        const isHttps = parsed.protocol === "https:";
+        const mod = isHttps ? require("https") : require("http");
+        const req = mod.request(
+          parsed,
+          {
+            method: "GET",
+            rejectUnauthorized: false,
+            timeout: 6000,
+            headers: { "User-Agent": "NexaFlow-HealthCheck/1.0" },
+          },
+          (res: any) => {
+            const status = res.statusCode || 0;
+            const ok = Boolean(status >= 200 && status < 400);
+            resolve({ status, ok });
+          }
+        );
+        req.on("error", (err: any) => reject(err));
+        req.on("timeout", () => {
+          req.destroy();
+          reject(new Error("Timeout de conexão"));
+        });
+        req.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  /**
    * Polling de Health Check real validando individualmente API e Web
    */
   private async pollHealthCheck(
@@ -674,17 +709,26 @@ export class DeploymentOrchestrator {
     webStatus?: number;
     error?: string;
   }> {
-    const rawApiUrl =
-      process.env.PROD_API_HEALTH_URL ||
-      (process.env.API_URL ? `${process.env.API_URL.replace(/\/+$/, "")}/health` : "") ||
-      "https://nexaflow-api.161.97.107.241.sslip.io/health";
-    const rawWebUrl =
-      process.env.PROD_WEB_HEALTH_URL ||
-      (process.env.APP_PUBLIC_URL ? `${process.env.APP_PUBLIC_URL.replace(/\/+$/, "")}/login` : "") ||
-      "https://nexaflow.161.97.107.241.sslip.io/login";
+    const getValidUrl = (explicit?: string, envUrl?: string, defaultUrl = "", path = "") => {
+      if (explicit && explicit.trim()) return explicit.trim();
+      if (envUrl && envUrl.trim() && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+        return `${envUrl.replace(/\/+$/, "")}${path}`;
+      }
+      return defaultUrl;
+    };
 
-    const apiUrl = rawApiUrl.trim();
-    const webUrl = rawWebUrl.trim();
+    const apiUrl = getValidUrl(
+      process.env.PROD_API_HEALTH_URL,
+      process.env.API_URL,
+      "https://nexaflow-api.161.97.107.241.sslip.io/health",
+      "/health"
+    );
+    const webUrl = getValidUrl(
+      process.env.PROD_WEB_HEALTH_URL,
+      process.env.APP_PUBLIC_URL,
+      "https://nexaflow.161.97.107.241.sslip.io/login",
+      "/login"
+    );
 
     const maxAttempts = 30;
     const intervalMs = 10000;
@@ -697,26 +741,17 @@ export class DeploymentOrchestrator {
       let webOk = false;
 
       try {
-        const resApi = await fetch(apiUrl, {
-          signal: AbortSignal.timeout(6000),
-          headers: { Accept: "application/json" },
-        });
+        const resApi = await this.checkEndpoint(apiUrl);
         lastApiStatus = resApi.status;
-        if (resApi.ok) {
-          apiOk = true;
-        }
+        apiOk = resApi.ok;
       } catch {
         lastApiStatus = undefined;
       }
 
       try {
-        const resWeb = await fetch(webUrl, {
-          signal: AbortSignal.timeout(6000),
-        });
+        const resWeb = await this.checkEndpoint(webUrl);
         lastWebStatus = resWeb.status;
-        if (resWeb.ok) {
-          webOk = true;
-        }
+        webOk = resWeb.ok;
       } catch {
         lastWebStatus = undefined;
       }

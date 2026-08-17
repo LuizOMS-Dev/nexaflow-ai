@@ -81,6 +81,15 @@ type DeployOverviewResponse = {
     owner: string;
     repo: string;
     branch: string;
+    tokenConfigured?: boolean;
+    rateLimit?: {
+      limit: number;
+      remaining: number;
+      resetAt: string | null;
+      resetEpochMs: number | null;
+      isRateLimited: boolean;
+      retryAfterSeconds?: number;
+    };
     error?: string;
   };
   easyPanel: {
@@ -115,6 +124,38 @@ type GitHubCommitItem = {
   author: string;
   date: string;
   url?: string;
+};
+
+type GitHubConfigResponse = {
+  configured: boolean;
+  owner: string;
+  repo: string;
+  branch: string;
+  tokenConfigured: boolean;
+  rateLimit: {
+    limit: number;
+    remaining: number;
+    resetAt: string | null;
+    isRateLimited: boolean;
+  };
+};
+
+type TestGitHubConnectionResponse = {
+  success: boolean;
+  message: string;
+  state: "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "NOT_FOUND" | "RATE_LIMITED" | "UNAVAILABLE";
+  details?: {
+    authenticated: boolean;
+    repoFound: boolean;
+    branchFound: boolean;
+  };
+  rateLimit?: {
+    limit: number;
+    remaining: number;
+    resetAt: string | null;
+    isRateLimited: boolean;
+  };
+  latestCommit?: GitHubCommitItem;
 };
 
 type EasyPanelConfigResponse = {
@@ -288,7 +329,7 @@ export default function AdminDeployPage() {
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
   const [page, setPage] = useState(1);
 
-  const logContainerRef = useRef<HTMLPreElement | null>(null);
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Form states do Modal de Configuração do EasyPanel (Write-Only)
   const [cfgUrl, setCfgUrl] = useState("");
@@ -296,6 +337,15 @@ export default function AdminDeployPage() {
   const [cfgService, setCfgService] = useState("");
   const [cfgToken, setCfgToken] = useState("");
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null);
+
+  // Form states do Modal de Configuração do GitHub (Write-Only)
+  const [githubConfigModalOpen, setGithubConfigModalOpen] = useState(false);
+  const [githubOwner, setGithubOwner] = useState("LuizOMS-Dev");
+  const [githubRepo, setGithubRepo] = useState("nexaflow-ai");
+  const [githubBranch, setGithubBranch] = useState("main");
+  const [githubToken, setGithubToken] = useState("");
+  const [isReplacingGithubToken, setIsReplacingGithubToken] = useState(false);
+  const [githubTestResult, setGithubTestResult] = useState<TestGitHubConnectionResponse | null>(null);
 
   // 1. Status geral de deploy
   const overviewQuery = useQuery({
@@ -356,6 +406,24 @@ export default function AdminDeployPage() {
       setTestResult(null);
     }
   }, [configQuery.data]);
+
+  // 6. Configuração salva do GitHub (Write-Only)
+  const githubConfigQuery = useQuery({
+    queryKey: ["admin-deploy-github-config"],
+    queryFn: () => api<GitHubConfigResponse>("/admin/deploy/github/config"),
+    enabled: githubConfigModalOpen && user?.platformRole === "SUPERADMIN",
+  });
+
+  useEffect(() => {
+    if (githubConfigQuery.data) {
+      setGithubOwner(githubConfigQuery.data.owner || "LuizOMS-Dev");
+      setGithubRepo(githubConfigQuery.data.repo || "nexaflow-ai");
+      setGithubBranch(githubConfigQuery.data.branch || "main");
+      setGithubToken("");
+      setIsReplacingGithubToken(false);
+      setGithubTestResult(null);
+    }
+  }, [githubConfigQuery.data]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -426,7 +494,7 @@ export default function AdminDeployPage() {
   // Mutação: Sincronizar e buscar atualizações diretamente do GitHub
   const syncGitHubMut = useMutation({
     mutationFn: () =>
-      api<{ success: boolean; count: number; message: string }>("/admin/deploy/sync", {
+      api<{ success: boolean; count: number; message: string; rateLimited?: boolean }>("/admin/deploy/sync", {
         method: "POST",
       }),
     onSuccess: (res) => {
@@ -442,6 +510,57 @@ export default function AdminDeployPage() {
       toast({
         title: "Falha ao buscar atualizações",
         description: e instanceof Error ? e.message : "Erro ao conectar com a API do GitHub.",
+        kind: "error",
+      });
+    },
+  });
+
+  // Mutação: Testar conexão com GitHub
+  const testGitHubConnMut = useMutation({
+    mutationFn: (body: { owner?: string; repo?: string; branch?: string; token?: string }) =>
+      api<TestGitHubConnectionResponse>("/admin/deploy/github/test", {
+        method: "POST",
+        json: body,
+      }),
+    onSuccess: (res) => {
+      setGithubTestResult(res);
+      if (res.success) {
+        toast({ title: "GitHub conectado", description: res.message, kind: "success" });
+      } else {
+        toast({ title: "Falha na conexão com GitHub", description: res.message, kind: "error" });
+      }
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "Não foi possível testar a conexão com o GitHub.";
+      setGithubTestResult({ success: false, state: "UNAVAILABLE", message: msg });
+      toast({ title: "Erro no teste", description: msg, kind: "error" });
+    },
+  });
+
+  // Mutação: Salvar configuração do GitHub
+  const saveGitHubConfigMut = useMutation({
+    mutationFn: (body: { owner?: string; repo?: string; branch?: string; token?: string }) =>
+      api<{ success: boolean; message: string }>("/admin/deploy/github/config", {
+        method: "POST",
+        json: body,
+      }),
+    onSuccess: () => {
+      setGithubConfigModalOpen(false);
+      setGithubToken("");
+      setIsReplacingGithubToken(false);
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-github-config"] });
+      toast({
+        title: "Configuração do GitHub salva",
+        description: "Repositório e credenciais atualizados com sucesso.",
+        kind: "success",
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Não foi possível salvar",
+        description: e instanceof Error ? e.message : "Erro ao salvar configuração do GitHub.",
         kind: "error",
       });
     },
@@ -617,6 +736,8 @@ export default function AdminDeployPage() {
 
   const isFetchingAny = overviewQuery.isFetching || commitsQuery.isFetching;
   const tokenIsSaved = Boolean(configQuery.data?.tokenConfigured);
+  const githubTokenIsSaved = Boolean(githubConfigQuery.data?.tokenConfigured || data.gitHub?.tokenConfigured);
+  const isRateLimited = Boolean(data.gitHub?.rateLimit?.isRateLimited);
 
   const activeStageIdx = active ? getStageIndex(active.stage || active.status) : 0;
 
@@ -639,15 +760,37 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-ghost h-9 text-[12.5px]"
+              onClick={() => setGithubConfigModalOpen(true)}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              Configurar GitHub
+            </button>
+            <button
+              type="button"
+              className="admin-btn-ghost h-9 text-[12.5px]"
               onClick={() => syncGitHubMut.mutate()}
-              disabled={syncGitHubMut.isPending || isFetchingAny}
+              disabled={syncGitHubMut.isPending || isFetchingAny || isRateLimited}
+              title={isRateLimited ? "Sincronização temporariamente limitada pelo GitHub" : undefined}
             >
               <RefreshCw className={cn("h-3.5 w-3.5", (syncGitHubMut.isPending || isFetchingAny) && "animate-spin")} />
-              {syncGitHubMut.isPending ? "Buscando atualizações…" : "Buscar atualizações no GitHub"}
+              {syncGitHubMut.isPending ? "Buscando atualizações…" : isRateLimited ? "GitHub limitado" : "Buscar atualizações no GitHub"}
             </button>
           </div>
         }
       />
+
+      {/* Aviso discreto quando GitHub estiver limitado por rate limit */}
+      {isRateLimited ? (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3.5 text-amber-200">
+          <Info className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+          <div className="space-y-0.5 text-[12px]">
+            <p className="font-semibold text-amber-100">GitHub temporariamente limitado</p>
+            <p className="text-amber-200/80 leading-relaxed">
+              O NexaFlow aguardará o período indicado pelo GitHub antes de sincronizar novamente. Os dados em cache continuam disponíveis normalmente.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {/* 2. Grid de Métricas Principais (Padronizados com mesma altura e hierarquia) */}
       <MetricGrid cols={4}>
@@ -1575,35 +1718,78 @@ export default function AdminDeployPage() {
                     Auto-scroll: {autoScrollLogs ? "ativo" : "pausado"}
                   </button>
                 </div>
-                <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-3.5 text-[11.5px]">
+                <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-3 text-[11.5px]">
                   {detailQuery.data.logs ? (
-                    <pre
+                    <div
                       ref={logContainerRef}
-                      className="max-h-[30vh] overflow-y-auto whitespace-pre-wrap font-mono text-gray-300 leading-relaxed scrollbar-thin selection:bg-violet-500/30"
+                      className="max-h-[32vh] overflow-y-auto space-y-1 font-mono text-gray-300 leading-relaxed scrollbar-thin selection:bg-violet-500/30 pr-1"
                     >
-                      {detailQuery.data.logs.split("\n").map((line, lIdx) => {
+                      {detailQuery.data.logs.split("\n").map((rawLine, lIdx) => {
+                        const line = rawLine.trim();
                         if (!line) return null;
-                        const isSuccess = line.includes("✓") || line.includes("[SUCCESS]");
-                        const isFailed = line.includes("✕") || line.includes("[FAILED]") || line.includes("Falha");
-                        const isWarn = line.includes("⚠") || line.includes("timeout");
+
+                        const match = line.match(/^\[(.*?)\]\s*(?:\[(.*?)\])?\s*(.*)$/);
+                        let timeStr = "";
+                        let stage = "";
+                        let message = line;
+
+                        if (match) {
+                          const rawTime = match[1] || "";
+                          timeStr = rawTime.includes("T")
+                            ? rawTime.split("T")[1]?.split(".")[0] || rawTime
+                            : rawTime;
+                          stage = match[2] || "";
+                          message = match[3] || "";
+                        }
+
+                        const isSuccess = stage === "SUCCESS" || message.includes("✓") || message.includes("concluído") || message.includes("operacionais");
+                        const isFailed = stage === "FAILED" || message.includes("✕") || message.includes("Falha");
+                        const isWarning = stage === "WARN" || message.includes("⚠") || message.includes("timeout") || message.includes("background");
+
+                        const cleanMessage = message.replace(/^[✓✕⚠]\s*/, "");
 
                         return (
                           <div
                             key={lIdx}
-                            className={cn(
-                              "py-0.5",
-                              isSuccess && "text-emerald-400 font-medium",
-                              isFailed && "text-rose-400 font-medium",
-                              isWarn && "text-amber-300"
-                            )}
+                            className="flex items-start gap-2.5 py-0.5 rounded px-1.5 hover:bg-white/[0.02] transition-colors"
                           >
-                            {line}
+                            <span className="shrink-0 text-gray-400 text-[11px] select-none font-mono">
+                              {timeStr}
+                            </span>
+
+                            {stage ? (
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded px-1.5 py-0.2 text-[9.5px] font-semibold uppercase tracking-wider",
+                                  stage === "PREPARING" && "bg-gray-800 text-gray-300",
+                                  stage === "BUILDING" && "bg-violet-500/20 text-violet-300",
+                                  stage === "DEPLOYING" && "bg-blue-500/20 text-blue-300",
+                                  stage === "VERIFYING" && "bg-amber-500/20 text-amber-300",
+                                  (stage === "SUCCESS" || isSuccess) && "bg-emerald-500/20 text-emerald-300",
+                                  (stage === "FAILED" || isFailed) && "bg-rose-500/20 text-rose-300"
+                                )}
+                              >
+                                {stage}
+                              </span>
+                            ) : null}
+
+                            <span
+                              className={cn(
+                                "flex-1 text-[11.5px] break-words",
+                                isSuccess && "text-emerald-300 font-medium",
+                                isFailed && "text-rose-300 font-medium",
+                                isWarning && "text-amber-300",
+                                !isSuccess && !isFailed && !isWarning && "text-gray-300"
+                              )}
+                            >
+                              {cleanMessage}
+                            </span>
                           </div>
                         );
                       })}
-                    </pre>
+                    </div>
                   ) : (
-                    <p className="text-gray-500 font-mono text-[11.5px]">Nenhum log registrado para este deploy.</p>
+                    <p className="text-gray-500 font-mono text-[11.5px] py-2 text-center">Nenhum log registrado para este deploy.</p>
                   )}
                 </div>
               </div>
@@ -1789,6 +1975,190 @@ export default function AdminDeployPage() {
                 {testResult.details ? (
                   <p className="mt-0.5 text-[11px] opacity-80 leading-relaxed">
                     URL: {testResult.details.urlAccessible ? "OK" : "Inacessível"} · Autenticação: {testResult.details.authValid ? "OK" : "Inválida"} · Projeto: {testResult.details.projectFound ? "OK" : "Não encontrado"} · Serviço: {testResult.details.serviceFound ? "OK" : "Não encontrado"}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      {/* MODAL 7: Área Segura de Configuração do GitHub (Write-Only Secrets) */}
+      <Modal
+        open={githubConfigModalOpen}
+        onClose={() => setGithubConfigModalOpen(false)}
+        title="Integração com o GitHub"
+        description="Configure o repositório, branch e credencial de acesso para sincronização contínua de versões."
+        size="md"
+        footer={
+          <DialogFooter>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9"
+              onClick={() => setGithubConfigModalOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-ghost h-9 text-brand-300 hover:text-brand-200"
+              disabled={testGitHubConnMut.isPending || !githubOwner.trim() || !githubRepo.trim() || !githubBranch.trim()}
+              onClick={() =>
+                testGitHubConnMut.mutate({
+                  owner: githubOwner.trim(),
+                  repo: githubRepo.trim(),
+                  branch: githubBranch.trim(),
+                  token: githubToken.trim() || undefined,
+                })
+              }
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", testGitHubConnMut.isPending && "animate-spin")} />
+              {testGitHubConnMut.isPending ? "Testando…" : "Testar conexão"}
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9"
+              disabled={saveGitHubConfigMut.isPending || !githubOwner.trim() || !githubRepo.trim() || !githubBranch.trim()}
+              onClick={() =>
+                saveGitHubConfigMut.mutate({
+                  owner: githubOwner.trim(),
+                  repo: githubRepo.trim(),
+                  branch: githubBranch.trim(),
+                  token: githubToken.trim() || undefined,
+                })
+              }
+            >
+              {saveGitHubConfigMut.isPending ? "Salvando…" : "Salvar alterações"}
+            </button>
+          </DialogFooter>
+        }
+      >
+        <div className="space-y-4 py-1">
+          {/* Grid: Dono e Repositório */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField label="Organização / Usuário (Owner)" required hint="Nome da conta GitHub dona do projeto">
+              <input
+                type="text"
+                className="input"
+                placeholder="LuizOMS-Dev"
+                value={githubOwner}
+                onChange={(e) => setGithubOwner(e.target.value)}
+              />
+            </FormField>
+
+            <FormField label="Nome do Repositório" required hint="Nome do repositório no GitHub">
+              <input
+                type="text"
+                className="input"
+                placeholder="nexaflow-ai"
+                value={githubRepo}
+                onChange={(e) => setGithubRepo(e.target.value)}
+              />
+            </FormField>
+          </div>
+
+          {/* Campo: Branch principal */}
+          <FormField label="Branch de Implantação" required hint="Branch padrão utilizada para publicação em produção">
+            <input
+              type="text"
+              className="input"
+              placeholder="main"
+              value={githubBranch}
+              onChange={(e) => setGithubBranch(e.target.value)}
+            />
+          </FormField>
+
+          {/* Campo: Token PAT do GitHub (Write-Only) */}
+          {githubTokenIsSaved ? (
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  <span className="text-[13px] font-semibold text-emerald-300">Token configurado</span>
+                </div>
+                {!isReplacingGithubToken ? (
+                  <button
+                    type="button"
+                    className="admin-btn-secondary h-7 px-2.5 text-[11.5px]"
+                    onClick={() => {
+                      setIsReplacingGithubToken(true);
+                      setGithubToken("");
+                    }}
+                  >
+                    <KeyRound className="h-3 w-3" /> Substituir token
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-white"
+                    onClick={() => {
+                      setIsReplacingGithubToken(false);
+                      setGithubToken("");
+                    }}
+                  >
+                    Cancelar substituição
+                  </button>
+                )}
+              </div>
+
+              {!isReplacingGithubToken ? (
+                <p className="text-[11.5px] text-gray-400 leading-relaxed">
+                  Por segurança, credenciais existentes nunca são exibidas ou trafegadas para o navegador.
+                </p>
+              ) : (
+                <div className="pt-2 border-t border-white/[0.06]">
+                  <FormField
+                    label="Novo token de acesso pessoal (PAT / Fine-Grained)"
+                    hint="Insira um novo token do GitHub para rotacionar a credencial existente."
+                  >
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder="github_pat_... ou ghp_..."
+                      value={githubToken}
+                      onChange={(e) => setGithubToken(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </FormField>
+                </div>
+              )}
+            </div>
+          ) : (
+            <FormField
+              label="Token de Acesso Pessoal (GitHub PAT / Fine-Grained)"
+              hint="O token é tratado como segredo write-only e criptografado em repouso no servidor (AES-256-GCM)."
+            >
+              <input
+                type="password"
+                className="input"
+                placeholder="github_pat_... ou ghp_..."
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                autoComplete="new-password"
+              />
+            </FormField>
+          )}
+
+          {/* Banner de Resultado do Teste de Conexão do GitHub */}
+          {githubTestResult ? (
+            <div
+              className={cn(
+                "rounded-xl p-3 text-[12px] flex items-start gap-2.5 border transition-all",
+                githubTestResult.success
+                  ? "bg-emerald-500/[0.08] text-emerald-300 border-emerald-500/20"
+                  : "bg-rose-500/[0.08] text-rose-300 border-rose-500/20"
+              )}
+            >
+              {githubTestResult.success ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-400" />
+              ) : (
+                <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+              )}
+              <div>
+                <p className="font-semibold">{githubTestResult.message}</p>
+                {githubTestResult.details ? (
+                  <p className="mt-0.5 text-[11px] opacity-80 leading-relaxed">
+                    Autenticação: {githubTestResult.details.authenticated ? "OK" : "Pendente/Inválida"} · Repositório: {githubTestResult.details.repoFound ? "OK" : "Não encontrado"} · Branch: {githubTestResult.details.branchFound ? "OK" : "Não encontrada"}
                   </p>
                 ) : null}
               </div>
