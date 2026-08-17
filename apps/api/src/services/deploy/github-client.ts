@@ -1,3 +1,6 @@
+import { prisma } from "../../lib/prisma";
+import { encryptSecret, decryptSecret } from "../security/crypto";
+
 export type GitHubCommitInfo = {
   sha: string;
   shortSha: string;
@@ -29,40 +32,58 @@ export class GitHubClient {
     this.customToken = opts?.token;
   }
 
-  get owner(): string {
-    return this.customOwner || process.env.GITHUB_REPO_OWNER || "LuizOMS-Dev";
-  }
+  async getEffectiveConfig(): Promise<{
+    owner: string;
+    repo: string;
+    branch: string;
+    token?: string;
+  }> {
+    try {
+      const setting = await prisma.platformSetting.findUnique({
+        where: { key: "github_config" },
+      });
+      if (setting?.value && typeof setting.value === "object") {
+        const v = setting.value as any;
+        const decryptedToken = v.encryptedToken
+          ? decryptSecret(v.encryptedToken).plain
+          : undefined;
+        return {
+          owner: v.owner || process.env.GITHUB_REPO_OWNER || "LuizOMS-Dev",
+          repo: v.repo || process.env.GITHUB_REPO_NAME || "nexaflow-ai",
+          branch: v.branch || process.env.GITHUB_BRANCH || "main",
+          token: decryptedToken || process.env.GITHUB_TOKEN,
+        };
+      }
+    } catch {}
 
-  get repo(): string {
-    return this.customRepo || process.env.GITHUB_REPO_NAME || "nexaflow-ai";
-  }
-
-  get branch(): string {
-    return this.customBranch || process.env.GITHUB_BRANCH || "main";
-  }
-
-  get token(): string | undefined {
-    return this.customToken || process.env.GITHUB_TOKEN;
-  }
-
-  getRepoInfo() {
     return {
-      owner: this.owner,
-      repo: this.repo,
-      branch: this.branch,
-      fullName: `${this.owner}/${this.repo}`,
+      owner: this.customOwner || process.env.GITHUB_REPO_OWNER || "LuizOMS-Dev",
+      repo: this.customRepo || process.env.GITHUB_REPO_NAME || "nexaflow-ai",
+      branch: this.customBranch || process.env.GITHUB_BRANCH || "main",
+      token: this.customToken || process.env.GITHUB_TOKEN,
+    };
+  }
+
+  async getRepoInfo() {
+    const cfg = await this.getEffectiveConfig();
+    return {
+      owner: cfg.owner,
+      repo: cfg.repo,
+      branch: cfg.branch,
+      fullName: `${cfg.owner}/${cfg.repo}`,
     };
   }
 
   async getLatestCommit(): Promise<GitHubCommitInfo> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/commits/${this.branch}`;
+    const cfg = await this.getEffectiveConfig();
+    const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/commits/${cfg.branch}`;
     const headers: Record<string, string> = {
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "NexaFlow-Deploy-Client/1.0",
     };
 
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    if (cfg.token) {
+      headers.Authorization = `Bearer ${cfg.token}`;
     }
 
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
@@ -92,14 +113,15 @@ export class GitHubClient {
   }
 
   async listRecentCommits(limit = 10): Promise<GitHubCommitInfo[]> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/commits?sha=${this.branch}&per_page=${limit}`;
+    const cfg = await this.getEffectiveConfig();
+    const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/commits?sha=${cfg.branch}&per_page=${limit}`;
     const headers: Record<string, string> = {
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "NexaFlow-Deploy-Client/1.0",
     };
 
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    if (cfg.token) {
+      headers.Authorization = `Bearer ${cfg.token}`;
     }
 
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
@@ -131,21 +153,22 @@ export class GitHubClient {
   }
 
   async getRepoStatus(): Promise<GitHubRepoStatus> {
+    const cfg = await this.getEffectiveConfig();
     try {
       const latest = await this.getLatestCommit();
       return {
         connected: true,
-        owner: this.owner,
-        repo: this.repo,
-        branch: this.branch,
+        owner: cfg.owner,
+        repo: cfg.repo,
+        branch: cfg.branch,
         latestCommit: latest,
       };
     } catch (e) {
       return {
         connected: false,
-        owner: this.owner,
-        repo: this.repo,
-        branch: this.branch,
+        owner: cfg.owner,
+        repo: cfg.repo,
+        branch: cfg.branch,
         latestCommit: null,
         error: e instanceof Error ? e.message : "Não foi possível conectar ao GitHub",
       };

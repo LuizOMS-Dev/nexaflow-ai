@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Copy,
+  ExternalLink,
   GitBranch,
   GitCommit,
   HelpCircle,
@@ -20,6 +21,7 @@ import {
   Settings,
   Sparkles,
   Terminal,
+  User,
   XCircle,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
@@ -89,6 +91,15 @@ type DeployOverviewResponse = {
     startedByName: string;
     durationSeconds: number;
   } | null;
+};
+
+type GitHubCommitItem = {
+  sha: string;
+  shortSha: string;
+  message: string;
+  author: string;
+  date: string;
+  url?: string;
 };
 
 type EasyPanelConfigResponse = {
@@ -206,6 +217,7 @@ export default function AdminDeployPage() {
   const user = useAuth((s) => s.user);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [selectedCommitToDeploy, setSelectedCommitToDeploy] = useState<GitHubCommitItem | null>(null);
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
@@ -230,7 +242,15 @@ export default function AdminDeployPage() {
     },
   });
 
-  // 2. Histórico de deploys
+  // 2. Lista de commits recentes do GitHub
+  const commitsQuery = useQuery({
+    queryKey: ["admin-deploy-commits"],
+    queryFn: () =>
+      api<{ commits: GitHubCommitItem[] }>("/admin/deploy/commits?limit=8"),
+    enabled: user?.platformRole === "SUPERADMIN",
+  });
+
+  // 3. Histórico de deploys
   const historyQuery = useQuery({
     queryKey: ["admin-deploy-history", page],
     queryFn: () =>
@@ -244,7 +264,7 @@ export default function AdminDeployPage() {
     refetchInterval: () => (overviewQuery.data?.activeDeployment ? 5000 : false),
   });
 
-  // 3. Detalhes do deploy selecionado
+  // 4. Detalhes do deploy selecionado
   const detailQuery = useQuery({
     queryKey: ["admin-deploy-detail", selectedDetailId],
     queryFn: () => api<DeploymentDetail>(`/admin/deploy/${selectedDetailId}`),
@@ -253,7 +273,7 @@ export default function AdminDeployPage() {
       overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 3000 : false,
   });
 
-  // 4. Configuração salva do EasyPanel
+  // 5. Configuração salva do EasyPanel
   const configQuery = useQuery({
     queryKey: ["admin-deploy-config"],
     queryFn: () => api<EasyPanelConfigResponse>("/admin/deploy/config"),
@@ -327,7 +347,9 @@ export default function AdminDeployPage() {
       }),
     onSuccess: (res) => {
       setConfirmOpen(false);
+      setSelectedCommitToDeploy(null);
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
       toast({
         title: "Deploy iniciado",
@@ -355,6 +377,7 @@ export default function AdminDeployPage() {
       setRollbackOpen(false);
       setRollbackTarget(null);
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
       toast({
         title: "Rollback iniciado",
@@ -401,6 +424,7 @@ export default function AdminDeployPage() {
   const isUpToDate = status === "UP_TO_DATE";
   const isUpdateAvailable = status === "UPDATE_AVAILABLE";
   const isUnknown = status === "UNKNOWN";
+  const recentCommits = commitsQuery.data?.commits || [];
   const historyItems = historyQuery.data?.items || [];
   const totalPages = historyQuery.data?.totalPages || 1;
 
@@ -424,6 +448,8 @@ export default function AdminDeployPage() {
     epHint = "Token inválido ou sem permissão de acesso.";
   }
 
+  const isFetchingAny = overviewQuery.isFetching || commitsQuery.isFetching;
+
   return (
     <div className="space-y-5">
       {/* 1. Header */}
@@ -431,7 +457,7 @@ export default function AdminDeployPage() {
         title="Deploy"
         description="Controle as versões implantadas em produção com integração direta GitHub → EasyPanel."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               className="admin-btn-ghost h-9 text-[12.5px]"
@@ -442,16 +468,21 @@ export default function AdminDeployPage() {
             </button>
             <button
               type="button"
-              className="admin-btn-ghost h-9 text-[12.5px]"
+              className="admin-btn-primary h-9 text-[12.5px]"
               onClick={() => {
                 void overviewQuery.refetch();
+                void commitsQuery.refetch();
                 void historyQuery.refetch();
-                toast({ title: "Sincronizado", description: "Dados atualizados do GitHub e EasyPanel.", kind: "success" });
+                toast({
+                  title: "Consultando GitHub",
+                  description: "Buscando atualizações e commits recentes no repositório...",
+                  kind: "success",
+                });
               }}
-              disabled={overviewQuery.isFetching}
+              disabled={isFetchingAny}
             >
-              <RefreshCw className={cn("h-3.5 w-3.5", overviewQuery.isFetching && "animate-spin")} />
-              Atualizar status
+              <RefreshCw className={cn("h-3.5 w-3.5", isFetchingAny && "animate-spin")} />
+              Buscar atualizações no GitHub
             </button>
           </div>
         }
@@ -608,7 +639,10 @@ export default function AdminDeployPage() {
                     type="button"
                     className="admin-btn-primary h-10 px-5 text-[13px] font-semibold"
                     disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel?.connected}
-                    onClick={() => setConfirmOpen(true)}
+                    onClick={() => {
+                      setSelectedCommitToDeploy(null);
+                      setConfirmOpen(true);
+                    }}
                   >
                     <Rocket className="h-4 w-4" />
                     {isUnknown ? "Implantar versão" : "Implantar nova versão"}
@@ -633,7 +667,87 @@ export default function AdminDeployPage() {
         </div>
       </AdminSection>
 
-      {/* 5. Histórico de Implantações */}
+      {/* 5. Seção de Commits Recentes no GitHub */}
+      <AdminSection
+        title="Atualizações Recentes no GitHub"
+        description="Lista de commits da branch principal obtidos em tempo real via API oficial do GitHub."
+        flush
+      >
+        {commitsQuery.isLoading ? (
+          <div className="p-6 text-center text-[12px] text-gray-500">
+            <RefreshCw className="mx-auto h-5 w-5 animate-spin text-gray-400 mb-2" />
+            Buscando commits mais recentes no GitHub...
+          </div>
+        ) : recentCommits.length === 0 ? (
+          <div className="p-6 text-center text-[12.5px] text-gray-400">
+            Nenhum commit encontrado no repositório.
+          </div>
+        ) : (
+          <div className="divide-y divide-white/[0.04]">
+            {recentCommits.map((c) => {
+              const isCurrent = current?.sha === c.sha || (current?.shortSha === c.shortSha);
+              return (
+                <div
+                  key={c.sha}
+                  className="flex flex-col gap-2.5 px-4.5 py-3 transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-gray-400">
+                      <GitCommit className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12px] font-bold text-violet-300">
+                          {c.shortSha}
+                        </code>
+                        <span className="truncate text-[13px] font-medium text-gray-200" title={c.message}>
+                          {c.message}
+                        </span>
+                        {isCurrent ? (
+                          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                            Em produção
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 text-[11.5px] text-gray-400">
+                        Por <strong className="text-gray-300">{c.author}</strong> · há {formatRelativeTime(c.date)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                    {c.url ? (
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-white"
+                      >
+                        <ExternalLink className="h-3 w-3" /> Ver no GitHub
+                      </a>
+                    ) : null}
+
+                    {!isCurrent && !active && data.easyPanel?.connected ? (
+                      <button
+                        type="button"
+                        className="admin-btn-secondary h-7 px-2.5 text-[11.5px]"
+                        onClick={() => {
+                          setSelectedCommitToDeploy(c);
+                          setConfirmOpen(true);
+                        }}
+                      >
+                        <Rocket className="h-3 w-3" /> Implantar
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </AdminSection>
+
+      {/* 6. Histórico de Implantações */}
       <AdminSection
         title="Histórico de Deploys"
         description="Registro auditável de todas as implantações, durações e validações de saúde."
@@ -791,7 +905,10 @@ export default function AdminDeployPage() {
       {/* MODAL 1: Confirmação de Deploy */}
       <Modal
         open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
+        onClose={() => {
+          setConfirmOpen(false);
+          setSelectedCommitToDeploy(null);
+        }}
         title={isUnknown ? "Implantar versão em produção?" : "Implantar nova versão em produção?"}
         description="Confirme o disparo da versão para o ambiente de produção."
         size="md"
@@ -800,7 +917,10 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-ghost h-9"
-              onClick={() => setConfirmOpen(false)}
+              onClick={() => {
+                setConfirmOpen(false);
+                setSelectedCommitToDeploy(null);
+              }}
             >
               Cancelar
             </button>
@@ -808,7 +928,11 @@ export default function AdminDeployPage() {
               type="button"
               className="admin-btn-primary h-9"
               disabled={startDeployMut.isPending}
-              onClick={() => startDeployMut.mutate({})}
+              onClick={() =>
+                startDeployMut.mutate({
+                  commitSha: selectedCommitToDeploy?.sha,
+                })
+              }
             >
               {startDeployMut.isPending ? "Iniciando deploy…" : isUnknown ? "Implantar esta versão" : "Iniciar deploy"}
             </button>
@@ -826,7 +950,7 @@ export default function AdminDeployPage() {
             <div className="flex justify-between">
               <span className="text-gray-400">Versão selecionada:</span>
               <code className="font-mono font-bold text-violet-300">
-                {latest ? latest.shortSha : "main"}
+                {selectedCommitToDeploy ? selectedCommitToDeploy.shortSha : latest ? latest.shortSha : "main"}
               </code>
             </div>
             <div className="flex justify-between">
@@ -835,8 +959,11 @@ export default function AdminDeployPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Commit:</span>
-              <span className="max-w-[240px] truncate text-right font-medium text-white" title={latest?.message}>
-                {latest ? latest.message : "Última versão"}
+              <span
+                className="max-w-[240px] truncate text-right font-medium text-white"
+                title={selectedCommitToDeploy ? selectedCommitToDeploy.message : latest?.message}
+              >
+                {selectedCommitToDeploy ? selectedCommitToDeploy.message : latest ? latest.message : "Última versão"}
               </span>
             </div>
           </div>
