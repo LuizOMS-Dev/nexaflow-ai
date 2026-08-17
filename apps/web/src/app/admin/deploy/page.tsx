@@ -42,7 +42,7 @@ import {
   StatusBadge,
 } from "@/components/admin";
 import { DialogFooter, FormField, Modal, useToast } from "@/components/ui";
-import { ActionMenu } from "@/components/ui-menu";
+import { ActionMenu, DropdownMenu, MenuItem } from "@/components/ui-menu";
 
 type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE" | "CHECKING";
 
@@ -816,31 +816,89 @@ export default function AdminDeployPage() {
         description="Controle as versões implantadas em produção com integração direta GitHub → EasyPanel."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="admin-btn-ghost h-9 text-[12.5px]"
-              onClick={() => setConfigModalOpen(true)}
+            {/* 1. Menu Dropdown: Integrações */}
+            <DropdownMenu
+              align="right"
+              minWidth={240}
+              trigger={
+                <button
+                  type="button"
+                  className="admin-btn-secondary h-9 px-3 text-[12.5px] font-medium flex items-center gap-2"
+                >
+                  <Layers className="h-3.5 w-3.5 text-gray-400" />
+                  <span>Integrações</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-gray-400 -mr-0.5" />
+                </button>
+              }
             >
-              <Settings className="h-3.5 w-3.5" />
-              Configurar EasyPanel
-            </button>
+              {/* Item 1: EasyPanel */}
+              <MenuItem
+                icon={Layers}
+                onClick={() => setConfigModalOpen(true)}
+                trailing={
+                  epState === "CONNECTED" ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Conectado
+                    </span>
+                  ) : epState === "AUTH_FAILED" ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-rose-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Inválido
+                    </span>
+                  ) : epState === "UNAVAILABLE" ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Indisponível
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" /> Não configurado
+                    </span>
+                  )
+                }
+              >
+                EasyPanel
+              </MenuItem>
+
+              {/* Item 2: GitHub */}
+              <MenuItem
+                icon={GitBranch}
+                onClick={() => setGithubConfigModalOpen(true)}
+                trailing={
+                  data.gitHub?.connected ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Conectado
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" /> Não configurado
+                    </span>
+                  )
+                }
+              >
+                GitHub
+              </MenuItem>
+            </DropdownMenu>
+
+            {/* 2. Ação Principal: Buscar atualizações */}
             <button
               type="button"
-              className="admin-btn-ghost h-9 text-[12.5px]"
-              onClick={() => setGithubConfigModalOpen(true)}
-            >
-              <GitBranch className="h-3.5 w-3.5" />
-              Configurar GitHub
-            </button>
-            <button
-              type="button"
-              className="admin-btn-ghost h-9 text-[12.5px]"
+              className="admin-btn-secondary h-9 px-3.5 text-[12.5px] font-medium text-white border-white/[0.12] hover:bg-white/[0.06] hover:border-white/[0.2] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               onClick={() => syncGitHubMut.mutate()}
               disabled={syncGitHubMut.isPending || isFetchingAny || isRateLimited}
               title={isRateLimited ? "Sincronização temporariamente limitada pelo GitHub" : undefined}
             >
-              <RefreshCw className={cn("h-3.5 w-3.5", (syncGitHubMut.isPending || isFetchingAny) && "animate-spin")} />
-              {syncGitHubMut.isPending ? "Buscando atualizações…" : isRateLimited ? "GitHub limitado" : "Buscar atualizações no GitHub"}
+              <RefreshCw
+                className={cn(
+                  "h-3.5 w-3.5 text-gray-300",
+                  (syncGitHubMut.isPending || isFetchingAny) && "animate-spin text-violet-400"
+                )}
+              />
+              <span>
+                {syncGitHubMut.isPending
+                  ? "Buscando..."
+                  : isRateLimited
+                  ? "GitHub limitado"
+                  : "Buscar atualizações"}
+              </span>
             </button>
           </div>
         }
