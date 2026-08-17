@@ -373,53 +373,70 @@ function formatCommitMessagePtBr(rawMessage?: string | null): string {
 
   const msg = rawMessage.trim();
 
-  // Dicionário de mensagens conhecidas ou comuns
+  // Dicionário exato de todas as mensagens conhecidas e recentes do repositório
   const directTranslations: Record<string, string> = {
     "Deploy manual de versão": "Deploy manual de versão",
     "Deploy automático da branch main": "Deploy automático da branch main",
-    "Initial commit": "Commit inicial",
+    "Initial commit": "Commit inicial do projeto",
   };
 
   if (directTranslations[msg]) {
     return directTranslations[msg];
   }
 
-  // Traduções específicas dos commits recentes do projeto
-  if (/refactor\(deploy\):\s*refine active deploy state,\s*remove redundant status badge and harmonize version comparison/i.test(msg)) {
-    return "Refatoração do deploy: refinamento do estado ativo, remoção de badge redundante e harmonização da comparação de versões";
-  }
-  if (/fix\(deploy\):\s*prevent whole-page unmount on transient network drop during container restart and increase retry tolerance/i.test(msg)) {
-    return "Correção no deploy: previne desmontagem de tela durante reinicialização dos containers e melhora reconexão";
-  }
-  if (/feat\(deploy\):\s*real-time automatic deployment status tracking,\s*live logs,\s*visibility-aware polling and post-deploy auto-sync/i.test(msg)) {
-    return "Atualização no deploy: monitoramento em tempo real, logs ao vivo e sincronização pós-deploy";
-  }
-  if (/feat\(deploy\):\s*final polish of deployment details modal,\s*live stepper,\s*strict health validation and 3-column logs/i.test(msg)) {
-    return "Refinamento do modal de detalhes: timeline ao vivo, validação estrita de integridade e logs em 3 colunas";
-  }
-  if (/feat\(deploy\):\s*refine deploy header controls with dropdown integrations menu and updates sync/i.test(msg)) {
-    return "Refinamento do cabeçalho de deploy: menu dropdown de integrações e sincronização de atualizações";
-  }
-  if (/feat\(deploy\):\s*refine version comparison card in \/admin\/deploy with clear hierarchy/i.test(msg)) {
-    return "Refinamento do card de comparação de versões em /admin/deploy com hierarquia clara";
-  }
-  if (/fix\(deploy\):\s*server-side github auth, rate limit resilience, write-only tokens and exact timezone logs/i.test(msg)) {
-    return "Correção no deploy: autenticação server-side no GitHub, resiliência a rate limit e tokens protegidos";
+  // Traduções específicas de cada commit do projeto
+  const commitDictionary: Array<[RegExp, string]> = [
+    [/style\(deploy\):\s*adjust auto-scroll indicator spacing and subtle pill badge/i, "Ajuste visual: espaçamento do auto-scroll e novo micro-badge dos logs"],
+    [/feat\(deploy\):\s*replace integrations dropdown with compact dedicated modal/i, "Integrações: substituição do menu dropdown por modal dedicado e compacto"],
+    [/feat\(deploy\):\s*center comparison arrow with symmetric grid and translate all commit descriptions to pt-BR/i, "Interface: centralização geométrica da seta no grid e tradução de versões para pt-BR"],
+    [/refactor\(deploy\):\s*refine active deploy state,\s*remove redundant status badge and harmonize version comparison/i, "Refatoração: refinamento do estado de deploy ativo e harmonização da comparação de versões"],
+    [/fix\(deploy\):\s*prevent whole-page unmount on transient network drop during container restart and increase retry tolerance/i, "Correção de rede: previne desmontagem de tela na reinicialização de containers com reconexão automática"],
+    [/feat\(deploy\):\s*real-time automatic deployment status tracking,\s*live logs,\s*visibility-aware polling and post-deploy auto-sync/i, "Monitoramento em tempo real: logs ao vivo, polling inteligente por aba e sincronização pós-deploy"],
+    [/feat\(deploy\):\s*final refinement of deployment details modal UX,\s*timeline,\s*log columns,\s*auto-scroll and health state consistency/i, "Modal de detalhes: timeline contínua, logs operacionais em 3 colunas e validação de saúde"],
+    [/feat\(deploy\):\s*final polish of deployment details modal,\s*live stepper,\s*strict health validation and 3-column logs/i, "Modal de detalhes: timeline ao vivo, validação estrita de integridade e logs em 3 colunas"],
+    [/feat\(deploy\):\s*unify header controls into Integrações dropdown and Buscar atualizações action/i, "Controles do cabeçalho: unificação dos botões de integração e busca de atualizações"],
+    [/feat\(deploy\):\s*refine deploy header controls with dropdown integrations menu and updates sync/i, "Controles do cabeçalho: menu de integrações e sincronização de atualizações"],
+    [/feat\(deploy\):\s*refine version comparison strip with elegant spacing,\s*clear hierarchy,\s*and isolated status\/CTA/i, "Faixa de versões: novo bloco de comparação Produção vs GitHub com hierarquia clara"],
+    [/feat\(deploy\):\s*refine version comparison card in \/admin\/deploy with clear hierarchy/i, "Faixa de versões: card de comparação de versões em /admin/deploy com hierarquia clara"],
+    [/fix\(deploy\):\s*ensure hooks are unconditionally called at top level to avoid React error 310/i, "Correção React: estabilidade no ciclo de vida de hooks para evitar erros de renderização"],
+    [/fix\(deploy\):\s*timezone conversion in log viewer and deployment details/i, "Correção de horário: conversão de timezone local (pt-BR) no visualizador de logs"],
+    [/fix\(deploy\):\s*real-time 1s continuous elapsed timer for active deployment and modal/i, "Cronômetro em tempo real: contador fluído de 1 segundo sem saltos de renderização"],
+    [/feat\(deploy\):\s*definitive github rate limit handling,\s*write-only PAT auth,\s*in-flight deduplication,\s*and refined log viewer/i, "Segurança e Performance: proteção contra rate limit do GitHub, autenticação segura e deduplicação"],
+    [/fix\(deploy\):\s*server-side github auth,\s*rate limit resilience,\s*write-only tokens and exact timezone logs/i, "Segurança: autenticação server-side no GitHub, resiliência a rate limit e tokens protegidos"],
+    [/fix\(deploy\):\s*unlock modal deploy CTA button to allow direct deployment of main branch/i, "Correção de fluxo: liberação do botão de implantação direta da branch main"],
+    [/feat\(deploy\):\s*implement multi-layer GitHub resilience with persistent cache and real sync endpoint/i, "Resiliência GitHub: cache em múltiplas camadas e endpoint de sincronização forçada"],
+    [/refactor\(deploy\):\s*refine copy and visual hierarchy of clear confirmation modals and toasts/i, "Refatoração visual: textos claros e hierarquia visual nos modais de confirmação e alertas"],
+    [/feat\(deploy\):\s*definitive production hardening of deploy orchestrator,\s*version source of truth,\s*and UI\/UX refinement/i, "Robustez em produção: fonte de verdade imutável para versões e orquestrador seguro"],
+    [/feat\(deploy-ui\):\s*implement continuous 1-second live elapsed timer hook without jumps/i, "Interface: hook de contagem regressiva e progresso em tempo real a cada 1 segundo"],
+    [/feat\(deploy\):\s*auto-reconcile in-flight deployments on container boot and overview queries/i, "Reconciliação automática: recuperação de deploys ativos após reinício de containers"],
+    [/feat\(deploy\):\s*add administrative option to clear deployment history with audit logging/i, "Histórico de deploys: opção administrativa para limpar histórico com registro de auditoria"],
+    [/feat\(deploy\):\s*refine deploy confirmation modal with clean information hierarchy,\s*discrete badges,\s*pre-checks and SHA immutability/i, "Confirmação de deploy: modal com checagens prévias, badges discretos e imutabilidade de SHA"],
+    [/fix\(deploy\):\s*increase EasyPanel deploy timeout and handle HTTP gateway timeout gracefully to allow background build completion/i, "Integração EasyPanel: suporte a builds longos do Docker sem interrupção por gateway timeout"],
+    [/feat\(deploy\):\s*redesign active deploy panel and modal with steppers,\s*accurate health semantics and refined operational logs/i, "Painel de deploy ativo: novo stepper de progresso, semântica de saúde e logs refinados"],
+    [/fix\(deploy\):\s*bypass GitHub REST API rate-limits gracefully and send latest commit SHA/i, "Correção de API: tratamento resiliente de rate limit do GitHub e envio de SHA mais recente"],
+    [/feat\(deploy\):\s*add administrative option to clear visual GitHub update history with persistent marker and audit log/i, "Atualizações do GitHub: opção para limpar visualmente a lista de commits com auditoria"],
+  ];
+
+  for (const [regex, pt] of commitDictionary) {
+    if (regex.test(msg)) {
+      return pt;
+    }
   }
 
-  // Tradução heurística de prefixos convencionais
+  // Se não foi encontrada correspondência exata, realiza a tradução contextual e gramatical
   let translated = msg;
 
+  // Substitui prefixos convencionais
   const prefixMap: Array<[RegExp, string]> = [
     [/^feat(?:\([^)]*\))?:\s*/i, "Nova funcionalidade: "],
     [/^fix(?:\([^)]*\))?:\s*/i, "Correção: "],
     [/^refactor(?:\([^)]*\))?:\s*/i, "Refatoração: "],
     [/^perf(?:\([^)]*\))?:\s*/i, "Melhoria de desempenho: "],
-    [/^style(?:\([^)]*\))?:\s*/i, "Estilização: "],
+    [/^style(?:\([^)]*\))?:\s*/i, "Ajuste visual: "],
     [/^chore(?:\([^)]*\))?:\s*/i, "Manutenção: "],
     [/^docs(?:\([^)]*\))?:\s*/i, "Documentação: "],
-    [/^test(?:\([^)]*\))?:\s*/i, "Testes automatizados: "],
-    [/^build(?:\([^)]*\))?:\s*/i, "Compilação/Build: "],
+    [/^test(?:\([^)]*\))?:\s*/i, "Testes: "],
+    [/^build(?:\([^)]*\))?:\s*/i, "Build/Compilação: "],
     [/^ci(?:\([^)]*\))?:\s*/i, "Integração contínua: "],
   ];
 
@@ -430,35 +447,71 @@ function formatCommitMessagePtBr(rawMessage?: string | null): string {
     }
   }
 
-  // Termos técnicos frequentes em inglês
-  const termReplacements: Array<[RegExp, string]> = [
-    [/\bprevent whole-page unmount\b/gi, "previne desmontagem da tela"],
-    [/\btransient network drop\b/gi, "queda transitória de rede"],
-    [/\bduring container restart\b/gi, "durante reinicialização dos containers"],
-    [/\bincrease retry tolerance\b/gi, "aumenta tolerância de reconexão"],
-    [/\brefine active deploy state\b/gi, "refina estado de deploy ativo"],
-    [/\bremove redundant status badge\b/gi, "remove badge redundante"],
-    [/\bharmonize version comparison\b/gi, "harmoniza comparação de versões"],
-    [/\breal-time automatic deployment status tracking\b/gi, "monitoramento automático em tempo real"],
-    [/\blive logs\b/gi, "logs ao vivo"],
-    [/\bvisibility-aware polling\b/gi, "polling inteligente por visibilidade"],
-    [/\bpost-deploy auto-sync\b/gi, "sincronização automática pós-deploy"],
-    [/\bserver-side\b/gi, "no servidor"],
-    [/\bwrite-only\b/gi, "somente gravação"],
-    [/\brate limit\b/gi, "limite de requisições"],
-    [/\btimezone\b/gi, "fuso horário"],
-    [/\bhealth validation\b/gi, "validação de integridade"],
-    [/\bstepper\b/gi, "progresso"],
-    [/\bmodal\b/gi, "janela modal"],
-    [/\bheader controls\b/gi, "controles do cabeçalho"],
-    [/\bdropdown integrations menu\b/gi, "menu de integrações"],
-    [/\bupdates sync\b/gi, "sincronização de atualizações"],
-    [/\bversion comparison card\b/gi, "card de comparação de versões"],
-    [/\bclear hierarchy\b/gi, "hierarquia clara"],
+  // Dicionário extensivo de frases e termos em inglês para pt-BR
+  const dictionary: Array<[RegExp, string]> = [
+    [/\badjust auto-scroll indicator spacing and subtle pill badge\b/gi, "espaçamento do auto-scroll e novo micro-badge dos logs"],
+    [/\breplace integrations dropdown with compact dedicated modal\b/gi, "substituição de menu dropdown por modal compacto de integrações"],
+    [/\bcenter comparison arrow with symmetric grid\b/gi, "centralização da seta de comparação com grid simétrico"],
+    [/\btranslate all commit descriptions to pt-BR\b/gi, "tradução de todas as descrições para pt-BR"],
+    [/\bprevent whole-page unmount on transient network drop during container restart and increase retry tolerance\b/gi, "previne desmontagem de tela na reinicialização dos containers e melhora reconexão"],
+    [/\breal-time automatic deployment status tracking, live logs, visibility-aware polling and post-deploy auto-sync\b/gi, "monitoramento em tempo real, logs ao vivo e sincronização pós-deploy"],
+    [/\bfinal refinement of deployment details modal UX, timeline, log columns, auto-scroll and health state consistency\b/gi, "refinamento do modal de detalhes, timeline, colunas de logs e validação de saúde"],
+    [/\bunify header controls into Integrações dropdown and Buscar atualizações action\b/gi, "unificação dos controles do cabeçalho e busca de atualizações"],
+    [/\brefine version comparison strip with elegant spacing, clear hierarchy, and isolated status\/CTA\b/gi, "bloco de comparação Produção vs GitHub com hierarquia clara"],
+    [/\bensure hooks are unconditionally called at top level to avoid React error 310\b/gi, "estabilidade de hooks para evitar erros de renderização"],
+    [/\btimezone conversion in log viewer and deployment details\b/gi, "conversão de fuso horário local nos logs e detalhes"],
+    [/\breal-time 1s continuous elapsed timer for active deployment and modal\b/gi, "cronômetro contínuo de 1s para deploy ativo e modal"],
+    [/\bdefinitive github rate limit handling, write-only PAT auth, in-flight deduplication, and refined log viewer\b/gi, "tratamento de rate limit, autenticação protegida e logs refinados"],
+    [/\bunlock modal deploy CTA button to allow direct deployment of main branch\b/gi, "desbloqueio do botão de implantação direta da branch main"],
+    [/\bimplement multi-layer GitHub resilience with persistent cache and real sync endpoint\b/gi, "resiliência no GitHub com cache persistente e sincronização forçada"],
+    [/\brefine copy and visual hierarchy of clear confirmation modals and toasts\b/gi, "textos claros e hierarquia visual nos modais de confirmação"],
+    [/\bdefinitive production hardening of deploy orchestrator, version source of truth, and UI\/UX refinement\b/gi, "fonte de verdade imutável para versões e orquestrador seguro"],
+    [/\bimplement continuous 1-second live elapsed timer hook without jumps\b/gi, "hook de contagem contínua de 1s sem saltos"],
+    [/\bauto-reconcile in-flight deployments on container boot and overview queries\b/gi, "reconciliação de deploys ativos após boot de containers"],
+    [/\badd administrative option to clear deployment history with audit logging\b/gi, "opção administrativa para limpar histórico com log de auditoria"],
+    [/\brefine deploy confirmation modal with clean information hierarchy, discrete badges, pre-checks and SHA immutability\b/gi, "modal de confirmação com checagens e imutabilidade de versão"],
+    [/\bincrease EasyPanel deploy timeout and handle HTTP gateway timeout gracefully to allow background build completion\b/gi, "suporte a builds longos do Docker no EasyPanel"],
+    [/\bredesign active deploy panel and modal with steppers, accurate health semantics and refined operational logs\b/gi, "painel de deploy com steppers e logs operacionais"],
+    [/\bbypass GitHub REST API rate-limits gracefully and send latest commit SHA\b/gi, "tratamento de limites da API do GitHub e envio do último commit"],
+    [/\badd administrative option to clear visual GitHub update history with persistent marker and audit log\b/gi, "opção para limpar histórico visual com registro de auditoria"],
+    [/\binitial commit\b/gi, "commit inicial"],
+    [/\bupdate\b/gi, "atualização"],
+    [/\bupdates\b/gi, "atualizações"],
+    [/\bimprove\b/gi, "melhoria"],
+    [/\bimproved\b/gi, "melhorado"],
+    [/\badd\b/gi, "adição"],
+    [/\badded\b/gi, "adicionado"],
+    [/\bremove\b/gi, "remoção"],
+    [/\bremoved\b/gi, "removido"],
+    [/\bdelete\b/gi, "exclusão"],
+    [/\bdeleted\b/gi, "excluído"],
+    [/\brefactor\b/gi, "refatoração"],
+    [/\brefactored\b/gi, "refatorado"],
+    [/\boptimize\b/gi, "otimização"],
+    [/\boptimized\b/gi, "otimizado"],
+    [/\bclean up\b/gi, "limpeza"],
+    [/\bcleanup\b/gi, "limpeza"],
+    [/\bhandle\b/gi, "tratamento de"],
+    [/\bhandling\b/gi, "tratamento de"],
+    [/\bprevent\b/gi, "previne"],
+    [/\bseamless\b/gi, "fluído"],
+    [/\bworkflow\b/gi, "fluxo de trabalho"],
+    [/\bpipeline\b/gi, "esteira"],
+    [/\bdashboard\b/gi, "painel"],
+    [/\bsettings\b/gi, "configurações"],
+    [/\bpermissions\b/gi, "permissões"],
+    [/\bsecurity\b/gi, "segurança"],
+    [/\bperformance\b/gi, "desempenho"],
+    [/\bcache\b/gi, "cache"],
+    [/\btimeout\b/gi, "tempo limite"],
+    [/\bdatabase\b/gi, "banco de dados"],
+    [/\bendpoint\b/gi, "ponto de extremidade da API"],
+    [/\bauthentication\b/gi, "autenticação"],
+    [/\bvalidation\b/gi, "validação"],
   ];
 
-  for (const [eng, pt] of termReplacements) {
-    translated = translated.replace(eng, pt);
+  for (const [pattern, replacement] of dictionary) {
+    translated = translated.replace(pattern, replacement);
   }
 
   return translated;
