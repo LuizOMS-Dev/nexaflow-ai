@@ -380,6 +380,8 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
 
     const params = request.params as { id: string };
+    const body = (request.body || {}) as { expectedCurrentSha?: string };
+
     const target = assertFound(
       await prisma.deployment.findUnique({ where: { id: params.id } }),
       "A versão selecionada não está disponível para restauração."
@@ -393,6 +395,26 @@ export async function adminDeployRoutes(app: FastifyInstance) {
       );
     }
 
+    // Revalidação de descompasso de versão (se a produção mudou enquanto o modal estava aberto)
+    if (body.expectedCurrentSha) {
+      const prodVersion = await deploymentOrchestrator.getProductionVersion();
+      if (prodVersion?.sha) {
+        const curSha = prodVersion.sha.toLowerCase().trim();
+        const expSha = body.expectedCurrentSha.toLowerCase().trim();
+        const isMatching =
+          curSha === expSha ||
+          (curSha.length >= 7 && expSha.length >= 7 && (curSha.startsWith(expSha) || expSha.startsWith(curSha)));
+
+        if (!isMatching) {
+          throw new AppError(
+            "A versão em produção mudou desde que esta confirmação foi aberta. Revise os dados novamente.",
+            409,
+            "PRODUCTION_VERSION_DRIFT"
+          );
+        }
+      }
+    }
+
     // Registra audit log específico da solicitação de reversão
     await audit({
       action: "deployment.rollback_requested",
@@ -402,6 +424,7 @@ export async function adminDeployRoutes(app: FastifyInstance) {
         targetDeploymentId: target.id,
         commitSha: target.commitSha,
         shortSha: target.commitShortSha,
+        expectedCurrentSha: body.expectedCurrentSha,
       },
     });
 

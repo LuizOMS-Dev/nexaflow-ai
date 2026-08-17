@@ -828,4 +828,48 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       where: { id: { in: [stableTarget.id, body.deploymentId] } },
     });
   });
+
+  it("27. Proteção contra Drift de Produção: rollback é rejeitado se a versão em produção mudar durante a confirmação", async () => {
+    // 1. Grava uma versão ativa em produção
+    await deploymentOrchestrator.recordProductionRelease({
+      sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      shortSha: "aaaaaaa",
+      message: "feat: current production",
+      author: "Superadmin",
+      deployedAt: new Date(),
+      deployedBy: "Superadmin",
+    });
+
+    // 2. Alvo de rollback
+    const stableTarget = await prisma.deployment.create({
+      data: {
+        environment: "production",
+        branch: "main",
+        commitSha: "7777777777777777777777777777777777777777",
+        commitShortSha: "7777777",
+        commitMessage: "feat: old stable version",
+        commitAuthor: "Superadmin",
+        startedById: superadminUser.id,
+        status: "COMPLETED",
+        healthStatus: "HEALTHY",
+        startedAt: new Date(),
+      },
+    });
+
+    // 3. Tenta rollback enviando expectedCurrentSha diferente (ex: "bbbbbbb" em vez de "aaaaaaa")
+    const driftRes = await app.inject({
+      method: "POST",
+      url: `/admin/deploy/${stableTarget.id}/rollback`,
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: { expectedCurrentSha: "bbbbbbb" },
+    });
+
+    expect(driftRes.statusCode).toBe(409);
+    expect(driftRes.json().message).toContain("A versão em produção mudou desde que esta confirmação foi aberta");
+
+    // Limpeza
+    await prisma.deployment.deleteMany({
+      where: { id: stableTarget.id },
+    });
+  });
 }, 30_000);

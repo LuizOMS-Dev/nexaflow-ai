@@ -27,6 +27,68 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
+/* ─── Checkbox (Design System) ─── */
+
+export function Checkbox({
+  checked,
+  onCheckedChange,
+  disabled,
+  id,
+  className,
+  "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+  "aria-label"?: string;
+  "aria-describedby"?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      id={id}
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
+      disabled={disabled}
+      onClick={() => !disabled && onCheckedChange(!checked)}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          if (!disabled) onCheckedChange(!checked);
+        }
+      }}
+      className={cn(
+        "relative flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border text-white transition-all duration-150",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0d12]",
+        checked
+          ? "border-amber-500 bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]"
+          : "border-white/20 bg-white/[0.04] hover:border-white/30 hover:bg-white/[0.07]",
+        disabled && "cursor-not-allowed opacity-40",
+        className
+      )}
+    >
+      <svg
+        className={cn(
+          "h-3 w-3 stroke-[2.5] transition-transform duration-150",
+          checked ? "scale-100 opacity-100" : "scale-50 opacity-0"
+        )}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    </button>
+  );
+}
+
 /* ─── Skeleton ─── */
 
 export function Skeleton({ className }: { className?: string }) {

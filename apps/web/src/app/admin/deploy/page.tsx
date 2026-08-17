@@ -41,7 +41,7 @@ import {
   MetricGrid,
   StatusBadge,
 } from "@/components/admin";
-import { DialogFooter, FormField, Modal, useToast } from "@/components/ui";
+import { Checkbox, DialogFooter, FormField, Modal, useToast } from "@/components/ui";
 import { ActionMenu } from "@/components/ui-menu";
 
 type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE" | "CHECKING";
@@ -1265,9 +1265,10 @@ export default function AdminDeployPage() {
 
   // Mutação: Rollback / Reversão
   const rollbackMut = useMutation({
-    mutationFn: (id: string) =>
-      api<{ deploymentId: string; status: string }>(`/admin/deploy/${id}/rollback`, {
+    mutationFn: (args: { id: string; expectedCurrentSha?: string }) =>
+      api<{ deploymentId: string; status: string }>(`/admin/deploy/${args.id}/rollback`, {
         method: "POST",
+        json: { expectedCurrentSha: args.expectedCurrentSha },
       }),
     onSuccess: (res) => {
       setRollbackConfirmOpen(false);
@@ -2276,7 +2277,7 @@ export default function AdminDeployPage() {
         })()}
       </Modal>
 
-      {/* MODAL 2: Modal Principal de Reversão / Rollback */}
+      {/* MODAL 2: Modal 1 — Revisão da Reversão */}
       <Modal
         open={rollbackOpen && Boolean(rollbackTarget)}
         onClose={() => {
@@ -2284,7 +2285,7 @@ export default function AdminDeployPage() {
           setRollbackTarget(null);
         }}
         title={`Reverter para a versão ${rollbackTarget?.commitShortSha}?`}
-        description="Restaure uma versão anterior estável como backup imediato em produção."
+        description="Restaure esta versão anterior em produção. A versão atual será substituída somente após a confirmação final."
         size="md"
         footer={
           <DialogFooter>
@@ -2310,7 +2311,7 @@ export default function AdminDeployPage() {
                 setRollbackConfirmOpen(true);
               }}
             >
-              <span>Confirmar reversão</span>
+              <span>Continuar</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </DialogFooter>
@@ -2320,11 +2321,11 @@ export default function AdminDeployPage() {
           <div className="space-y-3.5 py-1 text-[12.5px]">
             {/* Bloco Estruturado de Informações da Reversão */}
             <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-3">
-              {/* Linha 1: Comparação da Versão Atual com a Versão Alvo */}
+              {/* Linha 1: Comparação da Versão Atual com a Versão a Restaurar */}
               <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-white/[0.05]">
                 <div>
                   <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
-                    Versão Atual em Produção
+                    Versão atual em produção
                   </span>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="rounded bg-violet-500/10 px-2 py-0.5 font-mono text-[12px] font-semibold text-violet-300 border border-violet-500/20">
@@ -2334,7 +2335,7 @@ export default function AdminDeployPage() {
                 </div>
                 <div>
                   <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
-                    Versão Alvo da Reversão
+                    Versão a restaurar
                   </span>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-[12px] font-bold text-amber-300 border border-amber-500/25">
@@ -2344,10 +2345,10 @@ export default function AdminDeployPage() {
                 </div>
               </div>
 
-              {/* Linha 2: Descrição da Versão Alvo */}
+              {/* Linha 2: Descrição do Commit */}
               <div className="pb-2.5 border-b border-white/[0.05]">
                 <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
-                  Descrição do Commit Alvo
+                  Descrição do commit
                 </span>
                 <p
                   className="mt-1 font-medium text-gray-200 leading-relaxed text-[12.5px]"
@@ -2360,23 +2361,23 @@ export default function AdminDeployPage() {
               {/* Linha 3: Metadados originais da implantação */}
               <div className="grid grid-cols-2 gap-3 text-[11.5px] text-gray-400">
                 <div>
-                  <span className="block text-gray-500 text-[10.5px] uppercase tracking-wider">Implantado originalmente em:</span>
+                  <span className="block text-gray-500 text-[10.5px] uppercase tracking-wider">Implantado originalmente em</span>
                   <strong className="text-gray-300 block mt-0.5 font-normal">{formatDate(rollbackTarget.startedAt)}</strong>
                 </div>
                 <div>
-                  <span className="block text-gray-500 text-[10.5px] uppercase tracking-wider">Responsável original:</span>
+                  <span className="block text-gray-500 text-[10.5px] uppercase tracking-wider">Responsável original</span>
                   <strong className="text-gray-300 block mt-0.5 font-normal">{rollbackTarget.startedBy}</strong>
                 </div>
               </div>
             </div>
 
-            {/* Alerta de Segurança e Funcionamento */}
-            <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 text-amber-200 text-[12px] leading-relaxed">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+            {/* Aviso com peso visual reduzido */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/15 bg-amber-500/[0.03] p-3 text-amber-200 text-[12px] leading-relaxed">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400/90" />
               <div>
                 <p className="font-semibold text-amber-100">Restauração segura de versão</p>
-                <p className="mt-0.5 text-amber-200/90 leading-relaxed">
-                  O NexaFlow irá recompilar e reimplantar a versão selecionada em produção. Após a reversão, a plataforma validará automaticamente a saúde da API e do Web antes de concluir o processo.
+                <p className="mt-0.5 text-amber-200/80 leading-relaxed">
+                  O NexaFlow recompilará e implantará esta versão pelo EasyPanel. Após a implantação, API e Web serão verificadas antes de o processo ser considerado concluído.
                 </p>
               </div>
             </div>
@@ -2384,15 +2385,16 @@ export default function AdminDeployPage() {
         ) : null}
       </Modal>
 
-      {/* MODAL 2.1: Confirmação Crítica Dupla de Reversão em Produção */}
+      {/* MODAL 2.1: Modal 2 — Confirmação Crítica em Produção */}
       <Modal
         open={rollbackConfirmOpen && Boolean(rollbackTarget)}
         onClose={() => {
           setRollbackConfirmOpen(false);
-          setRollbackOpen(true);
+          setRollbackOpen(false);
+          setRollbackTarget(null);
         }}
         title="Confirmar reversão em produção"
-        description={`Você está prestes a restaurar a versão ${rollbackTarget?.commitShortSha} em produção. Essa ação substituirá a versão atualmente ativa.`}
+        description={`A versão ${rollbackTarget?.commitShortSha} substituirá a versão atualmente ativa em produção. Confirme os dados abaixo para continuar.`}
         size="md"
         footer={
           <DialogFooter>
@@ -2420,14 +2422,17 @@ export default function AdminDeployPage() {
               }
               onClick={() => {
                 if (rollbackTarget) {
-                  rollbackMut.mutate(rollbackTarget.id);
+                  rollbackMut.mutate({
+                    id: rollbackTarget.id,
+                    expectedCurrentSha: current?.sha || current?.shortSha,
+                  });
                 }
               }}
             >
               {rollbackMut.isPending ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Executando reversão…</span>
+                  <span>Iniciando reversão…</span>
                 </>
               ) : (
                 <>
@@ -2440,51 +2445,65 @@ export default function AdminDeployPage() {
         }
       >
         {rollbackTarget ? (
-          <div className="space-y-4 py-1 text-[12.5px]">
-            {/* Resumo Curto */}
+          <div className="space-y-3.5 py-1 text-[12.5px]">
+            {/* Resumo */}
             <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
-              <div className="flex items-center justify-between text-gray-400">
-                <span>Ambiente:</span>
+              <div className="flex items-center justify-between text-gray-300">
+                <span className="text-gray-400">Ambiente</span>
                 <span className="font-semibold text-emerald-300">Produção</span>
               </div>
-              <div className="flex items-center justify-between text-gray-400">
-                <span>Versão atual:</span>
-                <code className="font-mono text-violet-300 font-semibold">{current?.shortSha || "Não identificada"}</code>
+              <div className="flex items-center justify-between text-gray-300">
+                <span className="text-gray-400">Versão atual</span>
+                <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11.5px] text-violet-300 border border-violet-500/20 font-semibold">{current?.shortSha || "Não identificada"}</code>
               </div>
-              <div className="flex items-center justify-between text-gray-400">
-                <span>Versão alvo:</span>
-                <code className="font-mono text-amber-300 font-bold">{rollbackTarget.commitShortSha}</code>
+              <div className="flex items-center justify-between text-gray-300">
+                <span className="text-gray-400">Versão alvo</span>
+                <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11.5px] text-amber-300 border border-amber-500/25 font-bold">{rollbackTarget.commitShortSha}</code>
               </div>
             </div>
 
-            {/* Fatores de confirmação combinados */}
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3.5 space-y-3.5">
-              {/* 1. Checkbox obrigatório */}
-              <label className="flex items-start gap-2.5 cursor-pointer text-gray-200 text-[12px] select-none leading-tight">
-                <input
-                  type="checkbox"
+            {/* Confirmação: Separar visualmente o checkbox da confirmação textual */}
+            {/* 1. Card do Checkbox */}
+            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5">
+              <label className="flex items-start gap-3 cursor-pointer text-gray-200 text-[12.5px] select-none leading-relaxed">
+                <Checkbox
                   checked={rollbackCheckbox}
-                  onChange={(e) => setRollbackCheckbox(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500/30"
+                  onCheckedChange={setRollbackCheckbox}
+                  className="mt-0.5"
                 />
                 <span className="font-medium text-gray-200">
-                  Entendo que a versão atual em produção será substituída.
+                  Entendo que a versão atualmente em produção será substituída.
                 </span>
               </label>
+            </div>
 
-              {/* 2. Campo de confirmação textual */}
-              <div className="space-y-1.5 pt-1 border-t border-white/[0.06]">
-                <label className="block text-[11.5px] font-medium text-gray-300">
-                  Digite <code className="rounded bg-amber-500/20 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all">{rollbackTarget.commitShortSha}</code> para confirmar:
-                </label>
+            {/* 2. Card da Confirmação Textual */}
+            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+              <label htmlFor="rollback-sha-input" className="block text-[12px] font-medium text-gray-300">
+                Digite <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all border border-amber-500/25">{rollbackTarget.commitShortSha}</code> para confirmar
+              </label>
+              <div className="relative">
                 <input
+                  id="rollback-sha-input"
                   type="text"
                   value={rollbackConfirmInput}
                   onChange={(e) => setRollbackConfirmInput(e.target.value)}
-                  placeholder={`Digite ${rollbackTarget.commitShortSha} para confirmar`}
-                  className="admin-input h-9 w-full font-mono text-[12.5px] bg-[#08090d] border-white/10 focus:border-amber-500/50"
+                  placeholder={rollbackTarget.commitShortSha}
+                  className={cn(
+                    "admin-input h-9 w-full font-mono text-[12.5px] bg-[#08090d] border-white/10 transition-colors pr-8",
+                    rollbackConfirmInput.trim().toLowerCase() === rollbackTarget.commitShortSha.toLowerCase()
+                      ? "border-emerald-500/40 focus:border-emerald-500/60"
+                      : "focus:border-amber-500/50"
+                  )}
                   autoFocus
+                  autoComplete="off"
+                  spellCheck="false"
                 />
+                {rollbackConfirmInput.trim().toLowerCase() === rollbackTarget.commitShortSha.toLowerCase() ? (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="h-4 w-4 stroke-[2]" />
+                  </span>
+                ) : null}
               </div>
             </div>
 
