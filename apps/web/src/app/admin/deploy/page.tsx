@@ -2109,12 +2109,13 @@ export default function AdminDeployPage() {
 
               {/* 4. Logs Operacionais Refinados */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.06em] text-gray-400">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.06em] text-gray-400 px-1">
                   <span>Logs de Execução</span>
                   <button
                     type="button"
-                    className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 hover:text-gray-200 transition-colors lowercase tracking-normal"
+                    className="flex items-center gap-1.5 rounded-md bg-white/[0.03] hover:bg-white/[0.06] px-2 py-0.5 text-[10.5px] font-medium text-gray-400 hover:text-gray-200 transition-colors lowercase tracking-normal border border-white/[0.05] mr-1"
                     onClick={() => setAutoScrollLogs((s) => !s)}
+                    title="Alternar rolagem automática dos logs"
                   >
                     <span
                       className={cn(
