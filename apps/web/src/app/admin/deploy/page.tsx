@@ -419,7 +419,7 @@ export default function AdminDeployPage() {
   const [isReplacingGithubToken, setIsReplacingGithubToken] = useState(false);
   const [githubTestResult, setGithubTestResult] = useState<TestGitHubConnectionResponse | null>(null);
 
-  // 1. Status geral de deploy (Polling automático a cada 2s quando houver deploy ativo)
+  // 1. Status geral de deploy (Polling automático com retry resiliente para reinicialização de containers)
   const overviewQuery = useQuery({
     queryKey: ["admin-deploy-status"],
     queryFn: () => api<DeployOverviewResponse>("/admin/deploy/status"),
@@ -432,8 +432,8 @@ export default function AdminDeployPage() {
       return 25000;
     },
     refetchOnWindowFocus: true,
-    retry: 3,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    retry: 15,
+    retryDelay: (attempt) => Math.min(1000 * 1.4 ** attempt, 5000),
   });
 
   // 2. Lista de commits recentes do GitHub (filtrada pelo clear marker)
@@ -442,6 +442,7 @@ export default function AdminDeployPage() {
     queryFn: () =>
       api<{ commits: GitHubCommitItem[] }>("/admin/deploy/commits?limit=15"),
     enabled: user?.platformRole === "SUPERADMIN",
+    retry: 3,
   });
 
   // 3. Histórico de deploys (Atualiza em background durante deploys)
@@ -457,6 +458,8 @@ export default function AdminDeployPage() {
     enabled: user?.platformRole === "SUPERADMIN",
     refetchInterval: () =>
       overviewQuery.data?.activeDeployment ? (isTabVisible ? 4000 : 10000) : false,
+    retry: 10,
+    retryDelay: (attempt) => Math.min(1000 * 1.4 ** attempt, 5000),
   });
 
   // 4. Detalhes do deploy selecionado (Atualização em tempo real de logs e health)
@@ -471,6 +474,8 @@ export default function AdminDeployPage() {
       return isTabVisible ? 2000 : 8000;
     },
     refetchOnWindowFocus: true,
+    retry: 15,
+    retryDelay: (attempt) => Math.min(1000 * 1.4 ** attempt, 5000),
   });
 
   // Monitora transições do deploy ativo para disparo de toasts de conclusão e sincronização geral
@@ -809,7 +814,8 @@ export default function AdminDeployPage() {
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
-  if (overviewQuery.isError) {
+  // Apenas exibe tela de erro se NÃO houver nenhum dado carregado em cache E o carregamento inicial falhou
+  if (overviewQuery.isError && !overviewQuery.data) {
     if (isSuperadminMfaRequiredError(overviewQuery.error)) return null;
     return (
       <AdminErrorState
@@ -824,8 +830,12 @@ export default function AdminDeployPage() {
     );
   }
 
-  if (overviewQuery.isLoading || !overviewQuery.data) {
+  if (overviewQuery.isLoading && !overviewQuery.data) {
     return <AdminPageSkeleton metrics={4} />;
+  }
+
+  if (!overviewQuery.data) {
+    return null;
   }
 
   const data = overviewQuery.data;
@@ -944,6 +954,14 @@ export default function AdminDeployPage() {
                 GitHub
               </MenuItem>
             </DropdownMenu>
+
+            {/* Indicador sutil de reconexão durante reinicialização de containers */}
+            {overviewQuery.isFetching && overviewQuery.isError ? (
+              <span className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1 text-[11.5px] font-medium text-amber-300 border border-amber-500/20">
+                <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+                <span>Reconectando...</span>
+              </span>
+            ) : null}
 
             {/* 2. Ação Principal: Buscar atualizações */}
             <button
