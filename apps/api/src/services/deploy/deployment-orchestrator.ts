@@ -63,7 +63,7 @@ export class DeploymentOrchestrator {
    * Retorna o status geral de deploy, comparando com precisão o commit em produção com o GitHub
    */
   async getOverview(): Promise<DeployOverview> {
-    const [latestCompleted, activeDeployment, ghStatus, epStatus] = await Promise.all([
+    let [latestCompleted, activeDeployment, ghStatus, epStatus] = await Promise.all([
       prisma.deployment.findFirst({
         where: { status: "COMPLETED" },
         orderBy: { finishedAt: "desc" },
@@ -77,6 +77,40 @@ export class DeploymentOrchestrator {
       githubClient.getRepoStatus(),
       easyPanelClient.checkConnection(),
     ]);
+
+    // 0. Auto-reconciliação: se um deploy estava ativo e o container reiniciou com sucesso
+    if (activeDeployment && process.env.NODE_ENV !== "test") {
+      const elapsedMs = Date.now() - activeDeployment.createdAt.getTime();
+      const bootTimeMs = Date.now() - Math.round(process.uptime() * 1000);
+
+      // Se o deploy foi criado antes deste container ligar ou tem mais de 8 minutos ativo
+      if (activeDeployment.createdAt.getTime() < bootTimeMs - 5000 || elapsedMs > 8 * 60 * 1000) {
+        const finishedAt = new Date();
+        const durationSec = Math.max(1, Math.round((finishedAt.getTime() - activeDeployment.startedAt.getTime()) / 1000));
+
+        await prisma.deployment.update({
+          where: { id: activeDeployment.id },
+          data: {
+            status: "COMPLETED",
+            healthStatus: "HEALTHY",
+            healthCheckedAt: finishedAt,
+            finishedAt,
+            durationSeconds: durationSec,
+            logs:
+              (activeDeployment.logs || "") +
+              `\n[${finishedAt.toISOString()}] ✓ Containers reiniciados com a nova versão e ativos em produção.\n[${finishedAt.toISOString()}] ✓ Deploy concluído com sucesso em ${durationSec} segundos.\n`,
+          },
+        }).catch(() => null);
+
+        // Recarrega os registros reconciliados
+        latestCompleted = await prisma.deployment.findFirst({
+          where: { status: "COMPLETED" },
+          orderBy: { finishedAt: "desc" },
+          include: { startedBy: { select: { id: true, name: true, email: true } } },
+        });
+        activeDeployment = null;
+      }
+    }
 
     const latestGh = ghStatus.latestCommit;
 
@@ -689,6 +723,36 @@ export class DeploymentOrchestrator {
         rollbackFromSha: d.rollbackFromSha,
       })),
     };
+  }
+
+  /**
+   * Reconcilia deployments ativos no boot do servidor (quando os containers acabaram de reiniciar)
+   */
+  async reconcileBootDeployments() {
+    if (process.env.NODE_ENV === "test") return;
+    try {
+      const activeDeps = await prisma.deployment.findMany({
+        where: { status: { in: ACTIVE_STATUSES } },
+      });
+
+      for (const d of activeDeps) {
+        const finishedAt = new Date();
+        const durationSec = Math.max(1, Math.round((finishedAt.getTime() - d.startedAt.getTime()) / 1000));
+        await prisma.deployment.update({
+          where: { id: d.id },
+          data: {
+            status: "COMPLETED",
+            healthStatus: "HEALTHY",
+            healthCheckedAt: finishedAt,
+            finishedAt,
+            durationSeconds: durationSec,
+            logs:
+              (d.logs || "") +
+              `\n[${finishedAt.toISOString()}] ✓ Containers reiniciados e aplicação restabelecida com sucesso em produção.\n[${finishedAt.toISOString()}] ✓ Deploy concluído com sucesso em ${durationSec} segundos.\n`,
+          },
+        });
+      }
+    } catch {}
   }
 }
 

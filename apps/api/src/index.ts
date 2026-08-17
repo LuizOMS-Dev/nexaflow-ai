@@ -88,6 +88,14 @@ async function main() {
       .catch(() => null);
   });
 
+  // Reconcilia status de deploys no boot da nova versão
+  setImmediate(async () => {
+    try {
+      const { deploymentOrchestrator } = await import("./services/deploy/deployment-orchestrator");
+      await deploymentOrchestrator.reconcileBootDeployments();
+    } catch {}
+  });
+
   // Sincroniza senha do superadmin
   setImmediate(async () => {
     try {
