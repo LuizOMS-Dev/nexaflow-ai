@@ -59,6 +59,37 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     };
   });
 
+  // 2.2 Sincronizar e buscar atualizações diretamente do GitHub (Bypass de cache + Refresh real)
+  app.post("/admin/deploy/sync", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const user = request.user;
+    if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
+
+    try {
+      const commits = await githubClient.listRecentCommits(15, true);
+      const latest = await githubClient.getLatestCommit(true);
+
+      return {
+        success: true,
+        count: commits.length,
+        latestCommit: latest,
+        message:
+          commits.length > 0
+            ? `${commits.length} commits sincronizados com sucesso do GitHub.`
+            : "Repositório sincronizado com sucesso. Nenhuma nova atualização pendente.",
+      };
+    } catch (e: any) {
+      const errMsg = e instanceof Error ? e.message : "Erro desconhecido ao consultar o GitHub.";
+      return {
+        success: false,
+        count: 0,
+        message: errMsg.includes("rate limit")
+          ? "Limite de requisições anônimas do GitHub atingido temporariamente. Tente novamente em alguns minutos."
+          : `Não foi possível sincronizar com o GitHub: ${errMsg}`,
+      };
+    }
+  });
+
   // 3. Obter configuração atual do EasyPanel (WRITE-ONLY: NUNCA expor o token, preview ou ciphertext)
   app.get("/admin/deploy/config", async (request, reply) => {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");

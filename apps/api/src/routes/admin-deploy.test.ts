@@ -264,18 +264,13 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     const repoStatus = await githubClient.getRepoStatus();
     if (repoStatus.latestCommit) {
       // Simula que a produção está no mesmo SHA exato do GitHub
-      const upToDateDep = await prisma.deployment.create({
-        data: {
-          environment: "production",
-          branch: "main",
-          commitSha: repoStatus.latestCommit.sha,
-          commitShortSha: repoStatus.latestCommit.shortSha,
-          commitMessage: repoStatus.latestCommit.message,
-          commitAuthor: repoStatus.latestCommit.author,
-          startedById: superadminUser.id,
-          status: "COMPLETED",
-          finishedAt: new Date(),
-        },
+      await deploymentOrchestrator.recordProductionRelease({
+        sha: repoStatus.latestCommit.sha,
+        shortSha: repoStatus.latestCommit.shortSha,
+        message: repoStatus.latestCommit.message,
+        author: repoStatus.latestCommit.author,
+        deployedAt: new Date(),
+        deployedBy: "Superadmin",
       });
 
       const resUp = await app.inject({
@@ -286,9 +281,13 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       expect(resUp.json().status).toBe("UP_TO_DATE");
 
       // 2. Agora altera para um SHA anterior/diferente
-      await prisma.deployment.update({
-        where: { id: upToDateDep.id },
-        data: { commitSha: "0000000000000000000000000000000000000000", commitShortSha: "0000000" },
+      await deploymentOrchestrator.recordProductionRelease({
+        sha: "0000000000000000000000000000000000000000",
+        shortSha: "0000000",
+        message: "Old release",
+        author: "Superadmin",
+        deployedAt: new Date(),
+        deployedBy: "Superadmin",
       });
 
       const resDiff = await app.inject({
@@ -297,9 +296,6 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
         headers: { authorization: `Bearer ${superadminToken}` },
       });
       expect(resDiff.json().status).toBe("UPDATE_AVAILABLE");
-
-      // Limpeza
-      await prisma.deployment.delete({ where: { id: upToDateDep.id } });
     }
   });
 
@@ -643,5 +639,26 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     expect(body.currentCommit.sha).toBe("8888888888888888888888888888888888888888");
     expect(body.currentCommit.shortSha).toBe("8888888");
     expect(body.currentCommit.isKnown).toBe(true);
+  });
+
+  it("20. Sincronização real com GitHub: endpoint POST /admin/deploy/sync busca e atualiza cache", async () => {
+    // 1. Usuário comum é bloqueado (403)
+    const blockedRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/sync",
+      headers: { authorization: `Bearer ${regularUserToken}` },
+    });
+    expect(blockedRes.statusCode).toBe(403);
+
+    // 2. Superadmin executa a sincronização
+    const syncRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/sync",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(syncRes.statusCode).toBe(200);
+    const body = syncRes.json();
+    expect(body.success).toBe(true);
+    expect(body.message).toBeDefined();
   });
 }, 30_000);

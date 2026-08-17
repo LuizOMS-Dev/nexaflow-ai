@@ -423,6 +423,30 @@ export default function AdminDeployPage() {
     },
   });
 
+  // Mutação: Sincronizar e buscar atualizações diretamente do GitHub
+  const syncGitHubMut = useMutation({
+    mutationFn: () =>
+      api<{ success: boolean; count: number; message: string }>("/admin/deploy/sync", {
+        method: "POST",
+      }),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
+      toast({
+        title: res.success ? "Sincronizado com o GitHub" : "Aviso de sincronização",
+        description: res.message,
+        kind: res.success ? "success" : "info",
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Falha ao buscar atualizações",
+        description: e instanceof Error ? e.message : "Erro ao conectar com a API do GitHub.",
+        kind: "error",
+      });
+    },
+  });
+
   // Mutação: Testar conexão com EasyPanel
   const testConnMut = useMutation({
     mutationFn: (body: { url: string; token?: string; projectName: string; serviceName: string }) =>
@@ -615,20 +639,11 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-ghost h-9 text-[12.5px]"
-              onClick={() => {
-                void overviewQuery.refetch();
-                void commitsQuery.refetch();
-                void historyQuery.refetch();
-                toast({
-                  title: "Sincronizado",
-                  description: "Buscando atualizações e commits recentes no GitHub...",
-                  kind: "success",
-                });
-              }}
-              disabled={isFetchingAny}
+              onClick={() => syncGitHubMut.mutate()}
+              disabled={syncGitHubMut.isPending || isFetchingAny}
             >
-              <RefreshCw className={cn("h-3.5 w-3.5", isFetchingAny && "animate-spin")} />
-              Buscar atualizações no GitHub
+              <RefreshCw className={cn("h-3.5 w-3.5", (syncGitHubMut.isPending || isFetchingAny) && "animate-spin")} />
+              {syncGitHubMut.isPending ? "Buscando atualizações…" : "Buscar atualizações no GitHub"}
             </button>
           </div>
         }
