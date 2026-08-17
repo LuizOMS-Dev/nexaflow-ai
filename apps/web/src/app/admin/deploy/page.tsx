@@ -1610,9 +1610,9 @@ export default function AdminDeployPage() {
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 pt-4 border-t border-white/[0.06] xl:border-t-0 xl:pt-0 xl:pl-8 xl:border-l xl:border-white/[0.08] shrink-0">
             {/* Status Semântico Discreto */}
             {active ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-violet-300 text-[12px] font-medium">
+              <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/[0.12] px-3.5 py-1.5 text-violet-200 border border-violet-500/25 shadow-[0_0_12px_rgba(139,92,246,0.1)]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
-                <span>Em implantação</span>
+                <span className="text-[12px] font-medium">{deployStatusLabel(active.stage || active.status)}</span>
               </div>
             ) : !isGitHubConnected ? (
               <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3.5 py-1.5 text-gray-400 border border-white/[0.06]">
