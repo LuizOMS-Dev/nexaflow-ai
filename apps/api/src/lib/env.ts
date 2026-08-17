@@ -141,13 +141,12 @@ export const env = {
   salesEmail: process.env.SALES_EMAIL || "",
   /**
    * Superadmin: MFA obrigatório para /admin.
-   * - production: true (padrão)
-   * - development: false (padrão) — facilita testes locais
-   * Override: SUPERADMIN_MFA_REQUIRED=0|1|true|false
+   * - Padrão: false (liberado sem MFA)
+   * - Override: SUPERADMIN_MFA_REQUIRED=1|true|0|false
    */
   superadminMfaRequired: envBool(
     process.env.SUPERADMIN_MFA_REQUIRED,
-    nodeEnv === "production"
+    false
   ),
   /** Pausa o login público (tela de manutenção). */
   authLoginMaintenance: envBool(process.env.AUTH_LOGIN_MAINTENANCE, false),
