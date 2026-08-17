@@ -867,7 +867,7 @@ export class DeploymentOrchestrator {
     });
 
     await audit({
-      action: "deployment_history.cleared",
+      action: "deployment.history.cleared",
       userId,
       ip,
       metadata: { count: deleted.count, timestamp: new Date().toISOString() },

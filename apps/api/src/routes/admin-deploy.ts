@@ -341,7 +341,7 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
 
     await audit({
-      action: "deployment_history.clear_requested",
+      action: "deployment.history.clear_requested",
       userId: user.sub,
       ip: request.ip,
     });
@@ -355,7 +355,7 @@ export async function adminDeployRoutes(app: FastifyInstance) {
       };
     } catch (e: any) {
       await audit({
-        action: "deployment_history.clear_failed",
+        action: "deployment.history.clear_failed",
         userId: user.sub,
         ip: request.ip,
         metadata: { error: e instanceof Error ? e.message : "Erro desconhecido" },

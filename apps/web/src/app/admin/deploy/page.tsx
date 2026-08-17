@@ -1096,7 +1096,7 @@ export default function AdminDeployPage() {
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
       toast({
         title: "Histórico de implantações limpo",
-        description: "A versão em produção e os serviços implantados permanecem inalterados.",
+        description: "Os registros administrativos foram removidos. Produção, backups e recursos de restauração permanecem preservados.",
         kind: "success",
       });
     },
@@ -3298,15 +3298,17 @@ export default function AdminDeployPage() {
         </div>
       </Modal>
 
-      {/* MODAL 6.1: Confirmação Crítica de Limpeza do Histórico de Deploys (Etapa 2 de 2) */}
+      {/* MODAL 6.1: Confirmação Crítica de Limpeza do Histórico de Implantações (Etapa 2 de 2) */}
       <Modal
         open={clearDeployConfirmOpen}
         onClose={() => {
           setClearDeployConfirmOpen(false);
-          setClearDeployHistoryOpen(true);
+          setClearDeployHistoryOpen(false);
+          setClearDeployCheckbox(false);
+          setClearDeployInput("");
         }}
-        title="Confirmar limpeza do histórico de deploys"
-        description="Você está prestes a apagar o histórico administrativo de implantações exibido no NexaFlow. Isso pode dificultar consultas futuras de auditoria e acompanhamento operacional."
+        title="Confirmar limpeza do histórico de implantações"
+        description="Você está prestes a remover do painel o histórico administrativo de implantações. Essa ação não altera a versão em produção nem remove versões, backups ou registros técnicos necessários para restauração."
         size="md"
         footer={
           <DialogFooter>
@@ -3326,7 +3328,7 @@ export default function AdminDeployPage() {
               className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               disabled={
                 !clearDeployCheckbox ||
-                clearDeployInput.trim() !== "LIMPAR DEPLOYS" ||
+                clearDeployInput.trim() !== "LIMPAR HISTÓRICO" ||
                 clearDeployHistoryMut.isPending
               }
               onClick={() => clearDeployHistoryMut.mutate()}
@@ -3343,51 +3345,65 @@ export default function AdminDeployPage() {
           </DialogFooter>
         }
       >
-        <div className="space-y-4 py-1 text-[12.5px]">
-          {/* Resumo curto */}
+        <div className="space-y-3.5 py-1 text-[12.5px]">
+          {/* Resumo com cores semânticas discretas */}
           <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
             <div className="flex items-center justify-between text-gray-300">
-              <span className="text-gray-400">Afeta apenas:</span>
-              <span className="font-semibold text-rose-300">Histórico visível do painel</span>
+              <span className="text-gray-400 font-normal">Será removido</span>
+              <span className="font-semibold text-rose-300">Histórico administrativo exibido no painel</span>
             </div>
             <div className="flex items-center justify-between text-gray-300">
-              <span className="text-gray-400">Não afeta:</span>
+              <span className="text-gray-400 font-normal">Permanecem inalterados</span>
               <span className="text-emerald-400 font-medium">Produção atual, GitHub e EasyPanel</span>
             </div>
             <div className="flex items-center justify-between text-gray-300">
-              <span className="text-gray-400">Preservação:</span>
-              <span className="text-gray-300">Backups e logs técnicos preservados</span>
+              <span className="text-gray-400 font-normal">Serão preservados</span>
+              <span className="text-emerald-400 font-medium">Backups, referências de restauração e logs técnicos</span>
             </div>
           </div>
 
-          {/* Fatores de dupla confirmação combinados */}
-          <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-3.5 space-y-3.5">
-            {/* 1. Checkbox obrigatório */}
-            <label className="flex items-start gap-2.5 cursor-pointer text-gray-200 text-[12px] select-none leading-tight">
-              <input
-                type="checkbox"
+          {/* Confirmação: Separar visualmente o checkbox da confirmação textual */}
+          {/* 1. Card do Checkbox */}
+          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5">
+            <label className="flex items-start gap-3 cursor-pointer text-gray-200 text-[12.5px] select-none leading-relaxed">
+              <Checkbox
                 checked={clearDeployCheckbox}
-                onChange={(e) => setClearDeployCheckbox(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/5 text-rose-500 focus:ring-rose-500/30"
+                onCheckedChange={setClearDeployCheckbox}
+                className="mt-0.5"
               />
               <span className="font-medium text-gray-200">
-                Entendo que o histórico visível de deploys será removido deste painel.
+                Entendo que o histórico administrativo exibido no painel será removido.
               </span>
             </label>
+          </div>
 
-            {/* 2. Campo de confirmação textual */}
-            <div className="space-y-1.5 pt-1 border-t border-white/[0.06]">
-              <label className="block text-[11.5px] font-medium text-gray-300">
-                Digite <code className="rounded bg-rose-500/20 px-1 py-0.5 font-mono font-bold text-rose-300 select-all">LIMPAR DEPLOYS</code> para confirmar:
-              </label>
+          {/* 2. Card da Confirmação Textual */}
+          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+            <label htmlFor="clear-history-confirm-input" className="block text-[12px] font-medium text-gray-300">
+              Para confirmar, digite <code className="rounded bg-rose-500/15 px-1.5 py-0.5 font-mono font-bold text-rose-300 select-all border border-rose-500/25">LIMPAR HISTÓRICO</code>
+            </label>
+            <div className="relative">
               <input
+                id="clear-history-confirm-input"
                 type="text"
                 value={clearDeployInput}
                 onChange={(e) => setClearDeployInput(e.target.value)}
-                placeholder="Digite LIMPAR DEPLOYS para confirmar"
-                className="admin-input h-9 w-full font-mono text-[12.5px] bg-[#08090d] border-white/10 focus:border-rose-500/50"
+                placeholder="LIMPAR HISTÓRICO"
+                className={cn(
+                  "input h-9 w-full text-[13px] bg-[#08090d] border-white/10 transition-colors pr-8",
+                  clearDeployInput.trim() === "LIMPAR HISTÓRICO"
+                    ? "border-emerald-500/40 focus:border-emerald-500/60"
+                    : "focus:border-rose-500/50"
+                )}
                 autoFocus
+                autoComplete="off"
+                spellCheck="false"
               />
+              {clearDeployInput.trim() === "LIMPAR HISTÓRICO" ? (
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4 stroke-[2]" />
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
