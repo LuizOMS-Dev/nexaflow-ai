@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -988,71 +989,86 @@ export default function AdminDeployPage() {
         </div>
       ) : null}
 
-      {/* 4. Bloco Compacto: Status da Versão + CTA Principal */}
-      <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-4.5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          {/* Lado Esquerdo: 2 Colunas de Versão (Produção vs GitHub) */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:flex-1">
-            {/* Produção Atual */}
-            <div className="min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-                Versão em Produção
+      {/* 4. Faixa Refinada: Comparação de Versão (Produção vs GitHub) + Status e Ação */}
+      <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-4.5 sm:p-5">
+        <div className="flex flex-col gap-4.5 lg:flex-row lg:items-center lg:justify-between">
+          {/* Bloco de Comparação: Produção e GitHub */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 flex-1 min-w-0">
+            {/* Lado 1: Produção */}
+            <div className="flex-1 min-w-0 space-y-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
+                Versão em produção
               </span>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-violet-300">
+              <div className="flex items-center gap-2">
+                <code className="font-mono text-[14px] font-bold text-violet-300">
                   {current ? current.shortSha : "Não identificada"}
                 </code>
-                <span className="truncate text-[12.5px] text-gray-300" title={current?.message}>
-                  {current ? current.message : "Sem versão registrada"}
-                </span>
+              </div>
+              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={current?.message || undefined}>
+                {current?.deployedAt
+                  ? `Implantado há ${formatRelativeTime(current.deployedAt)}`
+                  : current?.message || "Sem versão registrada em produção"}
+              </p>
+            </div>
+
+            {/* Divisor / Comparador Central Discreto */}
+            <div className="hidden sm:flex items-center justify-center shrink-0">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.06] bg-white/[0.02] text-gray-400">
+                <ArrowRight className="h-3.5 w-3.5 stroke-[2]" />
               </div>
             </div>
 
-            {/* Último no GitHub */}
-            <div className="min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-                Último no GitHub ({data.gitHub?.branch || "main"})
+            {/* Lado 2: GitHub */}
+            <div className="flex-1 min-w-0 space-y-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
+                Último no GitHub · {data.gitHub?.branch || "main"}
               </span>
-              <div className="mt-1 flex items-center gap-2">
-                <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-emerald-300">
+              <div className="flex items-center gap-2">
+                <code className={cn("font-mono text-[14px] font-bold", isGitHubConnected ? "text-emerald-300" : "text-gray-400")}>
                   {latest ? latest.shortSha : "—"}
                 </code>
-                <span className="truncate text-[12.5px] text-gray-300" title={latest?.message}>
-                  {isGitHubConnected ? latest?.message : "Não foi possível consultar o GitHub"}
-                </span>
               </div>
+              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={latest?.message || undefined}>
+                {isGitHubConnected ? latest?.message || "Nenhum commit encontrado" : "Não foi possível consultar o GitHub"}
+              </p>
             </div>
           </div>
 
-          {/* Lado Direito: Status Semântico + CTA Único Principal */}
-          <div className="flex flex-wrap items-center gap-3 lg:shrink-0">
-            {isUpToDate ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/[0.1] px-3 py-1.5 text-emerald-300">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span className="text-[12.5px] font-semibold">Produção atualizada</span>
-              </div>
-            ) : isUpdateAvailable ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/[0.1] px-3 py-1.5 text-amber-300">
-                <Sparkles className="h-4 w-4 shrink-0" />
-                <span className="text-[12.5px] font-semibold">Nova versão disponível</span>
+          {/* Lado Direito / Inferior: Status Semântico + CTA Único Principal */}
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 pt-3 border-t border-white/[0.06] lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-white/[0.08] shrink-0">
+            {/* Status Semântico Discreto */}
+            {active ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/[0.1] px-3 py-1.5 text-violet-300 border border-violet-500/20">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span className="text-[12px] font-medium">Implantação em andamento</span>
               </div>
             ) : !isGitHubConnected ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-rose-500/[0.08] px-3 py-1.5 text-rose-300">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400" />
-                <span className="text-[12.5px] font-semibold">GitHub indisponível</span>
+              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-gray-400 border border-white/[0.06]">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400/80" />
+                <span className="text-[12px] font-medium">Não foi possível consultar o GitHub</span>
+              </div>
+            ) : isUpToDate ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/[0.1] px-3 py-1.5 text-emerald-300 border border-emerald-500/20">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span className="text-[12px] font-medium">Produção atualizada</span>
+              </div>
+            ) : isUpdateAvailable ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/[0.12] px-3 py-1.5 text-violet-200 border border-violet-500/25 shadow-[0_0_12px_rgba(139,92,246,0.1)]">
+                <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+                <span className="text-[12px] font-medium">Atualização disponível</span>
               </div>
             ) : isUnknown ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-gray-300">
-                <HelpCircle className="h-4 w-4 shrink-0 text-gray-400" />
-                <span className="text-[12.5px] font-semibold">Versão atual não identificada</span>
+              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-gray-300 border border-white/[0.08]">
+                <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                <span className="text-[12px] font-medium">Versão atual não identificada</span>
               </div>
             ) : null}
 
-            {/* Único Botão de Ação Principal */}
-            {(isUpdateAvailable || isUnknown) ? (
+            {/* CTA Principal de Implantação */}
+            {isGitHubConnected && (isUpdateAvailable || isUnknown) ? (
               <button
                 type="button"
-                className="admin-btn-primary h-9 px-4 text-[12.5px] font-semibold"
+                className="admin-btn-primary h-9 px-4 text-[12.5px] font-semibold shadow-sm"
                 disabled={Boolean(active) || startDeployMut.isPending || !data.easyPanel?.connected}
                 onClick={() => {
                   setSelectedCommitToDeploy(null);
