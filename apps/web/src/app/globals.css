@@ -2356,7 +2356,7 @@ html.nf-panel-lock body {
 @keyframes nf-toast-in {
   0% {
     opacity: 0;
-    transform: translateY(-10px) scale(0.96);
+    transform: translateY(-8px) scale(0.97);
   }
   100% {
     opacity: 1;
@@ -2371,7 +2371,7 @@ html.nf-panel-lock body {
   }
   100% {
     opacity: 0;
-    transform: translateY(-8px) scale(0.95);
+    transform: translateY(-6px) scale(0.97);
   }
 }
 
@@ -2384,19 +2384,38 @@ html.nf-panel-lock body {
   }
 }
 
+@keyframes nf-toast-indeterminate {
+  0% {
+    transform: translateX(-100%) scaleX(0.4);
+  }
+  50% {
+    transform: translateX(30%) scaleX(0.6);
+  }
+  100% {
+    transform: translateX(160%) scaleX(0.4);
+  }
+}
+
 .nf-toast-in {
-  animation: nf-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: nf-toast-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
 }
 
 .nf-toast-out {
-  animation: nf-toast-out 190ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: nf-toast-out 180ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
   will-change: transform, opacity;
 }
 
 .nf-toast-card .nf-toast-progress-bar {
   transform-origin: left center;
+  will-change: transform;
+}
+
+.nf-toast-card .nf-toast-indeterminate-bar {
+  animation: nf-toast-indeterminate 1.5s ease-in-out infinite;
+  transform-origin: left center;
+  will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2408,7 +2427,8 @@ html.nf-panel-lock body {
     animation: nf-fade-out 120ms ease-in forwards !important;
     transform: none !important;
   }
-  .nf-toast-progress-bar {
+  .nf-toast-progress-bar,
+  .nf-toast-indeterminate-bar {
     animation-duration: 0.01ms !important;
   }
 }

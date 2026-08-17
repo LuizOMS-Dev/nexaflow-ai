@@ -17,7 +17,7 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/utils";
 
 export type ToastKind = "success" | "error" | "warning" | "info" | "loading";
 
@@ -56,7 +56,7 @@ type ActiveToast = {
   kind: ToastKind;
   title: string;
   description?: ReactNode;
-  duration: number; // 0 means persistent
+  duration: number; // 0 means persistent / indeterminate
   createdAt: number;
   exiting?: boolean;
   refreshCount: number;
@@ -128,31 +128,31 @@ const statusConfig: Record<
   success: {
     Icon: CheckCircle2,
     badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
-    progressClass: "bg-emerald-500/80 dark:bg-emerald-400/90",
+    progressClass: "bg-emerald-500 dark:bg-emerald-400",
     cardBorderHover: "hover:border-emerald-500/30 dark:hover:border-emerald-500/30",
   },
   error: {
     Icon: AlertCircle,
     badgeClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
-    progressClass: "bg-rose-500/80 dark:bg-rose-400/90",
+    progressClass: "bg-rose-500 dark:bg-rose-400",
     cardBorderHover: "hover:border-rose-500/30 dark:hover:border-rose-500/30",
   },
   warning: {
     Icon: AlertTriangle,
     badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
-    progressClass: "bg-amber-500/80 dark:bg-amber-400/90",
+    progressClass: "bg-amber-500 dark:bg-amber-400",
     cardBorderHover: "hover:border-amber-500/30 dark:hover:border-amber-500/30",
   },
   info: {
     Icon: Info,
     badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20",
-    progressClass: "bg-violet-500/80 dark:bg-violet-400/90",
+    progressClass: "bg-violet-500 dark:bg-violet-400",
     cardBorderHover: "hover:border-violet-500/30 dark:hover:border-violet-500/30",
   },
   loading: {
     Icon: Loader2,
     badgeClass: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20",
-    progressClass: "bg-violet-500/80 dark:bg-violet-400/90",
+    progressClass: "bg-violet-500 dark:bg-violet-400",
     cardBorderHover: "hover:border-violet-500/30 dark:hover:border-violet-500/30",
   },
 };
@@ -223,8 +223,8 @@ function ToastCard({
         }
       }}
       className={cn(
-        "nf-toast-card group relative flex w-full sm:w-[350px] max-w-[calc(100vw-2rem)] items-start gap-3 rounded-2xl p-3.5 select-none transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40",
-        "border border-black/[0.08] bg-white/98 text-ink shadow-[0_12px_30px_-8px_rgba(15,23,42,0.12),0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-xl",
+        "nf-toast-card group relative flex w-full sm:w-[356px] max-w-[calc(100vw-2rem)] items-start gap-3 overflow-hidden rounded-2xl p-3.5 select-none transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40",
+        "border border-black/[0.08] bg-white/95 text-ink shadow-[0_12px_30px_-8px_rgba(15,23,42,0.12),0_1px_3px_rgba(15,23,42,0.06)] backdrop-blur-xl",
         "dark:border-white/[0.08] dark:bg-[#10121a]/95 dark:text-zinc-100 dark:shadow-[0_16px_36px_-10px_rgba(0,0,0,0.75),0_1px_3px_rgba(0,0,0,0.5)]",
         cardBorderHover,
         item.exiting ? "nf-toast-out" : "nf-toast-in"
@@ -285,10 +285,10 @@ function ToastCard({
         <X className="h-3.5 w-3.5" strokeWidth={2} />
       </button>
 
-      {/* ── BARRA DE PROGRESSO ULTRAFINA INTEGRADA (1.5px / 2px) ── */}
+      {/* ── BARRA DE PROGRESSO PERFEITAMENTE RECORTE E INTEGRADA (2.5px) ── */}
       {isAutoDismiss && !item.exiting ? (
         <div
-          className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden rounded-b-2xl bg-black/[0.04] dark:bg-white/[0.04]"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[2.5px] overflow-hidden bg-black/[0.04] dark:bg-white/[0.04]"
           aria-hidden
         >
           <div
@@ -298,6 +298,15 @@ function ToastCard({
               animation: `nf-toast-progress ${item.duration}ms linear forwards`,
               animationPlayState: paused ? "paused" : "running",
             }}
+          />
+        </div>
+      ) : item.kind === "loading" && !item.exiting ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden bg-black/[0.04] dark:bg-white/[0.04]"
+          aria-hidden
+        >
+          <div
+            className={cn("h-full w-full origin-left nf-toast-indeterminate-bar", progressClass)}
           />
         </div>
       ) : null}
@@ -311,7 +320,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dismiss = useCallback((id?: string) => {
     if (!id) {
       setItems((prev) => prev.map((t) => ({ ...t, exiting: true })));
-      window.setTimeout(() => setItems([]), 190);
+      window.setTimeout(() => setItems([]), 180);
       return;
     }
 
@@ -320,7 +329,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     );
     window.setTimeout(() => {
       setItems((prev) => prev.filter((t) => t.id !== id));
-    }, 190);
+    }, 180);
   }, []);
 
   const update = useCallback((id: string, opts: Partial<ToastOptions>) => {
@@ -427,7 +436,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ toast: toastObj, dismiss }}>
       {children}
       <div
-        className="nf-toast-viewport pointer-events-none fixed top-4 right-4 sm:top-5 sm:right-5 z-[var(--z-toast,9999)] flex flex-col gap-2.5 max-w-full"
+        className="nf-toast-viewport pointer-events-none fixed top-4 right-4 sm:top-5 sm:right-5 z-[var(--z-toast,9999)] flex flex-col gap-2.5 max-w-[calc(100vw-2rem)]"
         aria-label="Notificações"
       >
         {items.map((item) => (
