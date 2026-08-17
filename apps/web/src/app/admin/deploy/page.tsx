@@ -217,6 +217,47 @@ function formatDuration(seconds?: number): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
+function useLiveElapsed(
+  startedAt?: string | Date | null,
+  isFinished?: boolean,
+  finalSeconds?: number
+): number {
+  const [elapsed, setElapsed] = useState<number>(() => {
+    if (isFinished && typeof finalSeconds === "number") return finalSeconds;
+    if (!startedAt) return 0;
+    const start = typeof startedAt === "string" ? new Date(startedAt).getTime() : startedAt.getTime();
+    if (isNaN(start)) return finalSeconds || 0;
+    return Math.max(0, Math.floor((Date.now() - start) / 1000));
+  });
+
+  useEffect(() => {
+    if (isFinished && typeof finalSeconds === "number") {
+      setElapsed(finalSeconds);
+      return;
+    }
+    if (!startedAt) {
+      setElapsed(0);
+      return;
+    }
+
+    const start = typeof startedAt === "string" ? new Date(startedAt).getTime() : startedAt.getTime();
+    if (isNaN(start)) {
+      setElapsed(finalSeconds || 0);
+      return;
+    }
+
+    const update = () => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, isFinished, finalSeconds]);
+
+  return elapsed;
+}
+
 function deployStatusTone(st: DeploymentStatus): "brand" | "neutral" | "success" | "warning" | "danger" {
   switch (st) {
     case "COMPLETED":
@@ -549,10 +590,38 @@ export default function AdminDeployPage() {
     return <AdminPageSkeleton metrics={4} />;
   }
 
-  const data = overviewQuery.data;
+  const data = overviewQuery.data || {
+    environment: "production",
+    isOnline: true,
+    healthState: "HEALTHY",
+    status: "UNKNOWN",
+    currentCommit: null,
+    latestGitHubCommit: null,
+    gitHub: { connected: false, owner: "LuizOMS-Dev", repo: "nexaflow-ai", branch: "main" },
+    easyPanel: {
+      state: "CHECKING",
+      connected: false,
+      projectName: "i9atendimento",
+      serviceName: "nexaflow",
+      serviceType: "compose",
+      hasUrl: false,
+      hasToken: false,
+    },
+    activeDeployment: null,
+  };
+
+  const active = data.activeDeployment;
+  const liveActiveElapsed = useLiveElapsed(active?.startedAt);
+
+  const isDetailFinished = detailQuery.data?.status === "COMPLETED" || detailQuery.data?.status === "FAILED";
+  const liveDetailElapsed = useLiveElapsed(
+    detailQuery.data?.startedAt,
+    isDetailFinished,
+    detailQuery.data?.durationSeconds
+  );
+
   const current = data.currentCommit;
   const latest = data.latestGitHubCommit;
-  const active = data.activeDeployment;
   const status = data.status; // "UP_TO_DATE" | "UPDATE_AVAILABLE" | "UNKNOWN" | "DEPLOYING"
   const isUpToDate = status === "UP_TO_DATE";
   const isUpdateAvailable = status === "UPDATE_AVAILABLE";
@@ -692,7 +761,7 @@ export default function AdminDeployPage() {
                     </code>
                   </div>
                   <p className="text-[11.5px] text-gray-400 truncate max-w-lg">
-                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · há {formatDuration(active.durationSeconds)}
+                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · há {formatDuration(liveActiveElapsed)}
                   </p>
                 </div>
               </div>
@@ -1480,7 +1549,7 @@ export default function AdminDeployPage() {
                   </div>
                   <div>
                     <span className="text-gray-400 text-[11px] block">Tempo decorrido</span>
-                    <span className="font-medium text-white">{formatDuration(detailQuery.data.durationSeconds)}</span>
+                    <span className="font-medium text-white">{formatDuration(isDetailFinished ? detailQuery.data.durationSeconds : liveDetailElapsed)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 text-[11px] block">Serviços afetados</span>
