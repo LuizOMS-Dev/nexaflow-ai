@@ -1875,36 +1875,25 @@ export async function adminRoutes(app: FastifyInstance) {
       .object({
         take: z.coerce.number().int().min(1).max(200).optional().default(50),
         cursor: z.string().optional(),
+        search: z.string().optional(),
+        category: z.string().optional(),
+        severity: z.string().optional(),
+        tenantId: z.string().optional(),
       })
       .parse(request.query ?? {});
 
-    const logs = await prisma.auditLog.findMany({
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        tenant: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: q.take,
-      ...(q.cursor
-        ? {
-            skip: 1,
-            cursor: { id: q.cursor },
-          }
-        : {}),
-    });
-    const { redactMetadata } = await import("../services/platform-log-redaction");
-    return {
-      items: logs.map((l) => ({
-        ...l,
-        metadata: redactMetadata(l.metadata),
-      })),
-      nextCursor: logs.length === q.take ? logs[logs.length - 1]?.id ?? null : null,
-    };
+    const { AuditService } = await import("../services/audit");
+    return AuditService.list(q);
+  });
+
+  app.get("/admin/logs/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const { AuditService } = await import("../services/audit");
+    return AuditService.getDetail(id);
   });
 
   /**
    * Limpa logs de auditoria de UMA empresa (tenantId).
-   * Confirmação "LIMPAR". Deixa 1 evento residual no tenant.
    */
   app.delete("/admin/tenants/:id/logs", async (request) => {
     const { id } = request.params as { id: string };
@@ -1914,90 +1903,36 @@ export async function adminRoutes(app: FastifyInstance) {
       })
       .parse(request.body ?? {});
 
-    if (body.confirm.trim().toUpperCase() !== "LIMPAR") {
-      throw new AppError(
-        'Confirme digitando LIMPAR para limpar os logs desta empresa.',
-        400,
-        "CONFIRMATION_REQUIRED"
-      );
-    }
-
-    assertFound(await prisma.tenant.findUnique({ where: { id } }));
-
-    const before = await prisma.auditLog.count({ where: { tenantId: id } });
-    const deleted = await prisma.auditLog.deleteMany({ where: { tenantId: id } });
-
+    const { AuditService } = await import("../services/audit");
     const { auditIp } = await import("../lib/client-ip");
-    await audit({
-      userId: request.user.sub,
+
+    return AuditService.clearTenantLogs({
       tenantId: id,
-      action: "admin.tenant.logs.cleared",
-      entity: "audit_log",
-      entityId: id,
-      metadata: {
-        deletedCount: deleted.count,
-        countBefore: before,
-        scope: "tenant",
-      },
+      confirm: body.confirm,
+      userId: request.user.sub,
       ip: auditIp(request),
     });
-
-    return {
-      ok: true,
-      deleted: deleted.count,
-      message:
-        deleted.count === 0
-          ? "Não havia logs desta empresa."
-          : `${deleted.count} log${deleted.count === 1 ? "" : "s"} da empresa removido${deleted.count === 1 ? "" : "s"}.`,
-    };
   });
 
   /**
-   * Limpa logs de auditoria da plataforma.
-   * Requer confirmação textual "LIMPAR".
-   * Após apagar, grava um único evento `admin.logs.cleared` (trilha residual).
+   * Limpa logs de auditoria da plataforma preservando evidências de segurança imutáveis.
+   * Requer confirmação textual "LIMPAR AUDITORIA" ou "LIMPAR".
    */
   app.delete("/admin/logs", async (request) => {
     const body = z
       .object({
         confirm: z.string().min(1),
-        /** Se true, remove todos. Se false (default), remove apenas os mais antigos que o evento de limpeza. */
-        all: z.boolean().optional().default(true),
       })
       .parse(request.body ?? {});
 
-    if (body.confirm.trim().toUpperCase() !== "LIMPAR") {
-      throw new AppError(
-        'Confirme digitando LIMPAR para limpar os logs de auditoria.',
-        400,
-        "CONFIRMATION_REQUIRED"
-      );
-    }
-
-    const before = await prisma.auditLog.count();
-    const deleted = await prisma.auditLog.deleteMany({});
-
+    const { AuditService } = await import("../services/audit");
     const { auditIp } = await import("../lib/client-ip");
-    await audit({
+
+    return AuditService.clearPlatformLogs({
+      confirm: body.confirm,
       userId: request.user.sub,
-      action: "admin.logs.cleared",
-      entity: "audit_log",
-      metadata: {
-        deletedCount: deleted.count,
-        countBefore: before,
-        scope: body.all ? "all" : "all",
-      },
       ip: auditIp(request),
     });
-
-    return {
-      ok: true,
-      deleted: deleted.count,
-      message:
-        deleted.count === 0
-          ? "Não havia logs para limpar."
-          : `${deleted.count} registro${deleted.count === 1 ? "" : "s"} de auditoria removido${deleted.count === 1 ? "" : "s"}.`,
-    };
   });
 
   /**

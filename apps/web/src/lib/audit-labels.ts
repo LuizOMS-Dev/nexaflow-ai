@@ -1,12 +1,58 @@
 /**
- * Labels humanos para eventos de auditoria.
- * Código técnico permanece no backend e em "Ver detalhes".
+ * Mapeamento e classificação centralizada de eventos de auditoria em pt-BR.
+ * O código técnico (eventCode) permanece intacto no backend e visível discretamente na UI.
  */
 
-const EXACT: Record<string, string> = {
+export type AuditSeverityLabel = "Sucesso" | "Informação" | "Atenção" | "Falha" | "Crítico";
+export type AuditSeverityTone = "success" | "info" | "warning" | "danger" | "neutral" | "violet";
+
+export interface AuditSeverityInfo {
+  tone: "success" | "info" | "warning" | "danger";
+  label: AuditSeverityLabel;
+}
+
+const EXACT_TITLES: Record<string, string> = {
+  // Deploy e Rollback
+  "deployment.started": "Implantação iniciada",
+  "deployment.completed": "Implantação concluída",
+  "deployment.succeeded": "Implantação concluída",
+  "deployment.failed": "Implantação falhou",
+  "deployment.rollback_requested": "Reversão de versão solicitada",
+  "deployment.rollback_started": "Reversão de versão iniciada",
+  "deployment.rollback_completed": "Reversão de versão concluída",
+  "deployment.rollback_failed": "Reversão de versão falhou",
+  "deployment.history.clear_requested": "Limpeza do histórico de implantações solicitada",
+  "deployment.history.cleared": "Histórico de implantações limpo",
+  "deployment.history.clear_failed": "Falha ao limpar histórico de implantações",
+  "deployment_history.clear_requested": "Limpeza do histórico de implantações solicitada",
+  "deployment_history.cleared": "Histórico de implantações limpo",
+  "deployment_history.clear_failed": "Falha ao limpar histórico de implantações",
+
+  // GitHub
+  "github.connection.tested": "Conexão com o GitHub testada",
+  "github.configuration.updated": "Configuração do GitHub atualizada",
+  "github.token.rotated": "Token do GitHub rotacionado",
+  "github_updates.clear_requested": "Limpeza de atualizações do GitHub solicitada",
+  "github_updates.cleared": "Histórico recente do GitHub limpo",
+  "github_updates.clear_failed": "Falha ao limpar atualizações do GitHub",
+  "github.update_history.cleared": "Histórico recente do GitHub limpo",
+
+  // EasyPanel
+  "easypanel.connection.tested": "Conexão com o EasyPanel testada",
+  "easypanel.configuration.updated": "Configuração do EasyPanel atualizada",
+  "easypanel.token.rotated": "Token do EasyPanel rotacionado",
+
+  // Auditoria
+  "audit.history.clear_requested": "Limpeza do histórico de auditoria solicitada",
+  "audit.history.cleared": "Histórico de auditoria limpo",
+  "audit.history.clear_failed": "Falha ao limpar histórico de auditoria",
+  "admin.logs.cleared": "Histórico de auditoria limpo",
+  "admin.tenant.logs.cleared": "Logs da empresa limpos",
+
+  // Autenticação e Segurança
   "auth.login": "Login administrativo realizado",
   "auth.logout": "Logout administrativo realizado",
-  "auth.login.failed": "Falha de login",
+  "auth.login.failed": "Tentativa de login falhou",
   "auth.mfa.enabled": "Autenticação em duas etapas ativada",
   "auth.mfa.disabled": "Autenticação em duas etapas desativada",
   "auth.2fa.enabled": "Autenticação em duas etapas ativada",
@@ -14,12 +60,14 @@ const EXACT: Record<string, string> = {
   "auth.mfa.verified": "Segundo fator verificado",
   "auth.mfa.failed": "Falha no segundo fator",
   "auth.password.changed": "Senha de acesso alterada",
-  "auth.password.reset": "Redefinição de senha",
+  "auth.password.reset": "Redefinição de senha solicitada",
   "auth.session.revoked": "Sessão revogada",
   "auth.sessions.revoked_all": "Todas as sessões revogadas",
   "auth.switch_tenant": "Troca de empresa",
   "admin.impersonate": "Acesso como empresa iniciado",
   "admin.impersonate.stop": "Acesso como empresa encerrado",
+
+  // Empresas / Tenants
   "admin.tenant.create": "Empresa criada",
   "admin.tenant.update": "Empresa atualizada",
   "admin.tenant.suspend": "Empresa suspensa",
@@ -31,40 +79,53 @@ const EXACT: Record<string, string> = {
   "tenant.update": "Empresa atualizada",
   "tenant.updated": "Empresa atualizada",
   "tenant.onboarding.completed": "Configuração da empresa concluída",
-  "user.create": "Novo usuário cadastrado",
-  "user.created": "Novo usuário cadastrado",
-  "user.update": "Usuário atualizado",
-  "user.updated": "Usuário atualizado",
-  "user.status.updated": "Status de usuário atualizado",
-  "subscription.created": "Assinatura criada",
-  "subscription.updated": "Assinatura atualizada",
-  "channel.connected": "Canal conectado",
-  "channel.disconnected": "Canal desconectado",
+  "company.created": "Empresa criada",
+  "company.updated": "Empresa atualizada",
   "company.blocked": "Empresa bloqueada",
   "company.unblocked": "Empresa desbloqueada",
   "company.suspended": "Empresa suspensa",
   "company.reactivated": "Empresa reativada",
   "company.subscription_canceled": "Assinatura cancelada",
   "company.payment_registered": "Pagamento registrado",
-  "company.due_date_changed": "Vencimento alterado",
-  "company.plan_changed": "Plano alterado",
+  "company.due_date_changed": "Data de vencimento alterada",
+  "company.plan_changed": "Plano da empresa alterado",
   "company.deletion_requested": "Exclusão de empresa solicitada",
   "company.deletion_canceled": "Exclusão de empresa cancelada",
   "company.deleted": "Empresa excluída",
-  "company.created": "Empresa criada",
-  "company.updated": "Empresa atualizada",
+
+  // Usuários
+  "user.create": "Novo usuário cadastrado",
+  "user.created": "Novo usuário cadastrado",
+  "user.update": "Usuário atualizado",
+  "user.updated": "Usuário atualizado",
+  "user.status.updated": "Status de usuário atualizado",
+  "user.blocked": "Usuário bloqueado",
+  "user.suspended": "Usuário suspenso",
+  "user.reactivated": "Usuário reativado",
+
+  // Planos e Finanças
+  "plan.created": "Plano criado",
+  "plan.updated": "Plano atualizado",
+  "admin.plan.create": "Plano criado",
+  "admin.plan.update": "Plano atualizado",
+  "subscription.created": "Assinatura criada",
+  "subscription.updated": "Assinatura atualizada",
+  "admin.cost.create": "Custo operacional registrado",
+  "admin.cost.update": "Custo operacional atualizado",
+  "admin.cost.delete": "Custo operacional removido",
+  "platform.access_policy_updated": "Política global de acesso atualizada",
+
+  // Recursos Operacionais
+  "channel.connected": "Canal conectado",
+  "channel.disconnected": "Canal desconectado",
+  "automation.delete": "Fluxo excluído",
+  "contact.delete": "Contato excluído",
   "tour.offered": "Tour da plataforma oferecido",
   "tour.started": "Tour da plataforma iniciado",
   "tour.dismissed": "Tour da plataforma dispensado",
   "tour.exited": "Tour da plataforma interrompido",
   "tour.completed": "Tour da plataforma concluído",
   "tour.restarted": "Tour da plataforma reiniciado",
-  "automation.delete": "Fluxo excluído",
-  "contact.delete": "Contato excluído",
-  "plan.updated": "Plano do catálogo atualizado",
-  "plan.created": "Plano do catálogo criado",
-  "admin.logs.cleared": "Logs de auditoria limpos",
-  "admin.tenant.logs.cleared": "Logs da empresa limpos",
   "learning.enabled": "Aprendizado contínuo ativado",
   "learning.disabled": "Aprendizado contínuo desativado",
   "learning.level_changed": "Nível de aprendizado alterado",
@@ -88,7 +149,11 @@ const EXACT: Record<string, string> = {
   "conversation.archived": "Atendimento arquivado",
 };
 
-const PREFIX: Array<[string, string]> = [
+const PREFIX_PATTERNS: Array<[string, string]> = [
+  ["deployment.", "Implantação"],
+  ["github.", "GitHub"],
+  ["easypanel.", "EasyPanel"],
+  ["audit.", "Auditoria"],
   ["auth.login", "Login"],
   ["auth.mfa", "Autenticação em duas etapas"],
   ["auth.session", "Sessão"],
@@ -97,8 +162,11 @@ const PREFIX: Array<[string, string]> = [
   ["admin.tenant", "Empresa (admin)"],
   ["admin.membership", "Membro"],
   ["admin.impersonate", "Impersonação"],
+  ["admin.cost", "Financeiro"],
+  ["admin.plan", "Plano"],
   ["admin.", "Administração"],
   ["company.", "Empresa"],
+  ["tenant.", "Empresa"],
   ["security.", "Segurança"],
   ["whatsapp.", "WhatsApp"],
   ["ai.", "IA"],
@@ -108,32 +176,105 @@ const PREFIX: Array<[string, string]> = [
   ["automation.", "Automação"],
 ];
 
+/**
+ * Traduz o eventCode técnico em um título amigável e legível em pt-BR.
+ */
 export function humanizeAuditAction(action: string): string {
   if (!action) return "Evento";
-  if (EXACT[action]) return EXACT[action];
-  for (const [prefix, label] of PREFIX) {
-    if (action.startsWith(prefix)) {
-      const rest = action.slice(prefix.length).replace(/[._]/g, " ").trim();
+  const trimmed = action.trim();
+  if (EXACT_TITLES[trimmed]) return EXACT_TITLES[trimmed];
+
+  for (const [prefix, label] of PREFIX_PATTERNS) {
+    if (trimmed.startsWith(prefix)) {
+      const rest = trimmed.slice(prefix.length).replace(/[._]/g, " ").trim();
       if (!rest) return label;
-      // fallback legível sem código cru
-      return `${label}: ${rest}`;
+      return `${label}: ${rest.charAt(0).toUpperCase() + rest.slice(1)}`;
     }
   }
-  // Último recurso: humanizar pontos
-  return action
+
+  return trimmed
     .split(/[._]/)
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
 
+/**
+ * Classifica a severidade semântica oficial: Sucesso | Informação | Atenção | Falha | Crítico
+ */
+export function auditSeverity(
+  action: string,
+  serverSeverity?: string | null
+): AuditSeverityInfo {
+  // Se o backend já enviou severidade calculada, mapeia diretamente
+  if (serverSeverity) {
+    switch (serverSeverity.toUpperCase()) {
+      case "CRITICAL":
+        return { tone: "danger", label: "Crítico" };
+      case "FAIL":
+        return { tone: "danger", label: "Falha" };
+      case "WARNING":
+        return { tone: "warning", label: "Atenção" };
+      case "SUCCESS":
+        return { tone: "success", label: "Sucesso" };
+      case "INFO":
+      default:
+        return { tone: "info", label: "Informação" };
+    }
+  }
+
+  const a = (action || "").toLowerCase();
+
+  // 1. Crítico
+  if (
+    /threat|compromise|tamper|impersonation_start|sessions\.revoked_all/.test(a) ||
+    (/user\.(blocked|suspended)/.test(a) && !/unblock|reactivat/.test(a)) ||
+    (/company\.(blocked|suspended|deleted)/.test(a) && !/unblock|reactivat/.test(a))
+  ) {
+    return { tone: "danger", label: "Crítico" };
+  }
+
+  // 2. Falha
+  if (
+    /failed|failure|rejected|denied|unhealthy|error|clear_failed|rollback_failed/.test(a)
+  ) {
+    return { tone: "danger", label: "Falha" };
+  }
+
+  // 3. Atenção
+  if (
+    /cleared|clear_requested|rollback|rotated|archive|deletion_requested|mfa\.disabled|password\.changed|session\.revoked|access_policy_updated|due_date_changed|plan_changed/.test(
+      a
+    )
+  ) {
+    return { tone: "warning", label: "Atenção" };
+  }
+
+  // 4. Sucesso
+  if (
+    /completed|succeeded|verified|healthy|reactivated|unblocked|payment_registered|login$/.test(
+      a
+    )
+  ) {
+    return { tone: "success", label: "Sucesso" };
+  }
+
+  // 5. Informação
+  return { tone: "info", label: "Informação" };
+}
+
+/**
+ * Formata endereço IP informando se pertence à rede interna / proxy
+ */
 export function formatAuditIp(ip?: string | null): string {
   if (!ip) return "—";
+  const clean = ip.trim();
   if (
-    /^(::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(ip) ||
-    ip === "localhost"
+    /^(::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(clean) ||
+    clean === "localhost"
   ) {
-    return `Rede interna / proxy (${ip})`;
+    return `Rede interna (${clean})`;
   }
-  return ip;
+  return clean;
 }
+

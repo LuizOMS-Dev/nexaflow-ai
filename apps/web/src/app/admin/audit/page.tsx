@@ -2,16 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ScrollText, Trash2 } from "lucide-react";
+import {
+  ScrollText,
+  Trash2,
+  RefreshCw,
+  CheckCircle2,
+  Copy,
+  Check,
+  FilterX,
+  Clock,
+  User,
+  Building2,
+  Globe,
+  Terminal,
+} from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import { formatDate } from "@/lib/utils";
-import { humanizeAuditAction, formatAuditIp } from "@/lib/audit-labels";
+import { humanizeAuditAction, formatAuditIp, auditSeverity } from "@/lib/audit-labels";
 import {
-  ConsequenceBanner,
+  Checkbox,
   DialogFooter,
-  EntitySummary,
-  FormField,
   Modal,
   useToast,
 } from "@/components/ui";
@@ -24,12 +35,13 @@ import {
   AdminSelectFilter,
   AdminSkeleton,
   StatusBadge,
-  type AdminTone,
 } from "@/components/admin";
 
 type AuditLog = {
   id: string;
   action: string;
+  category?: string;
+  severity?: "SUCCESS" | "INFO" | "WARNING" | "FAIL" | "CRITICAL";
   entity?: string | null;
   entityId?: string | null;
   createdAt: string;
@@ -42,21 +54,8 @@ type AuditLog = {
 type LogsPage = {
   items: AuditLog[];
   nextCursor: string | null;
+  count?: number;
 };
-
-function sanitizeMetadata(meta: unknown): Record<string, unknown> | null {
-  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
-  const out: Record<string, unknown> = {};
-  const secretKey = /secret|password|token|hash|backup|totp|authorization|api[_-]?key|credential/i;
-  for (const [k, v] of Object.entries(meta as Record<string, unknown>)) {
-    if (secretKey.test(k)) {
-      out[k] = "[omitido]";
-      continue;
-    }
-    out[k] = v;
-  }
-  return out;
-}
 
 function dayKey(iso: string): string {
   const d = new Date(iso);
@@ -77,60 +76,70 @@ function dayLabel(key: string): string {
     weekday: "short",
     day: "2-digit",
     month: "short",
+    year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
   });
-}
-
-/** Severity visual from action name — audit API has no severity field */
-function auditSeverity(action: string): { tone: AdminTone; label: string } {
-  const a = (action || "").toLowerCase();
-  if (
-    /failed|blocked|delete|suspend|denied|revoked|cancelled|canceled|disabled/.test(a)
-  ) {
-    return { tone: "danger", label: "Crítico" };
-  }
-  if (
-    /impersonate|cleared|password\.|mfa\.disabled|deletion|archive|warning/.test(a)
-  ) {
-    return { tone: "warning", label: "Atenção" };
-  }
-  if (/login$|create|enabled|verified|reactivated|unblocked|completed|paid/.test(a)) {
-    return { tone: "success", label: "OK" };
-  }
-  if (a.startsWith("auth.")) return { tone: "info", label: "Auth" };
-  if (a.startsWith("admin.")) return { tone: "violet", label: "Admin" };
-  return { tone: "neutral", label: "Info" };
 }
 
 export default function AdminAuditPage() {
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
   const { toast } = useToast();
+
+  // Estados de navegação e filtros
   const [detail, setDetail] = useState<AuditLog | null>(null);
+  const [copied, setCopied] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const [severityFilter, setSeverityFilter] = useState("ALL");
+
+  // Modal de limpeza com confirmação dupla
   const [clearOpen, setClearOpen] = useState(false);
+  const [clearAgree, setClearAgree] = useState(false);
   const [clearConfirm, setClearConfirm] = useState("");
+
+  // Paginação por cursor
   const [extraItems, setExtraItems] = useState<AuditLog[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Debounce da busca (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Montagem da query string server-side
+  const queryUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("take", "50");
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (typeFilter !== "ALL") params.set("category", typeFilter);
+    if (severityFilter !== "ALL") params.set("severity", severityFilter);
+    return `/admin/logs?${params.toString()}`;
+  }, [debouncedSearch, typeFilter, severityFilter]);
+
   const { data, isLoading, error, dataUpdatedAt, refetch, isFetching } = useQuery({
-    queryKey: ["admin-logs"],
-    queryFn: () => api<LogsPage>("/admin/logs?take=50"),
+    queryKey: ["admin-logs", debouncedSearch, typeFilter, severityFilter],
+    queryFn: () => api<LogsPage>(queryUrl),
     enabled: user?.platformRole === "SUPERADMIN",
     staleTime: 30_000,
   });
 
+  // Reseta itens extras ao atualizar ou alterar filtros
   useEffect(() => {
     setExtraItems([]);
     setCursor(data?.nextCursor ?? null);
   }, [dataUpdatedAt, data?.nextCursor]);
 
+  // Mutação de Limpeza do Histórico com Confirmação Dupla
   const clearMutation = useMutation({
     mutationFn: () =>
       api<{ ok: boolean; deleted: number; message: string }>("/admin/logs", {
         method: "DELETE",
-        json: { confirm: clearConfirm.trim(), all: true },
+        json: { confirm: clearConfirm.trim() },
       }),
     onSuccess: (res) => {
       setExtraItems([]);
@@ -138,10 +147,11 @@ export default function AdminAuditPage() {
       void qc.invalidateQueries({ queryKey: ["admin-logs"] });
       void qc.invalidateQueries({ queryKey: ["admin-overview"] });
       setClearOpen(false);
+      setClearAgree(false);
       setClearConfirm("");
       toast({
         kind: "success",
-        title: "Logs limpos",
+        title: "Histórico de auditoria limpo",
         description: res.message,
       });
     },
@@ -149,65 +159,74 @@ export default function AdminAuditPage() {
       toast({ kind: "error", title: "Não foi possível limpar", description: e.message }),
   });
 
+  // Carregamento incremental da próxima página
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const page = await api<LogsPage>(
-        `/admin/logs?take=50&cursor=${encodeURIComponent(cursor)}`
-      );
+      const params = new URLSearchParams();
+      params.set("take", "50");
+      params.set("cursor", cursor);
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (typeFilter !== "ALL") params.set("category", typeFilter);
+      if (severityFilter !== "ALL") params.set("severity", severityFilter);
+
+      const page = await api<LogsPage>(`/admin/logs?${params.toString()}`);
       setExtraItems((prev) => [...prev, ...page.items]);
       setCursor(page.nextCursor);
     } catch (e) {
       toast({
         kind: "error",
-        title: "Falha ao carregar mais",
-        description: e instanceof Error ? e.message : "Erro",
+        title: "Falha ao carregar mais eventos",
+        description: e instanceof Error ? e.message : "Erro desconhecido",
       });
     } finally {
       setLoadingMore(false);
     }
-  }, [cursor, loadingMore, toast]);
+  }, [cursor, loadingMore, debouncedSearch, typeFilter, severityFilter, toast]);
 
+  // Lista consolidada de eventos
   const allLogs = useMemo(
     () => [...(data?.items ?? []), ...extraItems],
     [data?.items, extraItems]
   );
 
-  const filtered = useMemo(() => {
-    let logs = allLogs;
-    if (typeFilter !== "ALL") {
-      logs = logs.filter((l) => l.action.startsWith(typeFilter));
-    }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      logs = logs.filter((l) => {
-        const hay = [
-          l.action,
-          humanizeAuditAction(l.action),
-          l.user?.name,
-          l.user?.email,
-          l.tenant?.name,
-          l.entity,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(q);
-      });
-    }
-    return logs;
-  }, [allLogs, search, typeFilter]);
-
+  // Agrupamento temporal (Hoje, Ontem, Datas anteriores)
   const grouped = useMemo(() => {
     const map = new Map<string, AuditLog[]>();
-    for (const log of filtered) {
+    for (const log of allLogs) {
       const k = dayKey(log.createdAt);
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(log);
     }
     return Array.from(map.entries());
-  }, [filtered]);
+  }, [allLogs]);
+
+  // Copiar detalhes técnicos em JSON sanitizado
+  const handleCopyDetails = useCallback(async () => {
+    if (!detail) return;
+    try {
+      const payload = {
+        id: detail.id,
+        action: detail.action,
+        severity: detail.severity || auditSeverity(detail.action).label,
+        category: detail.category,
+        entity: detail.entity,
+        entityId: detail.entityId,
+        createdAt: detail.createdAt,
+        actor: detail.user ? `${detail.user.name} (${detail.user.email})` : "Sistema",
+        ip: detail.ip,
+        tenant: detail.tenant?.name || "Global",
+        metadata: detail.metadata || {},
+      };
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ kind: "success", title: "Copiado", description: "Detalhes do evento copiados para a área de transferência." });
+    } catch {
+      toast({ kind: "error", title: "Erro ao copiar", description: "Não foi possível acessar a área de transferência." });
+    }
+  }, [detail, toast]);
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
@@ -228,53 +247,61 @@ export default function AdminAuditPage() {
     if (isSuperadminMfaRequiredError(error)) return null;
     return (
       <AdminErrorState
-        title="Não foi possível carregar auditoria"
-        description="Tente novamente em instantes."
+        title="Não foi possível carregar a auditoria"
+        description="Verifique sua conexão ou tente novamente em instantes."
         onRetry={() => void refetch()}
       />
     );
   }
 
-  const meta = detail ? sanitizeMetadata(detail.metadata) : null;
   const totalLoaded = allLogs.length;
-  const canClear = clearConfirm.trim().toUpperCase() === "LIMPAR";
+  const isExactConfirm = clearConfirm.trim().toUpperCase() === "LIMPAR AUDITORIA";
+  const canSubmitClear = clearAgree && isExactConfirm;
 
   return (
     <div className="space-y-6">
+      {/* Cabeçalho da Página */}
       <AdminPageHeader
         title="Auditoria"
-        description="Trilha de eventos operacionais — logins, admin, empresas e planos."
+        description="Trilha de auditoria administrativa, segurança e ciclo de vida da plataforma."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className="admin-btn-secondary"
+              className="admin-btn-secondary gap-1.5"
               disabled={isFetching}
               onClick={() => void refetch()}
+              aria-label="Atualizar lista de auditoria"
             >
-              {isFetching ? "Atualizando…" : "Atualizar"}
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${isFetching ? "animate-spin text-amber-400" : ""}`}
+                strokeWidth={1.75}
+              />
+              <span>{isFetching ? "Atualizando…" : "Atualizar"}</span>
             </button>
             <button
               type="button"
-              className="admin-btn-secondary text-red-300/90 hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-200"
+              className="admin-btn-secondary text-rose-300/90 hover:border-rose-400/30 hover:bg-rose-500/10 hover:text-rose-200"
               disabled={totalLoaded === 0}
               onClick={() => {
+                setClearAgree(false);
                 setClearConfirm("");
                 setClearOpen(true);
               }}
             >
               <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Limpar logs
+              Limpar histórico
             </button>
           </div>
         }
       />
 
+      {/* Barra Compacta de Filtros */}
       <AdminFilterBar>
         <AdminSearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Buscar evento, ator, empresa…"
+          placeholder="Buscar evento, ator, e-mail, empresa, IP…"
         />
         <AdminSelectFilter
           value={typeFilter}
@@ -282,28 +309,70 @@ export default function AdminAuditPage() {
           label="Tipo"
           options={[
             { value: "ALL", label: "Todos os tipos" },
-            { value: "auth.", label: "Autenticação" },
-            { value: "admin.", label: "Admin" },
-            { value: "company.", label: "Empresa" },
-            { value: "plan.", label: "Planos" },
+            { value: "AUTH", label: "Autenticação" },
+            { value: "ADMIN", label: "Administração" },
+            { value: "COMPANY", label: "Empresas" },
+            { value: "PLAN", label: "Planos" },
+            { value: "FINANCE", label: "Financeiro" },
+            { value: "DEPLOY", label: "Deploy" },
+            { value: "GITHUB", label: "GitHub" },
+            { value: "EASYPANEL", label: "EasyPanel" },
+            { value: "SECURITY", label: "Segurança" },
+          ]}
+        />
+        <AdminSelectFilter
+          value={severityFilter}
+          onChange={setSeverityFilter}
+          label="Severidade"
+          options={[
+            { value: "ALL", label: "Todas as severidades" },
+            { value: "SUCCESS", label: "Sucesso" },
+            { value: "INFO", label: "Informação" },
+            { value: "WARNING", label: "Atenção" },
+            { value: "FAIL", label: "Falha" },
+            { value: "CRITICAL", label: "Crítico" },
           ]}
         />
         <span className="text-[12px] tabular-nums text-gray-500 sm:ml-auto">
-          {filtered.length} de {totalLoaded} carregado{totalLoaded === 1 ? "" : "s"}
+          {totalLoaded} evento{totalLoaded === 1 ? "" : "s"} carregado{totalLoaded === 1 ? "" : "s"}
           {cursor ? " · mais disponíveis" : ""}
         </span>
       </AdminFilterBar>
 
-      {filtered.length === 0 ? (
+      {/* Listagem Vazia */}
+      {totalLoaded === 0 ? (
         <AdminSection flush>
-          <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+          <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400">
-              <ScrollText className="h-5 w-5" strokeWidth={1.5} />
+              {debouncedSearch || typeFilter !== "ALL" || severityFilter !== "ALL" ? (
+                <FilterX className="h-5 w-5" strokeWidth={1.5} />
+              ) : (
+                <ScrollText className="h-5 w-5" strokeWidth={1.5} />
+              )}
             </div>
-            <p className="text-[13.5px] font-semibold text-white/85">Nenhum evento</p>
-            <p className="mt-1 max-w-sm text-[12.5px] text-gray-500">
-              Ajuste os filtros ou aguarde novas ações na plataforma.
+            <p className="text-[13.5px] font-semibold text-white/85">
+              {debouncedSearch || typeFilter !== "ALL" || severityFilter !== "ALL"
+                ? "Nenhum evento encontrado com estes filtros."
+                : "Nenhum evento de auditoria registrado"}
             </p>
+            <p className="mt-1 max-w-sm text-[12.5px] text-gray-500">
+              {debouncedSearch || typeFilter !== "ALL" || severityFilter !== "ALL"
+                ? "Tente ajustar os termos de busca, o tipo ou a severidade selecionada."
+                : "Novas ações administrativas, logins e operações de sistema serão registradas aqui."}
+            </p>
+            {(debouncedSearch || typeFilter !== "ALL" || severityFilter !== "ALL") && (
+              <button
+                type="button"
+                className="admin-btn-secondary mt-4 text-[12px]"
+                onClick={() => {
+                  setSearch("");
+                  setTypeFilter("ALL");
+                  setSeverityFilter("ALL");
+                }}
+              >
+                Limpar filtros
+              </button>
+            )}
           </div>
         </AdminSection>
       ) : (
@@ -315,11 +384,12 @@ export default function AdminAuditPage() {
               description={`${logs.length} evento${logs.length === 1 ? "" : "s"}`}
               flush
             >
-              <div className="admin-table-wrap overflow-x-auto">
-                <table className="admin-table w-full min-w-[720px] border-collapse text-left text-[13px]">
+              {/* Tabela Desktop */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="admin-table w-full min-w-[760px] border-collapse text-left text-[13px]">
                   <thead>
                     <tr className="border-b border-white/[0.06]">
-                      <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
+                      <th className="w-[120px] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
                         Severidade
                       </th>
                       <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
@@ -331,17 +401,17 @@ export default function AdminAuditPage() {
                       <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
                         Empresa
                       </th>
-                      <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
+                      <th className="w-[140px] px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
                         Quando
                       </th>
-                      <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
-                       {" "}
+                      <th className="w-[100px] px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
+                        Ações
                       </th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.map((log) => {
-                      const sev = auditSeverity(log.action);
+                      const sev = auditSeverity(log.action, log.severity);
                       return (
                         <tr
                           key={log.id}
@@ -356,30 +426,30 @@ export default function AdminAuditPage() {
                             <p className="font-medium text-white/90">
                               {humanizeAuditAction(log.action)}
                             </p>
-                            <p className="mt-0.5 font-mono text-[11px] text-gray-600">
+                            <p className="mt-0.5 font-mono text-[11px] text-gray-500">
                               {log.action}
                             </p>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-gray-300">
-                            <p className="truncate max-w-[160px]">
+                            <p className="max-w-[180px] truncate font-medium">
                               {log.user?.name || log.user?.email || "Sistema"}
                             </p>
-                            {log.ip ? (
-                              <p className="text-[11px] text-gray-600">
-                                {formatAuditIp(log.ip)}
-                              </p>
-                            ) : null}
+                            <p className="text-[11px] text-gray-500">
+                              {formatAuditIp(log.ip)}
+                            </p>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-gray-400">
-                            {log.tenant?.name || "—"}
+                            {log.tenant?.name || "Global"}
                           </td>
                           <td className="px-4 py-2.5 align-middle tabular-nums text-gray-400">
-                            {formatDate(log.createdAt)}
+                            <time dateTime={log.createdAt} title={new Date(log.createdAt).toLocaleString("pt-BR")}>
+                              {formatDate(log.createdAt)}
+                            </time>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-right">
                             <button
                               type="button"
-                              className="admin-btn-ghost h-8 px-2.5 text-[12px]"
+                              className="admin-btn-secondary h-8 px-3 text-[12px] font-medium"
                               onClick={() => setDetail(log)}
                             >
                               Detalhes
@@ -391,27 +461,92 @@ export default function AdminAuditPage() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Cards Mobile / Tablet */}
+              <div className="block lg:hidden divide-y divide-white/[0.04]">
+                {logs.map((log) => {
+                  const sev = auditSeverity(log.action, log.severity);
+                  return (
+                    <div
+                      key={log.id}
+                      className="p-3.5 sm:p-4 space-y-2.5 transition-colors hover:bg-white/[0.02]"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-0.5 min-w-0">
+                          <p className="font-medium text-[13.5px] text-white/95 truncate">
+                            {humanizeAuditAction(log.action)}
+                          </p>
+                          <p className="font-mono text-[11px] text-gray-500 truncate">
+                            {log.action}
+                          </p>
+                        </div>
+                        <StatusBadge tone={sev.tone} dot>
+                          {sev.label}
+                        </StatusBadge>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[12px] text-gray-400 pt-1 border-t border-white/[0.03]">
+                        <div>
+                          <span className="text-gray-500 block text-[11px]">Ator</span>
+                          <span className="truncate block font-medium text-gray-300">
+                            {log.user?.name || log.user?.email || "Sistema"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 block text-[11px]">Empresa</span>
+                          <span className="truncate block text-gray-300">
+                            {log.tenant?.name || "Global"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 block text-[11px]">IP</span>
+                          <span className="text-gray-400">{formatAuditIp(log.ip)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 block text-[11px]">Horário</span>
+                          <span className="tabular-nums text-gray-400">{formatDate(log.createdAt)}</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex justify-end">
+                        <button
+                          type="button"
+                          className="admin-btn-secondary h-7.5 px-3 text-[11.5px]"
+                          onClick={() => setDetail(log)}
+                        >
+                          Ver detalhes
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </AdminSection>
           ))}
 
+          {/* Botão de Paginação Server-side */}
           {cursor ? (
-            <div className="flex justify-center pt-1">
+            <div className="flex justify-center pt-2">
               <button
                 type="button"
-                className="admin-btn-secondary"
+                className="admin-btn-secondary min-w-[200px]"
                 disabled={loadingMore}
                 onClick={() => void loadMore()}
               >
-                {loadingMore ? "Carregando…" : "Carregar mais eventos"}
+                {loadingMore ? "Carregando mais eventos…" : "Carregar mais eventos"}
               </button>
             </div>
           ) : null}
         </div>
       )}
 
+      {/* Modal de Detalhes do Evento */}
       <Modal
         open={!!detail}
-        onClose={() => setDetail(null)}
+        onClose={() => {
+          setDetail(null);
+          setCopied(false);
+        }}
         title={detail ? humanizeAuditAction(detail.action) : "Detalhes"}
         icon={<ScrollText className="h-4 w-4" strokeWidth={1.75} />}
         size="md"
@@ -420,7 +555,24 @@ export default function AdminAuditPage() {
           <DialogFooter>
             <button
               type="button"
-              className="admin-btn-secondary h-9 px-3.5"
+              className="admin-btn-secondary h-9 px-3.5 gap-1.5"
+              onClick={handleCopyDetails}
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-emerald-300">Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-gray-400" />
+                  <span>Copiar detalhes</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9 px-4"
               onClick={() => setDetail(null)}
             >
               Fechar
@@ -430,74 +582,169 @@ export default function AdminAuditPage() {
       >
         {detail && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge tone={auditSeverity(detail.action).tone} dot>
-                {auditSeverity(detail.action).label}
-              </StatusBadge>
-            </div>
-            <EntitySummary
-              title={humanizeAuditAction(detail.action)}
-              subtitle={detail.user?.name || "Sistema"}
-              meta={[
-                {
-                  label: "Data",
-                  value: formatDate(detail.createdAt),
-                },
-                {
-                  label: "IP",
-                  value: formatAuditIp(detail.ip),
-                },
-                {
-                  label: "Empresa",
-                  value: detail.tenant?.name || "—",
-                },
-              ]}
-            />
-            {detail.user?.email ? (
-              <p className="text-[12px] text-ink-muted">
-                Ator:{" "}
-                <span className="font-medium text-ink dark:text-white">
-                  {detail.user.email}
-                </span>
-              </p>
-            ) : null}
-            {meta && Object.keys(meta).length > 0 ? (
-              <details className="group rounded-xl border border-black/[0.05] dark:border-white/[0.06]">
-                <summary className="cursor-pointer list-none px-3.5 py-2.5 text-[12.5px] font-medium text-ink-secondary marker:content-none dark:text-gray-200 [&::-webkit-details-marker]:hidden">
-                  <span className="inline-flex items-center gap-1.5">
-                    Detalhes técnicos
-                    <span className="text-[11px] font-normal text-ink-faint group-open:hidden">
-                      (expandir)
-                    </span>
+            {/* Header com badge semântico + código técnico */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-2">
+                <StatusBadge tone={auditSeverity(detail.action, detail.severity).tone} dot>
+                  {auditSeverity(detail.action, detail.severity).label}
+                </StatusBadge>
+                {detail.category && (
+                  <span className="rounded px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wider text-gray-400 bg-white/[0.04] border border-white/[0.06]">
+                    {detail.category}
                   </span>
-                </summary>
-                <div className="border-t border-black/[0.05] px-3.5 py-2.5 dark:border-white/[0.06]">
-                  <p className="mb-2 font-mono text-[11px] text-ink-faint">{detail.action}</p>
-                  <pre className="max-h-48 overflow-auto rounded-lg bg-black/[0.03] p-3 text-[11px] leading-relaxed text-ink-secondary dark:bg-white/[0.04] dark:text-gray-300">
-                    {JSON.stringify(meta, null, 2)}
-                  </pre>
+                )}
+              </div>
+              <code className="font-mono text-[11px] text-gray-400 bg-white/[0.03] px-2 py-0.5 rounded border border-white/[0.06]">
+                {detail.action}
+              </code>
+            </div>
+
+            {/* Grid Principal de Informações */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12.5px]">
+              <div className="p-2.5 rounded-lg border border-white/[0.05] bg-white/[0.02] space-y-1">
+                <div className="flex items-center gap-1.5 text-gray-400 text-[11px]">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>Data e Horário</span>
                 </div>
-              </details>
-            ) : (
-              <p className="font-mono text-[11px] text-ink-faint">{detail.action}</p>
+                <p className="font-medium text-white/90 tabular-nums">
+                  {new Date(detail.createdAt).toLocaleString("pt-BR", {
+                    dateStyle: "full",
+                    timeStyle: "medium",
+                  })}
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-white/[0.05] bg-white/[0.02] space-y-1">
+                <div className="flex items-center gap-1.5 text-gray-400 text-[11px]">
+                  <User className="h-3.5 w-3.5" />
+                  <span>Ator Responsável</span>
+                </div>
+                <p className="font-medium text-white/90 truncate">
+                  {detail.user?.name || "Sistema"}
+                </p>
+                {detail.user?.email && (
+                  <p className="text-[11px] text-gray-400 truncate">{detail.user.email}</p>
+                )}
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-white/[0.05] bg-white/[0.02] space-y-1">
+                <div className="flex items-center gap-1.5 text-gray-400 text-[11px]">
+                  <Globe className="h-3.5 w-3.5" />
+                  <span>Endereço IP</span>
+                </div>
+                <p className="font-medium text-white/90">
+                  {formatAuditIp(detail.ip)}
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-lg border border-white/[0.05] bg-white/[0.02] space-y-1">
+                <div className="flex items-center gap-1.5 text-gray-400 text-[11px]">
+                  <Building2 className="h-3.5 w-3.5" />
+                  <span>Empresa / Escopo</span>
+                </div>
+                <p className="font-medium text-white/90 truncate">
+                  {detail.tenant?.name || "Global da Plataforma"}
+                </p>
+              </div>
+            </div>
+
+            {/* Contextos Especiais (Deployment, GitHub, EasyPanel, etc.) */}
+            {detail.metadata && (
+              <div className="space-y-2">
+                {/* Contexto de Deploy */}
+                {Boolean(detail.metadata.sha || detail.metadata.shortSha || detail.metadata.targetSha) && (
+                  <div className="p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.03] space-y-1 text-[12px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium uppercase tracking-wider text-amber-400">
+                        Contexto da Implantação
+                      </span>
+                      {Boolean(detail.metadata.status) && (
+                        <span className="font-mono text-[11px] text-gray-300">
+                          {String(detail.metadata.status)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-3 pt-1">
+                      {Boolean(detail.metadata.sha) && (
+                        <div>
+                          <span className="text-gray-500 text-[11px] block">Commit SHA:</span>
+                          <span className="font-mono text-[11px] text-amber-300">
+                            {String(detail.metadata.sha).slice(0, 7)}
+                          </span>
+                        </div>
+                      )}
+                      {Boolean(detail.metadata.branch) && (
+                        <div>
+                          <span className="text-gray-500 text-[11px] block">Branch:</span>
+                          <span className="font-mono text-[11px] text-gray-300">
+                            {String(detail.metadata.branch)}
+                          </span>
+                        </div>
+                      )}
+                      {Boolean(detail.metadata.durationMs) && (
+                        <div>
+                          <span className="text-gray-500 text-[11px] block">Duração:</span>
+                          <span className="tabular-nums text-gray-300">
+                            {Number(detail.metadata.durationMs) / 1000}s
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Contexto de Contagem / Limpeza */}
+                {Boolean(detail.metadata.deletedCount !== undefined || detail.metadata.count !== undefined) && (
+                  <div className="p-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] text-[12px] flex items-center justify-between">
+                    <span className="text-gray-400">Registros afetados pela operação:</span>
+                    <span className="font-semibold text-emerald-400 tabular-nums">
+                      {String(detail.metadata.deletedCount ?? detail.metadata.count)}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
+
+            {/* Detalhes Técnicos e Metadados Sanitizados */}
+            <details className="group rounded-xl border border-white/[0.06] bg-black/20">
+              <summary className="cursor-pointer list-none px-3.5 py-2.5 text-[12.5px] font-medium text-gray-300 marker:content-none hover:text-white flex items-center justify-between [&::-webkit-details-marker]:hidden">
+                <span className="inline-flex items-center gap-1.5">
+                  <Terminal className="h-3.5 w-3.5 text-gray-400" />
+                  Detalhes técnicos e metadados
+                </span>
+                <span className="text-[11px] font-normal text-gray-500 group-open:hidden">
+                  (clique para expandir)
+                </span>
+              </summary>
+              <div className="border-t border-white/[0.06] p-3 space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-gray-400">
+                  <span>ID do Evento: <code className="font-mono text-gray-300">{detail.id}</code></span>
+                  {detail.entity && <span>Entidade: <code className="font-mono text-gray-300">{detail.entity}</code></span>}
+                </div>
+                <pre className="max-h-56 overflow-auto rounded-lg bg-black/40 p-3 text-[11px] font-mono leading-relaxed text-gray-300 border border-white/[0.04]">
+                  {JSON.stringify(detail.metadata || {}, null, 2)}
+                </pre>
+              </div>
+            </details>
           </div>
         )}
       </Modal>
 
+      {/* Modal de Limpeza com Confirmação Dupla Obrigatória */}
       <Modal
         open={clearOpen}
         onClose={() => {
           if (clearMutation.isPending) return;
           setClearOpen(false);
+          setClearAgree(false);
           setClearConfirm("");
         }}
-        title="Limpar logs de auditoria?"
-        description="Remove o histórico de eventos da plataforma. Esta ação não pode ser desfeita."
+        title="Limpar histórico de auditoria?"
+        description="Esta ação removerá da visualização administrativa os eventos selecionados conforme a política de retenção. Registros de segurança que precisam ser preservados continuarão protegidos."
         variant="danger"
         tone="danger"
         icon={<Trash2 className="h-4 w-4" strokeWidth={1.75} />}
-        size="sm"
+        size="md"
         preventClose={clearMutation.isPending}
         footer={
           <DialogFooter>
@@ -507,6 +754,7 @@ export default function AdminAuditPage() {
               disabled={clearMutation.isPending}
               onClick={() => {
                 setClearOpen(false);
+                setClearAgree(false);
                 setClearConfirm("");
               }}
             >
@@ -515,33 +763,75 @@ export default function AdminAuditPage() {
             <button
               type="button"
               className="btn-danger h-9 px-4"
-              disabled={clearMutation.isPending || !canClear}
+              disabled={clearMutation.isPending || !canSubmitClear}
               onClick={() => clearMutation.mutate()}
             >
-              {clearMutation.isPending ? "Limpando…" : "Limpar todos os logs"}
+              {clearMutation.isPending ? "Limpando…" : "Limpar histórico"}
             </button>
           </DialogFooter>
         }
       >
-        <div className="space-y-3">
-          <ConsequenceBanner tone="danger">
-            Serão removidos todos os registros de auditoria (login, admin, empresas,
-            planos, etc.). Um único evento residual será gravado informando quem limpou e
-            quantos registros existiam.
-          </ConsequenceBanner>
-          <FormField
-            label="Digite LIMPAR para confirmar"
-            required
-            hint="A confirmação não diferencia maiúsculas e minúsculas."
-          >
-            <input
-              className="input"
-              value={clearConfirm}
-              onChange={(e) => setClearConfirm(e.target.value)}
-              placeholder="LIMPAR"
-              autoComplete="off"
+        <div className="space-y-4">
+          {/* Resumo Semântico de Impacto */}
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3.5 space-y-2.5 text-[12.5px]">
+            <div className="flex items-start gap-2 text-rose-300/90">
+              <span className="font-semibold shrink-0 text-[11.5px] uppercase tracking-wider text-rose-400">
+                Será removido:
+              </span>
+              <span>Histórico administrativo exibido no painel de auditoria</span>
+            </div>
+            <div className="flex items-start gap-2 text-emerald-300/90">
+              <span className="font-semibold shrink-0 text-[11.5px] uppercase tracking-wider text-emerald-400">
+                Permanecem protegidos:
+              </span>
+              <span>Registros de segurança, 2FA/MFA e trilhas imutáveis</span>
+            </div>
+            <div className="flex items-start gap-2 text-emerald-300/90">
+              <span className="font-semibold shrink-0 text-[11.5px] uppercase tracking-wider text-emerald-400">
+                Será registrado:
+              </span>
+              <span>Novo evento de auditoria documentando o autor e a quantidade limpa</span>
+            </div>
+          </div>
+
+          {/* Fator 1: Checkbox do Design System */}
+          <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+            <Checkbox
+              id="audit-clear-agree"
+              checked={clearAgree}
+              onCheckedChange={setClearAgree}
+              disabled={clearMutation.isPending}
+              aria-label="Entendo o impacto desta operação sobre o histórico de auditoria"
             />
-          </FormField>
+            <label
+              htmlFor="audit-clear-agree"
+              className="cursor-pointer select-none text-[12.5px] leading-snug text-gray-300"
+            >
+              Entendo o impacto desta operação sobre o histórico de auditoria.
+            </label>
+          </div>
+
+          {/* Fator 2: Confirmação Textual "LIMPAR AUDITORIA" */}
+          <div className="space-y-1.5">
+            <label className="block text-[12.5px] font-medium text-gray-300">
+              Para confirmar, digite <span className="font-mono font-semibold text-rose-300">LIMPAR AUDITORIA</span>
+            </label>
+            <div className="relative">
+              <input
+                className="input w-full pr-9 uppercase"
+                value={clearConfirm}
+                onChange={(e) => setClearConfirm(e.target.value)}
+                placeholder="LIMPAR AUDITORIA"
+                autoComplete="off"
+                disabled={clearMutation.isPending}
+              />
+              {isExactConfirm && (
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-400 animate-in fade-in zoom-in duration-150">
+                  <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Modal>
     </div>
