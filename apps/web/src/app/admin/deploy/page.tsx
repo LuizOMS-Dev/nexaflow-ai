@@ -724,6 +724,21 @@ export default function AdminDeployPage() {
     },
   });
 
+  // Timers em tempo real (1s) para contagem fluida e sem congelamentos/saltos (declarados no topo para respeitar as Regras de Hooks)
+  const activeLiveSeconds = useLiveElapsedSeconds(
+    overviewQuery.data?.activeDeployment?.startedAt,
+    !overviewQuery.data?.activeDeployment,
+    overviewQuery.data?.activeDeployment?.durationSeconds
+  );
+
+  const isDetailFinished =
+    detailQuery.data?.status === "COMPLETED" || detailQuery.data?.status === "FAILED";
+  const detailLiveSeconds = useLiveElapsedSeconds(
+    detailQuery.data?.startedAt,
+    isDetailFinished,
+    detailQuery.data?.durationSeconds
+  );
+
   if (user?.platformRole !== "SUPERADMIN") return null;
 
   if (overviewQuery.isError) {
@@ -791,21 +806,6 @@ export default function AdminDeployPage() {
   const isRateLimited = Boolean(data.gitHub?.rateLimit?.isRateLimited);
 
   const activeStageIdx = active ? getStageIndex(active.stage || active.status) : 0;
-
-  // Timers em tempo real (1s) para contagem fluida e sem congelamentos/saltos
-  const activeLiveSeconds = useLiveElapsedSeconds(
-    active?.startedAt,
-    !active,
-    active?.durationSeconds
-  );
-
-  const isDetailFinished =
-    detailQuery.data?.status === "COMPLETED" || detailQuery.data?.status === "FAILED";
-  const detailLiveSeconds = useLiveElapsedSeconds(
-    detailQuery.data?.startedAt,
-    isDetailFinished,
-    detailQuery.data?.durationSeconds
-  );
 
   return (
     <div className="space-y-5">
