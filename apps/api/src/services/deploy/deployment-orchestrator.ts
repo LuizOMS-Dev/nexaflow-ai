@@ -783,7 +783,7 @@ export class DeploymentOrchestrator {
   /**
    * Retorna os detalhes de um deployment específico
    */
-  async getDeployment(id: string) {
+  async getDeployment(id: string, offset = 0) {
     const deployment = assertFound(
       await prisma.deployment.findUnique({
         where: { id },
@@ -818,6 +818,10 @@ export class DeploymentOrchestrator {
       webHealth = "UNHEALTHY";
     }
 
+    const fullLogs = deployment.logs || "";
+    const logs = offset > 0 ? fullLogs.slice(offset) : fullLogs;
+    const logOffset = fullLogs.length;
+
     return {
       id: deployment.id,
       environment: deployment.environment,
@@ -835,7 +839,9 @@ export class DeploymentOrchestrator {
       finishedAt: deployment.finishedAt,
       durationSeconds,
       errorSummary: deployment.errorSummary,
-      logs: deployment.logs,
+      logs,
+      logOffset,
+      isFinished,
       healthStatus: deployment.healthStatus,
       apiHealth,
       webHealth,

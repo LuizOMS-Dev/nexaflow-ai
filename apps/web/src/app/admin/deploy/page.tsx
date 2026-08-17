@@ -217,6 +217,8 @@ type DeploymentDetail = {
   durationSeconds?: number;
   errorSummary?: string;
   logs: string;
+  logOffset?: number;
+  isFinished?: boolean;
   healthStatus?: string;
   apiHealth?: string;
   webHealth?: string;
@@ -380,8 +382,26 @@ export default function AdminDeployPage() {
   const [isReplacingToken, setIsReplacingToken] = useState(false);
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
   const [page, setPage] = useState(1);
+  const [isTabVisible, setIsTabVisible] = useState(true);
 
   const logContainerRef = useRef<HTMLDivElement | null>(null);
+  const prevActiveRef = useRef<{ id: string; status: string; shortSha: string } | null>(null);
+
+  // Monitora visibilidade da aba para reduzir consumo em background e sincronizar imediatamente ao retornar
+  useEffect(() => {
+    const handleVisibility = () => {
+      const visible = typeof document !== "undefined" ? document.visibilityState === "visible" : true;
+      setIsTabVisible(visible);
+      if (visible) {
+        void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+        if (selectedDetailId) {
+          void qc.invalidateQueries({ queryKey: ["admin-deploy-detail", selectedDetailId] });
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [qc, selectedDetailId]);
 
   // Form states do Modal de Configuração do EasyPanel (Write-Only)
   const [cfgUrl, setCfgUrl] = useState("");
@@ -399,15 +419,21 @@ export default function AdminDeployPage() {
   const [isReplacingGithubToken, setIsReplacingGithubToken] = useState(false);
   const [githubTestResult, setGithubTestResult] = useState<TestGitHubConnectionResponse | null>(null);
 
-  // 1. Status geral de deploy
+  // 1. Status geral de deploy (Polling automático a cada 2s quando houver deploy ativo)
   const overviewQuery = useQuery({
     queryKey: ["admin-deploy-status"],
     queryFn: () => api<DeployOverviewResponse>("/admin/deploy/status"),
     enabled: user?.platformRole === "SUPERADMIN",
     refetchInterval: (query) => {
-      const data = query.state.data;
-      return data?.activeDeployment ? 3000 : 20000;
+      const active = query.state.data?.activeDeployment;
+      if (active) {
+        return isTabVisible ? 2000 : 8000;
+      }
+      return 25000;
     },
+    refetchOnWindowFocus: true,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
   // 2. Lista de commits recentes do GitHub (filtrada pelo clear marker)
@@ -418,7 +444,7 @@ export default function AdminDeployPage() {
     enabled: user?.platformRole === "SUPERADMIN",
   });
 
-  // 3. Histórico de deploys
+  // 3. Histórico de deploys (Atualiza em background durante deploys)
   const historyQuery = useQuery({
     queryKey: ["admin-deploy-history", page],
     queryFn: () =>
@@ -429,17 +455,58 @@ export default function AdminDeployPage() {
         totalPages: number;
       }>(`/admin/deploy/history?page=${page}&limit=10`),
     enabled: user?.platformRole === "SUPERADMIN",
-    refetchInterval: () => (overviewQuery.data?.activeDeployment ? 4000 : false),
+    refetchInterval: () =>
+      overviewQuery.data?.activeDeployment ? (isTabVisible ? 4000 : 10000) : false,
   });
 
-  // 4. Detalhes do deploy selecionado
+  // 4. Detalhes do deploy selecionado (Atualização em tempo real de logs e health)
   const detailQuery = useQuery({
     queryKey: ["admin-deploy-detail", selectedDetailId],
     queryFn: () => api<DeploymentDetail>(`/admin/deploy/${selectedDetailId}`),
     enabled: Boolean(selectedDetailId) && user?.platformRole === "SUPERADMIN",
-    refetchInterval: () =>
-      overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 2500 : false,
+    refetchInterval: (query) => {
+      const detail = query.state.data;
+      const isFinished = detail?.status === "COMPLETED" || detail?.status === "FAILED" || detail?.isFinished;
+      if (isFinished) return false;
+      return isTabVisible ? 2000 : 8000;
+    },
+    refetchOnWindowFocus: true,
   });
+
+  // Monitora transições do deploy ativo para disparo de toasts de conclusão e sincronização geral
+  useEffect(() => {
+    const active = overviewQuery.data?.activeDeployment;
+
+    if (active) {
+      prevActiveRef.current = {
+        id: active.id,
+        status: active.status,
+        shortSha: active.commitShortSha,
+      };
+    } else if (prevActiveRef.current) {
+      const last = prevActiveRef.current;
+      prevActiveRef.current = null;
+
+      // Invalidação imediata de todas as queries pós-deploy
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
+
+      if (last.status === "COMPLETED" || overviewQuery.data?.status === "UP_TO_DATE") {
+        toast({
+          title: "Implantação concluída",
+          description: `Versão ${last.shortSha} está ativa e operacional em produção.`,
+          kind: "success",
+        });
+      } else if (last.status === "FAILED") {
+        toast({
+          title: "Implantação falhou",
+          description: "A implantação foi interrompida. Verifique os logs operacionais.",
+          kind: "error",
+        });
+      }
+    }
+  }, [overviewQuery.data, qc, toast]);
 
   // 5. Configuração salva do EasyPanel (Write-Only)
   const configQuery = useQuery({

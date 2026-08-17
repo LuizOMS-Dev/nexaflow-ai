@@ -332,11 +332,13 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     };
   });
 
-  // 8. Detalhes e logs de um deployment específico
+  // 8. Detalhes e logs de um deployment específico (com suporte a cursor incremental)
   app.get("/admin/deploy/:id", async (request, reply) => {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const params = request.params as { id: string };
-    return deploymentOrchestrator.getDeployment(params.id);
+    const query = request.query as { offset?: string };
+    const offset = query.offset ? Math.max(0, parseInt(query.offset, 10) || 0) : 0;
+    return deploymentOrchestrator.getDeployment(params.id, offset);
   });
 
   // 9. Rollback para uma versão anterior bem-sucedida
