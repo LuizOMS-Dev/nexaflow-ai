@@ -14,6 +14,7 @@ import {
   GitCommit,
   HelpCircle,
   History,
+  Info,
   KeyRound,
   Layers,
   Loader2,
@@ -382,8 +383,8 @@ export default function AdminDeployPage() {
       setClearHistoryOpen(false);
       void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
       toast({
-        title: "Histórico de atualizações limpo",
-        description: "Os commits continuam disponíveis normalmente no GitHub.",
+        title: "Atualizações recentes limpas",
+        description: "Nenhuma alteração foi realizada no repositório GitHub.",
         kind: "success",
       });
     },
@@ -408,8 +409,8 @@ export default function AdminDeployPage() {
       void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
       toast({
-        title: "Histórico de deploys limpo",
-        description: "Os registros de implantações passadas foram removidos.",
+        title: "Histórico de implantações limpo",
+        description: "A versão em produção e os serviços implantados permanecem inalterados.",
         kind: "success",
       });
     },
@@ -1786,14 +1787,15 @@ export default function AdminDeployPage() {
       <Modal
         open={clearHistoryOpen}
         onClose={() => setClearHistoryOpen(false)}
-        title="Limpar histórico de atualizações?"
-        description="Os commits atualmente exibidos serão removidos deste painel. Nenhuma alteração será feita no GitHub, no código-fonte ou nas versões implantadas."
+        title="Limpar atualizações recentes?"
+        description="Os commits exibidos nesta seção serão ocultados do histórico recente do NexaFlow. Nenhum commit, branch ou arquivo será removido do GitHub."
         size="sm"
         footer={
           <DialogFooter>
             <button
               type="button"
               className="admin-btn-secondary h-9"
+              disabled={clearHistoryMut.isPending}
               onClick={() => setClearHistoryOpen(false)}
             >
               Cancelar
@@ -1809,10 +1811,13 @@ export default function AdminDeployPage() {
           </DialogFooter>
         }
       >
-        <div className="py-2 text-[12.5px] text-gray-300">
-          <p>
-            Esta ação limpa exclusivamente a lista de visualização do painel. Novos commits enviados para a branch principal voltarão a aparecer aqui automaticamente.
-          </p>
+        <div className="space-y-2.5 py-1">
+          <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 text-[12px] text-gray-300">
+            <Info className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
+            <p className="leading-relaxed">
+              Novos commits publicados depois desta limpeza continuarão aparecendo normalmente.
+            </p>
+          </div>
         </div>
       </Modal>
 
@@ -1820,8 +1825,8 @@ export default function AdminDeployPage() {
       <Modal
         open={clearDeployHistoryOpen}
         onClose={() => setClearDeployHistoryOpen(false)}
-        title="Limpar histórico de deploys?"
-        description="Todos os registros de implantações passadas serão removidos deste painel. Esta ação é irreversível e não afeta a versão atualmente em produção."
+        title="Limpar histórico de implantações?"
+        description="Os registros exibidos no histórico serão removidos deste painel. Isso não altera a versão atualmente em produção, o código no GitHub ou qualquer serviço no EasyPanel."
         size="sm"
         footer={
           <DialogFooter>
@@ -1844,10 +1849,13 @@ export default function AdminDeployPage() {
           </DialogFooter>
         }
       >
-        <div className="py-2 text-[12.5px] text-gray-300">
-          <p>
-            Esta ação limpa o log auditável de implantações concluídas e falhadas. O status da aplicação e a versão atual continuam funcionando normalmente.
-          </p>
+        <div className="space-y-2.5 py-1">
+          <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 text-[12px] text-gray-300">
+            <Info className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
+            <p className="leading-relaxed">
+              Esta ação remove apenas o histórico administrativo exibido no NexaFlow.
+            </p>
+          </div>
         </div>
       </Modal>
     </div>
