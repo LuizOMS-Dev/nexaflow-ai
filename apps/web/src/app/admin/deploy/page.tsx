@@ -10,12 +10,11 @@ import {
   ChevronUp,
   Copy,
   ExternalLink,
-  Eye,
-  EyeOff,
   GitBranch,
   GitCommit,
   HelpCircle,
   History,
+  KeyRound,
   Layers,
   RefreshCw,
   Rocket,
@@ -108,8 +107,7 @@ type EasyPanelConfigResponse = {
   url: string;
   projectName: string;
   serviceName: string;
-  hasToken: boolean;
-  tokenPreview: string;
+  tokenConfigured: boolean;
 };
 
 type TestConnectionResponse = {
@@ -229,10 +227,10 @@ export default function AdminDeployPage() {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [showAllCommits, setShowAllCommits] = useState(false);
   const [copiedSha, setCopiedSha] = useState<string | null>(null);
-  const [showToken, setShowToken] = useState(false);
+  const [isReplacingToken, setIsReplacingToken] = useState(false);
   const [page, setPage] = useState(1);
 
-  // Form states do Modal de Configuração do EasyPanel
+  // Form states do Modal de Configuração do EasyPanel (Write-Only)
   const [cfgUrl, setCfgUrl] = useState("");
   const [cfgProject, setCfgProject] = useState("");
   const [cfgService, setCfgService] = useState("");
@@ -281,7 +279,7 @@ export default function AdminDeployPage() {
       overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 3000 : false,
   });
 
-  // 5. Configuração salva do EasyPanel
+  // 5. Configuração salva do EasyPanel (Write-Only)
   const configQuery = useQuery({
     queryKey: ["admin-deploy-config"],
     queryFn: () => api<EasyPanelConfigResponse>("/admin/deploy/config"),
@@ -294,7 +292,7 @@ export default function AdminDeployPage() {
       setCfgProject(configQuery.data.projectName || "i9atendimento");
       setCfgService(configQuery.data.serviceName || "nexaflow");
       setCfgToken("");
-      setShowToken(false);
+      setIsReplacingToken(false);
       setTestResult(null);
     }
   }, [configQuery.data]);
@@ -341,6 +339,8 @@ export default function AdminDeployPage() {
       }),
     onSuccess: () => {
       setConfigModalOpen(false);
+      setCfgToken("");
+      setIsReplacingToken(false);
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-config"] });
       toast({
@@ -476,6 +476,7 @@ export default function AdminDeployPage() {
   }
 
   const isFetchingAny = overviewQuery.isFetching || commitsQuery.isFetching;
+  const tokenIsSaved = Boolean(configQuery.data?.tokenConfigured);
 
   return (
     <div className="space-y-5">
@@ -1180,7 +1181,7 @@ export default function AdminDeployPage() {
         </div>
       </Modal>
 
-      {/* MODAL 4: Área Segura de Configuração do EasyPanel */}
+      {/* MODAL 4: Área Segura de Configuração do EasyPanel (Write-Only Secrets) */}
       <Modal
         open={configModalOpen}
         onClose={() => setConfigModalOpen(false)}
@@ -1203,7 +1204,7 @@ export default function AdminDeployPage() {
               onClick={() =>
                 testConnMut.mutate({
                   url: cfgUrl,
-                  token: cfgToken || undefined,
+                  token: cfgToken.trim() || undefined,
                   projectName: cfgProject,
                   serviceName: cfgService,
                 })
@@ -1219,13 +1220,13 @@ export default function AdminDeployPage() {
               onClick={() =>
                 saveConfigMut.mutate({
                   url: cfgUrl,
-                  token: cfgToken || undefined,
+                  token: cfgToken.trim() || undefined,
                   projectName: cfgProject,
                   serviceName: cfgService,
                 })
               }
             >
-              {saveConfigMut.isPending ? "Salvando…" : "Salvar configuração"}
+              {saveConfigMut.isPending ? "Salvando…" : "Salvar alterações"}
             </button>
           </DialogFooter>
         }
@@ -1265,30 +1266,77 @@ export default function AdminDeployPage() {
             </FormField>
           </div>
 
-          {/* Campo: Token da API */}
-          <FormField
-            label="Token da API (EasyPanel API Key)"
-            hint="O token é criptografado em repouso no servidor (AES-256) e nunca é exposto ao navegador."
-          >
-            <div className="relative">
+          {/* Campo: Credencial / Token da API (Write-Only) */}
+          {tokenIsSaved ? (
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  <span className="text-[13px] font-semibold text-emerald-300">Token configurado</span>
+                </div>
+                {!isReplacingToken ? (
+                  <button
+                    type="button"
+                    className="admin-btn-secondary h-7 px-2.5 text-[11.5px]"
+                    onClick={() => {
+                      setIsReplacingToken(true);
+                      setCfgToken("");
+                    }}
+                  >
+                    <KeyRound className="h-3 w-3" /> Substituir token
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-white"
+                    onClick={() => {
+                      setIsReplacingToken(false);
+                      setCfgToken("");
+                    }}
+                  >
+                    Cancelar substituição
+                  </button>
+                )}
+              </div>
+
+              {!isReplacingToken ? (
+                <p className="text-[11.5px] text-gray-400 leading-relaxed">
+                  Por segurança, credenciais existentes nunca são exibidas ou trafegadas para o navegador.
+                </p>
+              ) : (
+                <div className="pt-2 border-t border-white/[0.06]">
+                  <FormField
+                    label="Novo token da API"
+                    hint="Insira uma nova chave de API para rotacionar a credencial existente."
+                  >
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder="Insira o novo token de API"
+                      value={cfgToken}
+                      onChange={(e) => setCfgToken(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </FormField>
+                </div>
+              )}
+            </div>
+          ) : (
+            <FormField
+              label="Token da API (EasyPanel API Key)"
+              required
+              hint="O token é tratado como segredo write-only e criptografado em repouso no servidor (AES-256-GCM)."
+            >
               <input
-                type={showToken ? "text" : "password"}
-                className="input pr-10"
-                placeholder={configQuery.data?.hasToken ? "•••••••••••••••• (deixe vazio para manter)" : "Insira o token de API do EasyPanel"}
+                type="password"
+                className="input"
+                placeholder="Insira uma nova chave de API"
                 value={cfgToken}
                 onChange={(e) => setCfgToken(e.target.value)}
                 autoComplete="new-password"
               />
-              <button
-                type="button"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                onClick={() => setShowToken((s) => !s)}
-                tabIndex={-1}
-              >
-                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </FormField>
+            </FormField>
+          )}
 
           {/* Banner de Resultado do Teste de Conexão */}
           {testResult ? (
@@ -1309,7 +1357,7 @@ export default function AdminDeployPage() {
                 <p className="font-semibold">{testResult.message}</p>
                 {testResult.details ? (
                   <p className="mt-1 text-[11px] opacity-80 leading-relaxed">
-                    URL: {testResult.details.urlAccessible ? "OK" : "Inacessível"} · Autenticação: {testResult.details.authValid ? "Válida" : "Inválida"} · Projeto: {testResult.details.projectFound ? "OK" : "Não encontrado"} · Serviço: {testResult.details.serviceFound ? "OK" : "Não encontrado"}
+                    URL: {testResult.details.urlAccessible ? "OK" : "Inacessível"} · Autenticação: {testResult.details.authValid ? "OK" : "Inválida"} · Projeto: {testResult.details.projectFound ? "OK" : "Não encontrado"} · Serviço: {testResult.details.serviceFound ? "OK" : "Não encontrado"}
                   </p>
                 ) : null}
               </div>

@@ -11,34 +11,38 @@ export async function adminDeployRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.requireSuperadmin);
 
   // 1. Overview geral de deploy e status de conexão
-  app.get("/admin/deploy/status", async () => {
+  app.get("/admin/deploy/status", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     return deploymentOrchestrator.getOverview();
   });
 
   // 2. Lista de commits recentes do GitHub
-  app.get("/admin/deploy/commits", async (request) => {
+  app.get("/admin/deploy/commits", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const q = request.query as { limit?: string };
     const limit = Math.min(30, Math.max(1, Number(q.limit) || 10));
     const commits = await githubClient.listRecentCommits(limit);
     return { commits };
   });
 
-  // 3. Obter configuração atual do EasyPanel (sem jamais expor o token)
-  app.get("/admin/deploy/config", async () => {
+  // 3. Obter configuração atual do EasyPanel (WRITE-ONLY: NUNCA expor o token, preview ou ciphertext)
+  app.get("/admin/deploy/config", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    reply.header("Pragma", "no-cache");
     const cfg = await easyPanelClient.getEffectiveConfig();
-    const hasToken = Boolean(cfg.token);
+    const tokenConfigured = Boolean(cfg.token);
     return {
       configured: Boolean(cfg.baseUrl && cfg.token),
       url: cfg.baseUrl,
       projectName: cfg.projectName,
       serviceName: cfg.serviceName,
-      hasToken,
-      tokenPreview: hasToken ? "••••••••••••••••" : "",
+      tokenConfigured,
     };
   });
 
   // 4. Testar conexão com o EasyPanel de forma real e granular
-  app.post("/admin/deploy/config/test", async (request) => {
+  app.post("/admin/deploy/config/test", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const bodySchema = z.object({
       url: z.string().min(1, "URL é obrigatória"),
       token: z.string().optional(),
@@ -55,12 +59,31 @@ export async function adminDeployRoutes(app: FastifyInstance) {
       );
     }
 
+    const user = request.user;
     const result = await easyPanelClient.testConnection(parsed.data);
+
+    if (user) {
+      await audit({
+        action: "easypanel.connection.tested",
+        userId: user.sub,
+        ip: request.ip,
+        metadata: {
+          url: parsed.data.url,
+          projectName: parsed.data.projectName,
+          serviceName: parsed.data.serviceName,
+          success: result.success,
+          state: result.state,
+          testedCustomToken: Boolean(parsed.data.token),
+        },
+      });
+    }
+
     return result;
   });
 
-  // 5. Salvar configuração do EasyPanel (criptografando o token)
-  app.post("/admin/deploy/config", async (request) => {
+  // 5. Salvar/Substituir configuração do EasyPanel (criptografando o token em repouso)
+  app.post("/admin/deploy/config", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const bodySchema = z.object({
       url: z.string().min(1, "URL é obrigatória"),
       token: z.string().optional(),
@@ -80,18 +103,19 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     const user = request.user;
     if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
 
+    const hasNewToken = Boolean(parsed.data.token && parsed.data.token.trim());
     await easyPanelClient.saveConfig(parsed.data);
 
-    // Auditoria sem registrar o token
+    // Auditoria sem jamais registrar material de segredo
     await audit({
-      action: "easypanel.configuration.updated",
+      action: hasNewToken ? "easypanel.token.rotated" : "easypanel.configuration.updated",
       userId: user.sub,
       ip: request.ip,
       metadata: {
         url: parsed.data.url,
         projectName: parsed.data.projectName,
         serviceName: parsed.data.serviceName,
-        tokenProvided: Boolean(parsed.data.token),
+        tokenRotated: hasNewToken,
       },
     });
 
@@ -100,6 +124,7 @@ export async function adminDeployRoutes(app: FastifyInstance) {
 
   // 6. Iniciar novo deploy
   app.post("/admin/deploy/start", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const bodySchema = z.object({
       commitSha: z.string().optional(),
       branch: z.string().optional(),
@@ -125,7 +150,8 @@ export async function adminDeployRoutes(app: FastifyInstance) {
   });
 
   // 7. Histórico de deploys paginado
-  app.get("/admin/deploy/history", async (request) => {
+  app.get("/admin/deploy/history", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const q = request.query as { page?: string; limit?: string };
     const page = Math.max(1, Number(q.page) || 1);
     const limit = Math.min(50, Math.max(1, Number(q.limit) || 15));
@@ -133,13 +159,15 @@ export async function adminDeployRoutes(app: FastifyInstance) {
   });
 
   // 8. Detalhes e logs de um deployment específico
-  app.get("/admin/deploy/:id", async (request) => {
+  app.get("/admin/deploy/:id", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const params = request.params as { id: string };
     return deploymentOrchestrator.getDeployment(params.id);
   });
 
   // 9. Rollback para uma versão anterior bem-sucedida
   app.post("/admin/deploy/:id/rollback", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const params = request.params as { id: string };
     const target = assertFound(
       await prisma.deployment.findUnique({ where: { id: params.id } }),

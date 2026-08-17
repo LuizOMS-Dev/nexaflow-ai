@@ -295,7 +295,9 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     }
   });
 
-  it("11. Configuração do EasyPanel: salvar criptografado, obter mascarado e testar conexão", async () => {
+  it("11. Configuração do EasyPanel Write-Only: salvar criptografado, obter sem vazar token e testar conexão", async () => {
+    const testSecret = "52372a0b8c6e955d7710feacfb9b3b1e786a665406872484f20dae19a70e7455";
+
     // 1. Salva configuração
     const saveRes = await app.inject({
       method: "POST",
@@ -303,28 +305,32 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       headers: { authorization: `Bearer ${superadminToken}` },
       payload: {
         url: "https://easypanel2.i9atendimento.com.br",
-        token: "52372a0b8c6e955d7710feacfb9b3b1e786a665406872484f20dae19a70e7455",
+        token: testSecret,
         projectName: "i9atendimento",
         serviceName: "nexaflow",
       },
     });
     expect(saveRes.statusCode).toBe(200);
 
-    // 2. Consulta configuração (token NUNCA é retornado)
+    // 2. Consulta configuração (WRITE-ONLY: token NUNCA é retornado, nem preview ou ciphertext)
     const getRes = await app.inject({
       method: "GET",
       url: "/admin/deploy/config",
       headers: { authorization: `Bearer ${superadminToken}` },
     });
     expect(getRes.statusCode).toBe(200);
+    expect(getRes.headers["cache-control"]).toContain("no-store");
     const json = getRes.json();
     expect(json.configured).toBe(true);
     expect(json.url).toBe("https://easypanel2.i9atendimento.com.br");
-    expect(json.hasToken).toBe(true);
-    expect(json.tokenPreview).toContain("••••");
-    expect(getRes.body).not.toContain("52372a0b8c6e955d");
+    expect(json.tokenConfigured).toBe(true);
+    expect(json.token).toBeUndefined();
+    expect(json.tokenPreview).toBeUndefined();
+    expect(json.encryptedToken).toBeUndefined();
+    expect(getRes.body).not.toContain(testSecret);
+    expect(getRes.body).not.toContain("enc:v1");
 
-    // 3. Testa conexão com EasyPanel
+    // 3. Testa conexão com EasyPanel usando o segredo salvo internamente
     const testRes = await app.inject({
       method: "POST",
       url: "/admin/deploy/config/test",
@@ -356,6 +362,29 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     const json = res.json();
     if (!json.currentCommit) {
       expect(json.status).toBe("UNKNOWN");
+    }
+  });
+
+  it("13. Auditoria e Persistência: token é gravado com AES-256-GCM e nunca aparece nos AuditLogs", async () => {
+    const testSecret = "52372a0b8c6e955d7710feacfb9b3b1e786a665406872484f20dae19a70e7455";
+
+    // 1. Verifica no banco de dados que o token NÃO está em plaintext
+    const setting = await prisma.platformSetting.findUnique({
+      where: { key: "easypanel_config" },
+    });
+    expect(setting).toBeDefined();
+    const rawSetting = JSON.stringify(setting?.value || {});
+    expect(rawSetting).not.toContain(testSecret);
+    expect((setting?.value as any).encryptedToken).toMatch(/^enc:v1:[^:]+:[^:]+:[^:]+$/);
+
+    // 2. Verifica que nenhum AuditLog gravou o segredo
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { action: { startsWith: "easypanel." } },
+    });
+    expect(auditLogs.length).toBeGreaterThan(0);
+    for (const log of auditLogs) {
+      const rawLog = JSON.stringify(log);
+      expect(rawLog).not.toContain(testSecret);
     }
   });
 }, 30_000);
