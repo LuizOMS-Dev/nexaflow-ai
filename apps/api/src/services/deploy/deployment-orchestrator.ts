@@ -813,7 +813,7 @@ export class DeploymentOrchestrator {
     } else if (deployment.status === "VALIDATING") {
       apiHealth = "VERIFYING";
       webHealth = "VERIFYING";
-    } else if (deployment.healthStatus === "UNHEALTHY") {
+    } else if (deployment.healthStatus === "UNHEALTHY" || (deployment.status === "FAILED" && deployment.healthStatus === "FAILED")) {
       apiHealth = "UNHEALTHY";
       webHealth = "UNHEALTHY";
     }

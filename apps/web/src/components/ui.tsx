@@ -512,7 +512,7 @@ export function Modal({
           {!preventClose ? (
             <button
               type="button"
-              className="btn-ghost -mr-1 -mt-0.5 h-9 w-9 shrink-0 rounded-xl px-0 text-ink-faint hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.06]"
+              className="btn-ghost -mr-1 -mt-0.5 h-8 w-8 shrink-0 rounded-lg p-0 text-ink-faint hover:bg-black/[0.04] hover:text-ink dark:text-gray-400 dark:hover:bg-white/[0.06] dark:hover:text-white flex items-center justify-center transition-colors focus:outline-none"
               onClick={() => onClose()}
               aria-label="Fechar"
             >

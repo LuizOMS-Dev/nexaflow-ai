@@ -1675,29 +1675,35 @@ export default function AdminDeployPage() {
         title="Detalhes da Implantação"
         description={
           detailQuery.data
-            ? `${detailQuery.data.commitShortSha} · ${deployStatusLabel(detailQuery.data.stage || detailQuery.data.status)} — "${detailQuery.data.commitMessage}"`
+            ? `${detailQuery.data.commitShortSha} · ${deployStatusLabel(detailQuery.data.stage || detailQuery.data.status)} · "${detailQuery.data.commitMessage}"`
             : "Carregando detalhes…"
         }
         size="lg"
         footer={
           <div className="flex w-full justify-between items-center">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="admin-btn-ghost h-8 px-2.5 text-[11.5px]"
-                onClick={() => {
-                  if (detailQuery.data?.logs) {
-                    void navigator.clipboard.writeText(detailQuery.data.logs);
-                    toast({ title: "Copiado", description: "Logs copiados para a área de transferência.", kind: "success" });
-                  }
-                }}
-              >
-                <Copy className="h-3 w-3" /> Copiar logs
-              </button>
-            </div>
             <button
               type="button"
-              className="admin-btn-secondary h-8 px-4 text-[12px]"
+              className="admin-btn-ghost h-8.5 px-3 text-[12px] flex items-center gap-1.5 text-gray-300 hover:text-white"
+              onClick={() => {
+                if (detailQuery.data?.logs) {
+                  const sanitized = detailQuery.data.logs
+                    .replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, "Bearer [REDACTED]")
+                    .replace(/(?:token|password|secret|key)=([^\s&]+)/gi, "$1=[REDACTED]");
+                  void navigator.clipboard.writeText(sanitized);
+                  toast({
+                    title: "Logs copiados",
+                    description: "Os logs de execução foram copiados para a área de transferência.",
+                    kind: "success",
+                  });
+                }
+              }}
+            >
+              <Copy className="h-3.5 w-3.5 text-gray-400" />
+              <span>Copiar logs</span>
+            </button>
+            <button
+              type="button"
+              className="admin-btn-secondary h-8.5 px-4 text-[12px] font-medium"
               onClick={() => setSelectedDetailId(null)}
             >
               Fechar
@@ -1707,10 +1713,10 @@ export default function AdminDeployPage() {
       >
         <div className="space-y-4 py-1">
           {detailQuery.isLoading ? (
-            <p className="text-gray-500 font-mono text-[12px] py-4 text-center">Carregando detalhes do deploy…</p>
+            <p className="text-gray-500 font-mono text-[12px] py-6 text-center">Carregando detalhes do deploy…</p>
           ) : detailQuery.data ? (
             <>
-              {/* 1. Progresso (Stepper Horizontal) */}
+              {/* 1. Progresso (Timeline Contínua) */}
               <div className="space-y-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">Progresso</span>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -1724,14 +1730,14 @@ export default function AdminDeployPage() {
                       <div
                         key={st.id}
                         className={cn(
-                          "flex items-center gap-2 rounded-lg px-2.5 py-2 text-[11.5px] border transition-all",
+                          "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[11.5px] border transition-all",
                           isCurrent
                             ? "bg-violet-500/[0.12] border-violet-500/30 text-white font-medium shadow-[0_0_12px_rgba(139,92,246,0.1)]"
                             : isFailed
                             ? "bg-rose-500/[0.12] border-rose-500/30 text-rose-300 font-medium"
                             : isPast
                             ? "bg-white/[0.02] border-white/[0.06] text-gray-300"
-                            : "bg-transparent border-transparent text-gray-500"
+                            : "bg-transparent border-white/[0.04] text-gray-400"
                         )}
                       >
                         <div
@@ -1756,7 +1762,7 @@ export default function AdminDeployPage() {
                             idx + 1
                           )}
                         </div>
-                        <span className="truncate">{st.label}</span>
+                        <span className="truncate font-medium">{st.label}</span>
                       </div>
                     );
                   })}
@@ -1765,30 +1771,34 @@ export default function AdminDeployPage() {
 
               {/* 2. Informações Gerais da Implantação */}
               <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 text-[12.5px] space-y-2">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
                   <div>
-                    <span className="text-gray-400 text-[11px] block">Versão</span>
-                    <code className="font-mono font-bold text-violet-300">{detailQuery.data.commitShortSha}</code>
+                    <span className="text-gray-400 text-[10.5px] font-semibold uppercase tracking-[0.05em] block mb-0.5">Versão</span>
+                    <code className="font-mono font-bold text-violet-300 text-[13px]">{detailQuery.data.commitShortSha}</code>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-[11px] block">Branch</span>
+                    <span className="text-gray-400 text-[10.5px] font-semibold uppercase tracking-[0.05em] block mb-0.5">Branch</span>
                     <span className="font-medium text-white">{detailQuery.data.branch}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-[11px] block">Iniciado por</span>
+                    <span className="text-gray-400 text-[10.5px] font-semibold uppercase tracking-[0.05em] block mb-0.5">Iniciado por</span>
                     <span className="font-medium text-white truncate block">{detailQuery.data.startedBy}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-[11px] block">Início</span>
-                    <span className="text-gray-300">{formatDate(detailQuery.data.startedAt)}</span>
+                    <span className="text-gray-400 text-[10.5px] font-semibold uppercase tracking-[0.05em] block mb-0.5">Início</span>
+                    <span className="text-gray-300 font-medium">{formatDate(detailQuery.data.startedAt)}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-[11px] block">Tempo decorrido</span>
+                    <span className="text-gray-400 text-[10.5px] font-semibold uppercase tracking-[0.05em] block mb-0.5">Tempo decorrido</span>
                     <span className="font-medium text-white font-mono">{formatDuration(detailLiveSeconds)}</span>
                   </div>
                   <div>
-                    <span className="text-gray-400 text-[11px] block">Serviços afetados</span>
-                    <span className="font-mono text-gray-300 text-[11.5px]">api, web</span>
+                    <span className="text-gray-400 text-[10.5px] font-semibold uppercase tracking-[0.05em] block mb-0.5">Serviços afetados</span>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-mono text-gray-300">API</span>
+                      <span className="text-gray-600">·</span>
+                      <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[11px] font-mono text-gray-300">Web</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1808,19 +1818,21 @@ export default function AdminDeployPage() {
                   <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3">
                     <span className="font-medium text-white">NexaFlow API</span>
                     {detailQuery.data.apiHealth === "HEALTHY" ? (
-                      <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[12px]">
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[12px]">
                         <CheckCircle2 className="h-3.5 w-3.5" /> Saudável
                       </span>
                     ) : detailQuery.data.apiHealth === "VERIFYING" ? (
-                      <span className="flex items-center gap-1 text-violet-400 font-medium text-[12px]">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando
+                      <span className="flex items-center gap-1.5 text-violet-400 font-medium text-[12px]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando...
                       </span>
                     ) : detailQuery.data.apiHealth === "UNHEALTHY" ? (
-                      <span className="flex items-center gap-1 text-rose-400 font-semibold text-[12px]">
+                      <span className="flex items-center gap-1.5 text-rose-400 font-semibold text-[12px]">
                         <XCircle className="h-3.5 w-3.5" /> Falhou
                       </span>
                     ) : (
-                      <span className="text-gray-500 text-[12px]">Aguardando</span>
+                      <span className="flex items-center gap-1.5 text-gray-400 text-[12px]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-gray-600" /> Aguardando
+                      </span>
                     )}
                   </div>
 
@@ -1828,19 +1840,21 @@ export default function AdminDeployPage() {
                   <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3">
                     <span className="font-medium text-white">NexaFlow Web</span>
                     {detailQuery.data.webHealth === "HEALTHY" ? (
-                      <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[12px]">
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[12px]">
                         <CheckCircle2 className="h-3.5 w-3.5" /> Saudável
                       </span>
                     ) : detailQuery.data.webHealth === "VERIFYING" ? (
-                      <span className="flex items-center gap-1 text-violet-400 font-medium text-[12px]">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando
+                      <span className="flex items-center gap-1.5 text-violet-400 font-medium text-[12px]">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Verificando...
                       </span>
                     ) : detailQuery.data.webHealth === "UNHEALTHY" ? (
-                      <span className="flex items-center gap-1 text-rose-400 font-semibold text-[12px]">
+                      <span className="flex items-center gap-1.5 text-rose-400 font-semibold text-[12px]">
                         <XCircle className="h-3.5 w-3.5" /> Falhou
                       </span>
                     ) : (
-                      <span className="text-gray-500 text-[12px]">Aguardando</span>
+                      <span className="flex items-center gap-1.5 text-gray-400 text-[12px]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-gray-600" /> Aguardando
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1852,16 +1866,31 @@ export default function AdminDeployPage() {
                   <span>Logs de Execução</span>
                   <button
                     type="button"
-                    className="text-[11px] text-violet-400 hover:underline lowercase tracking-normal"
+                    className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400 hover:text-gray-200 transition-colors lowercase tracking-normal"
                     onClick={() => setAutoScrollLogs((s) => !s)}
                   >
-                    Auto-scroll: {autoScrollLogs ? "ativo" : "pausado"}
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full transition-colors",
+                        autoScrollLogs ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" : "bg-gray-600"
+                      )}
+                    />
+                    <span>Auto-scroll {autoScrollLogs ? "ativo" : "pausado"}</span>
                   </button>
                 </div>
                 <div className="rounded-xl border border-white/[0.08] bg-[#07080a] p-3 text-[11.5px]">
                   {detailQuery.data.logs ? (
                     <div
                       ref={logContainerRef}
+                      onScroll={(e) => {
+                        const el = e.currentTarget;
+                        const isBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 35;
+                        if (!isBottom && autoScrollLogs) {
+                          setAutoScrollLogs(false);
+                        } else if (isBottom && !autoScrollLogs) {
+                          setAutoScrollLogs(true);
+                        }
+                      }}
                       className="max-h-[32vh] overflow-y-auto space-y-1 font-mono text-gray-300 leading-relaxed scrollbar-thin selection:bg-violet-500/30 pr-1"
                     >
                       {detailQuery.data.logs.split("\n").map((rawLine, lIdx) => {
@@ -1904,29 +1933,31 @@ export default function AdminDeployPage() {
                             key={lIdx}
                             className="flex items-start gap-2.5 py-0.5 rounded px-1.5 hover:bg-white/[0.02] transition-colors"
                           >
-                            <span className="shrink-0 text-gray-400 text-[11px] select-none font-mono">
+                            <span className="w-[62px] shrink-0 text-gray-400 text-[11px] select-none font-mono tracking-tight pt-0.5">
                               {timeStr}
                             </span>
 
-                            {stage ? (
-                              <span
-                                className={cn(
-                                  "shrink-0 rounded px-1.5 py-0.2 text-[9.5px] font-semibold uppercase tracking-wider",
-                                  stage === "PREPARING" && "bg-gray-800 text-gray-300",
-                                  stage === "BUILDING" && "bg-violet-500/20 text-violet-300",
-                                  stage === "DEPLOYING" && "bg-blue-500/20 text-blue-300",
-                                  stage === "VERIFYING" && "bg-amber-500/20 text-amber-300",
-                                  (stage === "SUCCESS" || isSuccess) && "bg-emerald-500/20 text-emerald-300",
-                                  (stage === "FAILED" || isFailed) && "bg-rose-500/20 text-rose-300"
-                                )}
-                              >
-                                {stage}
-                              </span>
-                            ) : null}
+                            <div className="w-[78px] shrink-0 flex items-center justify-start pt-0.5">
+                              {stage ? (
+                                <span
+                                  className={cn(
+                                    "inline-block rounded px-1.5 py-0.2 text-[9px] font-semibold uppercase tracking-wider text-center",
+                                    stage === "PREPARING" && "bg-gray-800 text-gray-300",
+                                    stage === "BUILDING" && "bg-violet-500/20 text-violet-300",
+                                    stage === "DEPLOYING" && "bg-blue-500/20 text-blue-300",
+                                    stage === "VERIFYING" && "bg-amber-500/20 text-amber-300",
+                                    (stage === "SUCCESS" || isSuccess) && "bg-emerald-500/20 text-emerald-300",
+                                    (stage === "FAILED" || isFailed) && "bg-rose-500/20 text-rose-300"
+                                  )}
+                                >
+                                  {stage}
+                                </span>
+                              ) : null}
+                            </div>
 
                             <span
                               className={cn(
-                                "flex-1 text-[11.5px] break-words",
+                                "flex-1 min-w-0 text-[11.5px] leading-relaxed break-words font-mono",
                                 isSuccess && "text-emerald-300 font-medium",
                                 isFailed && "text-rose-300 font-medium",
                                 isWarning && "text-amber-300",
