@@ -479,7 +479,7 @@ export class DeploymentOrchestrator {
 
     const safeUpdate = async (data: any) => {
       try {
-        await prisma.deployment.update({
+        await prisma.deployment.updateMany({
           where: { id: deploymentId },
           data,
         });

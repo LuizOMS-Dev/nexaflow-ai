@@ -758,4 +758,67 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     expect(typeof rateInfo.remaining).toBe("number");
     expect(typeof rateInfo.isRateLimited).toBe("boolean");
   });
+
+  it("26. Reversão e Backup: POST /admin/deploy/:id/rollback restaura versão anterior e registra auditoria", async () => {
+    // 1. Cria um deploy COMPLETED estável alvo de rollback
+    const stableTarget = await prisma.deployment.create({
+      data: {
+        environment: "production",
+        branch: "main",
+        commitSha: "9999999999999999999999999999999999999999",
+        commitShortSha: "9999999",
+        commitMessage: "feat: stable production release before bug",
+        commitAuthor: "Superadmin",
+        startedById: superadminUser.id,
+        status: "COMPLETED",
+        healthStatus: "HEALTHY",
+        startedAt: new Date(Date.now() - 3600000),
+        finishedAt: new Date(Date.now() - 3500000),
+        durationSeconds: 100,
+      },
+    });
+
+    // 2. Usuário sem permissão é bloqueado (403)
+    const blockedRes = await app.inject({
+      method: "POST",
+      url: `/admin/deploy/${stableTarget.id}/rollback`,
+      headers: { authorization: `Bearer ${regularUserToken}` },
+    });
+    expect(blockedRes.statusCode).toBe(403);
+
+    // 3. Superadmin dispara o rollback para a versão estável
+    const rollbackRes = await app.inject({
+      method: "POST",
+      url: `/admin/deploy/${stableTarget.id}/rollback`,
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(rollbackRes.statusCode).toBe(202);
+    const body = rollbackRes.json();
+    expect(body.deploymentId).toBeDefined();
+    expect(body.commitShortSha).toBe("9999999");
+
+    // 4. Valida que o novo deploy criado possui isRollback: true e commitSha correspondente
+    const rollbackDep = await prisma.deployment.findUnique({ where: { id: body.deploymentId } });
+    expect(rollbackDep).toBeDefined();
+    expect(rollbackDep?.isRollback).toBe(true);
+    expect(rollbackDep?.commitSha).toBe("9999999999999999999999999999999999999999");
+    expect(rollbackDep?.rollbackFromSha).toBe("9999999999999999999999999999999999999999");
+
+    // 5. Auditoria de rollback registrada
+    const auditLog = await prisma.auditLog.findFirst({
+      where: { action: "deployment.rollback.started" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(auditLog).toBeDefined();
+    expect(auditLog?.userId).toBe(superadminUser.id);
+    expect(auditLog?.metadata).toMatchObject({
+      commitSha: "9999999999999999999999999999999999999999",
+      shortSha: "9999999",
+    });
+
+    // Limpeza
+    await prisma.deployment.deleteMany({
+      where: { id: { in: [stableTarget.id, body.deploymentId] } },
+    });
+  });
 }, 30_000);
