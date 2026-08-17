@@ -1183,13 +1183,12 @@ export default function AdminDeployPage() {
               disabled={
                 startDeployMut.isPending ||
                 Boolean(active) ||
-                !data.easyPanel?.connected ||
-                !(selectedCommitToDeploy || latest)
+                !data.easyPanel?.connected
               }
               onClick={() => {
                 const targetCommit = selectedCommitToDeploy || latest;
                 startDeployMut.mutate({
-                  commitSha: targetCommit?.sha,
+                  commitSha: targetCommit?.sha || undefined,
                   branch: data.gitHub?.branch || "main",
                 });
               }}
