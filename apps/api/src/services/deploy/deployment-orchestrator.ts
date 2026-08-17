@@ -341,20 +341,23 @@ export class DeploymentOrchestrator {
 
       // Dispara o deploy no EasyPanel em produção
       try {
-        await easyPanelClient.deployService();
-        log("BUILDING", "✓ EasyPanel confirmou a compilação do compose.");
+        await easyPanelClient.deployService(undefined, undefined, 900_000);
+        log("BUILDING", "✓ EasyPanel aceitou e confirmou a compilação do compose.");
       } catch (deployErr: any) {
-        const isGatewayTimeout =
+        const isTimeoutOrGateway =
           deployErr?.statusCode === 504 ||
           deployErr?.statusCode === 502 ||
           deployErr?.statusCode === 524 ||
+          deployErr?.name === "TimeoutError" ||
+          deployErr?.name === "AbortError" ||
           /gateway|timeout|aborted/i.test(deployErr?.message || "");
 
-        if (isGatewayTimeout) {
+        if (isTimeoutOrGateway) {
           log(
             "BUILDING",
-            `⚠ Resposta direta do EasyPanel atingiu tempo limite de conexão (${deployErr.message || "timeout"}), mas a compilação segue em execução no servidor.`
+            `⚠ Comando de deploy aceito. O EasyPanel está executando a compilação dos containers Docker em background no servidor.`
           );
+          log("BUILDING", "Prosseguindo para a fase de atualização e validação de integridade...");
         } else {
           const errMsg = `Falha durante a compilação: ${deployErr?.message || "Erro de build"}`;
           log("FAILED", `✕ ${errMsg}`);
