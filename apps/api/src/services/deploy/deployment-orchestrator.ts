@@ -378,7 +378,9 @@ export class DeploymentOrchestrator {
 
     if (active) {
       throw new AppError(
-        "Já existe uma implantação em andamento no momento. Aguarde a conclusão.",
+        input.isRollback
+          ? "Já existe uma implantação em andamento. Aguarde a conclusão antes de reverter outra versão."
+          : "Já existe uma implantação em andamento no momento. Aguarde a conclusão.",
         409,
         "DEPLOYMENT_IN_PROGRESS"
       );
@@ -431,13 +433,13 @@ export class DeploymentOrchestrator {
         isRollback: Boolean(input.isRollback),
         rollbackFromSha: input.rollbackFromSha,
         startedAt: now,
-        logs: `[${now.toISOString()}] [PREPARING] Deploy iniciado por usuário ID: ${actor.sub}\n[${now.toISOString()}] [PREPARING] Versão alvo: ${targetCommit.shortSha} (${targetCommit.sha})\n[${now.toISOString()}] [PREPARING] Mensagem: "${targetCommit.message}"\n`,
+        logs: `[${now.toISOString()}] [PREPARING] ${input.isRollback ? "Reversão iniciada" : "Deploy iniciado"} por usuário ID: ${actor.sub}\n[${now.toISOString()}] [PREPARING] Versão alvo: ${targetCommit.shortSha} (${targetCommit.sha})\n[${now.toISOString()}] [PREPARING] Mensagem: "${targetCommit.message}"\n`,
       },
     });
 
     // 4. Grava evento no AuditLog
     await audit({
-      action: input.isRollback ? "deployment.rollback.started" : "deployment.started",
+      action: input.isRollback ? "deployment.rollback_started" : "deployment.started",
       userId: actor.sub,
       ip: actor.ip,
       metadata: {
@@ -445,6 +447,7 @@ export class DeploymentOrchestrator {
         commitSha: targetCommit.sha,
         shortSha: targetCommit.shortSha,
         branch,
+        isRollback: Boolean(input.isRollback),
       },
     });
 
@@ -611,10 +614,10 @@ export class DeploymentOrchestrator {
         }
 
         await audit({
-          action: "deployment.succeeded",
+          action: dep?.isRollback ? "deployment.rollback_completed" : "deployment.succeeded",
           userId: actor.sub,
           ip: actor.ip,
-          metadata: { deploymentId, durationSeconds, commitSha: dep?.commitSha },
+          metadata: { deploymentId, durationSeconds, commitSha: dep?.commitSha, isRollback: Boolean(dep?.isRollback) },
         });
       } else {
         const err = healthResult.error || "Falha na validação de saúde";
@@ -632,10 +635,10 @@ export class DeploymentOrchestrator {
         });
 
         await audit({
-          action: "deployment.failed",
+          action: dep?.isRollback ? "deployment.rollback_failed" : "deployment.failed",
           userId: actor.sub,
           ip: actor.ip,
-          metadata: { deploymentId, error: err, durationSeconds },
+          metadata: { deploymentId, error: err, durationSeconds, isRollback: Boolean(dep?.isRollback) },
         });
       }
     } catch (e) {
@@ -656,10 +659,10 @@ export class DeploymentOrchestrator {
       });
 
       await audit({
-        action: "deployment.failed",
+        action: dep?.isRollback ? "deployment.rollback_failed" : "deployment.failed",
         userId: actor.sub,
         ip: actor.ip,
-        metadata: { deploymentId, error: errMessage, durationSeconds },
+        metadata: { deploymentId, error: errMessage, durationSeconds, isRollback: Boolean(dep?.isRollback) },
       });
     }
   }

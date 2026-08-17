@@ -344,22 +344,34 @@ export async function adminDeployRoutes(app: FastifyInstance) {
   // 9. Rollback para uma versão anterior bem-sucedida
   app.post("/admin/deploy/:id/rollback", async (request, reply) => {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const user = request.user;
+    if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
+
     const params = request.params as { id: string };
     const target = assertFound(
       await prisma.deployment.findUnique({ where: { id: params.id } }),
-      "Deploy alvo para rollback não encontrado."
+      "A versão selecionada não está disponível para restauração."
     );
 
     if (target.status !== "COMPLETED") {
       throw new AppError(
-        "Apenas deploys anteriores concluídos com sucesso podem ser restaurados.",
+        "A versão selecionada não está disponível para restauração.",
         400,
         "INVALID_ROLLBACK_TARGET"
       );
     }
 
-    const user = request.user;
-    if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
+    // Registra audit log específico da solicitação de reversão
+    await audit({
+      action: "deployment.rollback_requested",
+      userId: user.sub,
+      ip: request.ip,
+      metadata: {
+        targetDeploymentId: target.id,
+        commitSha: target.commitSha,
+        shortSha: target.commitShortSha,
+      },
+    });
 
     const result = await deploymentOrchestrator.startDeploy(
       {

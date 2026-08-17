@@ -857,7 +857,10 @@ export default function AdminDeployPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedCommitToDeploy, setSelectedCommitToDeploy] = useState<GitHubCommitItem | null>(null);
   const [rollbackOpen, setRollbackOpen] = useState(false);
+  const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false);
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
+  const [rollbackCheckbox, setRollbackCheckbox] = useState(false);
+  const [rollbackConfirmInput, setRollbackConfirmInput] = useState("");
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -1254,29 +1257,32 @@ export default function AdminDeployPage() {
     },
   });
 
-  // Mutação: Rollback
+  // Mutação: Rollback / Reversão
   const rollbackMut = useMutation({
     mutationFn: (id: string) =>
       api<{ deploymentId: string; status: string }>(`/admin/deploy/${id}/rollback`, {
         method: "POST",
       }),
     onSuccess: (res) => {
+      setRollbackConfirmOpen(false);
       setRollbackOpen(false);
       setRollbackTarget(null);
+      setRollbackCheckbox(false);
+      setRollbackConfirmInput("");
       void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-commits"] });
       void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
       toast({
-        title: "Rollback iniciado",
-        description: "Reimplantando a versão anterior selecionada.",
+        title: "Reversão iniciada",
+        description: "Reimplantando a versão anterior selecionada em produção.",
         kind: "success",
       });
       setSelectedDetailId(res.deploymentId);
     },
     onError: (e) => {
       toast({
-        title: "Falha ao iniciar rollback",
-        description: e instanceof Error ? e.message : "Erro interno.",
+        title: "Falha ao iniciar reversão",
+        description: e instanceof Error ? e.message : "Não foi possível concluir a reversão. Verifique os logs da implantação.",
         kind: "error",
       });
     },
@@ -1918,6 +1924,9 @@ export default function AdminDeployPage() {
                                 }
                                 onClick={() => {
                                   setRollbackTarget(item);
+                                  setRollbackCheckbox(false);
+                                  setRollbackConfirmInput("");
+                                  setRollbackConfirmOpen(false);
                                   setRollbackOpen(true);
                                 }}
                               >
@@ -2256,7 +2265,7 @@ export default function AdminDeployPage() {
         })()}
       </Modal>
 
-      {/* MODAL 2: Confirmação de Reversão / Rollback (Restauração de Backup) */}
+      {/* MODAL 2: Modal Principal de Reversão / Rollback */}
       <Modal
         open={rollbackOpen && Boolean(rollbackTarget)}
         onClose={() => {
@@ -2282,20 +2291,16 @@ export default function AdminDeployPage() {
             <button
               type="button"
               className="admin-btn-primary h-9 bg-amber-600 hover:bg-amber-500 border-amber-500/30 text-white flex items-center gap-2"
-              disabled={rollbackMut.isPending || !data.easyPanel?.connected || Boolean(active)}
-              onClick={() => rollbackTarget && rollbackMut.mutate(rollbackTarget.id)}
+              disabled={!data.easyPanel?.connected || Boolean(active)}
+              onClick={() => {
+                setRollbackCheckbox(false);
+                setRollbackConfirmInput("");
+                setRollbackOpen(false);
+                setRollbackConfirmOpen(true);
+              }}
             >
-              {rollbackMut.isPending ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Iniciando reversão…</span>
-                </>
-              ) : (
-                <>
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  <span>Confirmar reversão</span>
-                </>
-              )}
+              <span>Confirmar reversão</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </DialogFooter>
         }
@@ -2311,17 +2316,17 @@ export default function AdminDeployPage() {
                     Versão Atual em Produção
                   </span>
                   <div className="mt-1 flex items-center gap-2">
-                    <code className="font-mono font-semibold text-violet-300">
+                    <code className="rounded bg-violet-500/10 px-2 py-0.5 font-mono text-[12px] font-semibold text-violet-300 border border-violet-500/20">
                       {current?.shortSha || "Não identificada"}
                     </code>
                   </div>
                 </div>
                 <div>
                   <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
-                    Versão Alvo (Restauração)
+                    Versão Alvo da Reversão
                   </span>
                   <div className="mt-1 flex items-center gap-2">
-                    <code className="rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-amber-300">
+                    <code className="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-[12px] font-bold text-amber-300 border border-amber-500/25">
                       {rollbackTarget.commitShortSha}
                     </code>
                   </div>
@@ -2334,7 +2339,7 @@ export default function AdminDeployPage() {
                   Descrição do Commit Alvo
                 </span>
                 <p
-                  className="mt-1 font-medium text-gray-200 leading-relaxed text-[12px]"
+                  className="mt-1 font-medium text-gray-200 leading-relaxed text-[12.5px]"
                   title={rollbackTarget.commitMessage ? formatCommitMessagePtBr(rollbackTarget.commitMessage) : undefined}
                 >
                   {rollbackTarget.commitMessage ? formatCommitMessagePtBr(rollbackTarget.commitMessage) : "Sem descrição informada"}
@@ -2344,11 +2349,11 @@ export default function AdminDeployPage() {
               {/* Linha 3: Metadados originais da implantação */}
               <div className="grid grid-cols-2 gap-3 text-[11.5px] text-gray-400">
                 <div>
-                  <span>Implantado originalmente em:</span>
+                  <span className="block text-gray-500 text-[10.5px] uppercase tracking-wider">Implantado originalmente em:</span>
                   <strong className="text-gray-300 block mt-0.5 font-normal">{formatDate(rollbackTarget.startedAt)}</strong>
                 </div>
                 <div>
-                  <span>Responsável original:</span>
+                  <span className="block text-gray-500 text-[10.5px] uppercase tracking-wider">Responsável original:</span>
                   <strong className="text-gray-300 block mt-0.5 font-normal">{rollbackTarget.startedBy}</strong>
                 </div>
               </div>
@@ -2358,10 +2363,117 @@ export default function AdminDeployPage() {
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 text-amber-200 text-[12px] leading-relaxed">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
               <div>
-                <p className="font-semibold text-amber-100">Restauração Segura de Versão</p>
+                <p className="font-semibold text-amber-100">Restauração segura de versão</p>
                 <p className="mt-0.5 text-amber-200/90 leading-relaxed">
-                  O EasyPanel recompilará e ativará exatamente o commit <strong className="font-mono text-amber-300">{rollbackTarget.commitShortSha}</strong>. Após o deploy, o sistema validará automaticamente a integridade da API e do Web.
+                  O NexaFlow irá recompilar e reimplantar a versão selecionada em produção. Após a reversão, a plataforma validará automaticamente a saúde da API e do Web antes de concluir o processo.
                 </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* MODAL 2.1: Confirmação Crítica Dupla de Reversão em Produção */}
+      <Modal
+        open={rollbackConfirmOpen && Boolean(rollbackTarget)}
+        onClose={() => {
+          setRollbackConfirmOpen(false);
+          setRollbackOpen(true);
+        }}
+        title="Confirmar reversão em produção"
+        description={`Você está prestes a restaurar a versão ${rollbackTarget?.commitShortSha} em produção. Essa ação substituirá a versão atualmente ativa.`}
+        size="md"
+        footer={
+          <DialogFooter>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9"
+              disabled={rollbackMut.isPending}
+              onClick={() => {
+                setRollbackConfirmOpen(false);
+                setRollbackOpen(true);
+              }}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={
+                !rollbackCheckbox ||
+                !rollbackTarget ||
+                rollbackConfirmInput.trim().toLowerCase() !== rollbackTarget.commitShortSha.toLowerCase() ||
+                rollbackMut.isPending ||
+                !data.easyPanel?.connected ||
+                Boolean(active)
+              }
+              onClick={() => {
+                if (rollbackTarget) {
+                  rollbackMut.mutate(rollbackTarget.id);
+                }
+              }}
+            >
+              {rollbackMut.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Executando reversão…</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Executar reversão</span>
+                </>
+              )}
+            </button>
+          </DialogFooter>
+        }
+      >
+        {rollbackTarget ? (
+          <div className="space-y-4 py-1 text-[12.5px]">
+            {/* Resumo Curto */}
+            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
+              <div className="flex items-center justify-between text-gray-400">
+                <span>Ambiente:</span>
+                <span className="font-semibold text-emerald-300">Produção</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-400">
+                <span>Versão atual:</span>
+                <code className="font-mono text-violet-300 font-semibold">{current?.shortSha || "Não identificada"}</code>
+              </div>
+              <div className="flex items-center justify-between text-gray-400">
+                <span>Versão alvo:</span>
+                <code className="font-mono text-amber-300 font-bold">{rollbackTarget.commitShortSha}</code>
+              </div>
+            </div>
+
+            {/* Fatores de confirmação combinados */}
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3.5 space-y-3.5">
+              {/* 1. Checkbox obrigatório */}
+              <label className="flex items-start gap-2.5 cursor-pointer text-gray-200 text-[12px] select-none leading-tight">
+                <input
+                  type="checkbox"
+                  checked={rollbackCheckbox}
+                  onChange={(e) => setRollbackCheckbox(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/5 text-amber-500 focus:ring-amber-500/30"
+                />
+                <span className="font-medium text-gray-200">
+                  Entendo que a versão atual em produção será substituída.
+                </span>
+              </label>
+
+              {/* 2. Campo de confirmação textual */}
+              <div className="space-y-1.5 pt-1 border-t border-white/[0.06]">
+                <label className="block text-[11.5px] font-medium text-gray-300">
+                  Digite <code className="rounded bg-amber-500/20 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all">{rollbackTarget.commitShortSha}</code> para confirmar:
+                </label>
+                <input
+                  type="text"
+                  value={rollbackConfirmInput}
+                  onChange={(e) => setRollbackConfirmInput(e.target.value)}
+                  placeholder={`Digite ${rollbackTarget.commitShortSha} para confirmar`}
+                  className="admin-input h-9 w-full font-mono text-[12.5px] bg-[#08090d] border-white/10 focus:border-amber-500/50"
+                  autoFocus
+                />
               </div>
             </div>
 
@@ -2372,7 +2484,7 @@ export default function AdminDeployPage() {
                 <span>
                   {rollbackMut.error instanceof Error
                     ? rollbackMut.error.message
-                    : "Falha ao iniciar reversão."}
+                    : "Não foi possível concluir a reversão. Verifique os logs da implantação."}
                 </span>
               </div>
             ) : null}

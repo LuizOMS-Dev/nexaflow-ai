@@ -804,14 +804,21 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     expect(rollbackDep?.commitSha).toBe("9999999999999999999999999999999999999999");
     expect(rollbackDep?.rollbackFromSha).toBe("9999999999999999999999999999999999999999");
 
-    // 5. Auditoria de rollback registrada
-    const auditLog = await prisma.auditLog.findFirst({
-      where: { action: "deployment.rollback.started" },
+    // 5. Auditorias de rollback registradas
+    const reqAuditLog = await prisma.auditLog.findFirst({
+      where: { action: "deployment.rollback_requested" },
       orderBy: { createdAt: "desc" },
     });
-    expect(auditLog).toBeDefined();
-    expect(auditLog?.userId).toBe(superadminUser.id);
-    expect(auditLog?.metadata).toMatchObject({
+    expect(reqAuditLog).toBeDefined();
+    expect(reqAuditLog?.userId).toBe(superadminUser.id);
+
+    const startedAuditLog = await prisma.auditLog.findFirst({
+      where: { action: "deployment.rollback_started" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(startedAuditLog).toBeDefined();
+    expect(startedAuditLog?.userId).toBe(superadminUser.id);
+    expect(startedAuditLog?.metadata).toMatchObject({
       commitSha: "9999999999999999999999999999999999999999",
       shortSha: "9999999",
     });
