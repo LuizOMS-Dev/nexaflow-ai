@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
   GitBranch,
   GitCommit,
   HelpCircle,
   History,
-  Info,
-  KeyRound,
   Layers,
   RefreshCw,
   Rocket,
@@ -21,14 +24,12 @@ import {
   Settings,
   Sparkles,
   Terminal,
-  User,
   XCircle,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { formatDate, formatRelativeTime, cn } from "@/lib/utils";
 import { useAuth } from "@/store/auth";
 import {
-  AdminEmptyState,
   AdminErrorState,
   AdminPageHeader,
   AdminPageSkeleton,
@@ -37,9 +38,9 @@ import {
   MetricGrid,
   StatusBadge,
 } from "@/components/admin";
-import { Modal, useToast } from "@/components/ui";
+import { DialogFooter, FormField, Modal, useToast } from "@/components/ui";
 
-type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE";
+type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE" | "CHECKING";
 
 type DeployOverviewResponse = {
   environment: string;
@@ -175,12 +176,14 @@ function formatDuration(seconds?: number): string {
 function deployStatusTone(st: string): "brand" | "neutral" | "success" | "warning" | "danger" {
   switch (st) {
     case "COMPLETED":
+    case "SUCCESS":
       return "success";
     case "FAILED":
       return "danger";
     case "BUILDING":
     case "DEPLOYING":
     case "VALIDATING":
+    case "VERIFYING":
       return "brand";
     case "PREPARING":
     case "PENDING":
@@ -193,6 +196,7 @@ function deployStatusTone(st: string): "brand" | "neutral" | "success" | "warnin
 function deployStatusLabel(st: string): string {
   switch (st) {
     case "COMPLETED":
+    case "SUCCESS":
       return "Sucesso";
     case "FAILED":
       return "Falhou";
@@ -201,6 +205,7 @@ function deployStatusLabel(st: string): string {
     case "DEPLOYING":
       return "Implantando";
     case "VALIDATING":
+    case "VERIFYING":
       return "Validando saúde";
     case "PREPARING":
       return "Preparando";
@@ -222,6 +227,9 @@ export default function AdminDeployPage() {
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [showAllCommits, setShowAllCommits] = useState(false);
+  const [copiedSha, setCopiedSha] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
   const [page, setPage] = useState(1);
 
   // Form states do Modal de Configuração do EasyPanel
@@ -246,7 +254,7 @@ export default function AdminDeployPage() {
   const commitsQuery = useQuery({
     queryKey: ["admin-deploy-commits"],
     queryFn: () =>
-      api<{ commits: GitHubCommitItem[] }>("/admin/deploy/commits?limit=8"),
+      api<{ commits: GitHubCommitItem[] }>("/admin/deploy/commits?limit=15"),
     enabled: user?.platformRole === "SUPERADMIN",
   });
 
@@ -286,9 +294,21 @@ export default function AdminDeployPage() {
       setCfgProject(configQuery.data.projectName || "i9atendimento");
       setCfgService(configQuery.data.serviceName || "nexaflow");
       setCfgToken("");
+      setShowToken(false);
       setTestResult(null);
     }
   }, [configQuery.data]);
+
+  const copyToClipboard = (text: string, label: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopiedSha(text);
+    setTimeout(() => setCopiedSha(null), 2000);
+    toast({
+      title: "Copiado",
+      description: `${label} copiado para a área de transferência.`,
+      kind: "success",
+    });
+  };
 
   // Mutação: Testar conexão
   const testConnMut = useMutation({
@@ -424,24 +444,31 @@ export default function AdminDeployPage() {
   const isUpToDate = status === "UP_TO_DATE";
   const isUpdateAvailable = status === "UPDATE_AVAILABLE";
   const isUnknown = status === "UNKNOWN";
-  const recentCommits = commitsQuery.data?.commits || [];
+
+  const allCommits = commitsQuery.data?.commits || [];
+  const displayedCommits = showAllCommits ? allCommits : allCommits.slice(0, 5);
+
   const historyItems = historyQuery.data?.items || [];
   const totalPages = historyQuery.data?.totalPages || 1;
 
   // Estados semânticos oficiais do EasyPanel
   const epState = data.easyPanel?.state || (data.easyPanel?.connected ? "CONNECTED" : "NOT_CONFIGURED");
   let epLabel = "Conectado";
-  let epTone: "success" | "neutral" | "warning" | "danger" = "success";
-  let epHint = `Projeto: ${data.easyPanel?.projectName || "i9atendimento"} · Serviço: ${data.easyPanel?.serviceName || "nexaflow"}`;
+  let epTone: "success" | "neutral" | "warning" | "danger" | "brand" = "success";
+  let epHint = `${data.easyPanel?.projectName || "i9atendimento"} / ${data.easyPanel?.serviceName || "nexaflow"}`;
 
   if (epState === "NOT_CONFIGURED") {
     epLabel = "Não configurado";
     epTone = "neutral";
     epHint = "Configure a integração para habilitar deployments.";
+  } else if (epState === "CHECKING") {
+    epLabel = "Verificando";
+    epTone = "brand";
+    epHint = "Testando comunicação com o servidor...";
   } else if (epState === "UNAVAILABLE") {
     epLabel = "Indisponível";
     epTone = "warning";
-    epHint = "URL do EasyPanel inacessível temporariamente.";
+    epHint = "Servidor EasyPanel temporariamente inacessível.";
   } else if (epState === "AUTH_FAILED") {
     epLabel = "Credenciais inválidas";
     epTone = "danger";
@@ -474,8 +501,8 @@ export default function AdminDeployPage() {
                 void commitsQuery.refetch();
                 void historyQuery.refetch();
                 toast({
-                  title: "Consultando GitHub",
-                  description: "Buscando atualizações e commits recentes no repositório...",
+                  title: "Sincronizado",
+                  description: "Buscando atualizações e commits recentes no GitHub...",
                   kind: "success",
                 });
               }}
@@ -678,71 +705,104 @@ export default function AdminDeployPage() {
             <RefreshCw className="mx-auto h-5 w-5 animate-spin text-gray-400 mb-2" />
             Buscando commits mais recentes no GitHub...
           </div>
-        ) : recentCommits.length === 0 ? (
+        ) : allCommits.length === 0 ? (
           <div className="p-6 text-center text-[12.5px] text-gray-400">
             Nenhum commit encontrado no repositório.
           </div>
         ) : (
-          <div className="divide-y divide-white/[0.04]">
-            {recentCommits.map((c) => {
-              const isCurrent = current?.sha === c.sha || (current?.shortSha === c.shortSha);
-              return (
-                <div
-                  key={c.sha}
-                  className="flex flex-col gap-2.5 px-4.5 py-3 transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-gray-400">
-                      <GitCommit className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12px] font-bold text-violet-300">
-                          {c.shortSha}
-                        </code>
-                        <span className="truncate text-[13px] font-medium text-gray-200" title={c.message}>
-                          {c.message}
-                        </span>
-                        {isCurrent ? (
-                          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
-                            Em produção
-                          </span>
-                        ) : null}
+          <div>
+            <div className="divide-y divide-white/[0.04]">
+              {displayedCommits.map((c) => {
+                const isCurrent = current?.sha === c.sha || (current?.shortSha === c.shortSha);
+                const isCopied = copiedSha === c.shortSha;
+                return (
+                  <div
+                    key={c.sha}
+                    className="flex flex-col gap-2.5 px-4.5 py-3 transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-gray-400">
+                        <GitCommit className="h-3.5 w-3.5" />
                       </div>
-                      <p className="mt-0.5 text-[11.5px] text-gray-400">
-                        Por <strong className="text-gray-300">{c.author}</strong> · há {formatRelativeTime(c.date)}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="group flex items-center gap-1 rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[12px] font-bold text-violet-300 hover:bg-violet-500/20"
+                            onClick={() => copyToClipboard(c.shortSha, "Hash do commit")}
+                            title="Clique para copiar o hash curto"
+                          >
+                            {c.shortSha}
+                            {isCopied ? (
+                              <Check className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                          <span className="truncate text-[13px] font-medium text-gray-200" title={c.message}>
+                            {c.message}
+                          </span>
+                          {isCurrent ? (
+                            <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                              Em produção
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-0.5 text-[11.5px] text-gray-400">
+                          Por <strong className="text-gray-300">{c.author}</strong> · há {formatRelativeTime(c.date)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      {c.url ? (
+                        <a
+                          href={c.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-white"
+                        >
+                          <ExternalLink className="h-3 w-3" /> Ver no GitHub
+                        </a>
+                      ) : null}
+
+                      {!isCurrent && !active && data.easyPanel?.connected ? (
+                        <button
+                          type="button"
+                          className="admin-btn-secondary h-7 px-2.5 text-[11.5px]"
+                          onClick={() => {
+                            setSelectedCommitToDeploy(c);
+                            setConfirmOpen(true);
+                          }}
+                        >
+                          <Rocket className="h-3 w-3" /> Implantar
+                        </button>
+                      ) : null}
                     </div>
                   </div>
+                );
+              })}
+            </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                    {c.url ? (
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-white"
-                      >
-                        <ExternalLink className="h-3 w-3" /> Ver no GitHub
-                      </a>
-                    ) : null}
-
-                    {!isCurrent && !active && data.easyPanel?.connected ? (
-                      <button
-                        type="button"
-                        className="admin-btn-secondary h-7 px-2.5 text-[11.5px]"
-                        onClick={() => {
-                          setSelectedCommitToDeploy(c);
-                          setConfirmOpen(true);
-                        }}
-                      >
-                        <Rocket className="h-3 w-3" /> Implantar
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
+            {allCommits.length > 5 ? (
+              <div className="border-t border-white/[0.04] p-2.5 text-center">
+                <button
+                  type="button"
+                  className="admin-btn-ghost h-7 px-3 text-[12px] text-gray-400 hover:text-white"
+                  onClick={() => setShowAllCommits((s) => !s)}
+                >
+                  {showAllCommits ? (
+                    <>
+                      <ChevronUp className="h-3.5 w-3.5" /> Mostrar menos commits
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5" /> Ver mais commits ({allCommits.length})
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </AdminSection>
@@ -754,12 +814,12 @@ export default function AdminDeployPage() {
         flush
       >
         {historyItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04] text-gray-400">
-              <History className="h-5 w-5" strokeWidth={1.5} />
+          <div className="flex flex-col items-center justify-center p-6 text-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-gray-400">
+              <History className="h-4.5 w-4.5" strokeWidth={1.5} />
             </div>
             <p className="mt-2 text-[13px] font-medium text-gray-300">Nenhum deploy registrado</p>
-            <p className="mt-0.5 text-[12px] text-gray-500">
+            <p className="mt-0.5 text-[11.5px] text-gray-500">
               O histórico de implantações aparecerá aqui assim que o primeiro deploy for concluído.
             </p>
           </div>
@@ -909,14 +969,14 @@ export default function AdminDeployPage() {
           setConfirmOpen(false);
           setSelectedCommitToDeploy(null);
         }}
-        title={isUnknown ? "Implantar versão em produção?" : "Implantar nova versão em produção?"}
-        description="Confirme o disparo da versão para o ambiente de produção."
+        title="Implantar em produção?"
+        description="Confirme os detalhes da versão antes de enviar o comando ao EasyPanel."
         size="md"
         footer={
-          <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
+          <DialogFooter>
             <button
               type="button"
-              className="admin-btn-ghost h-9"
+              className="admin-btn-secondary h-9"
               onClick={() => {
                 setConfirmOpen(false);
                 setSelectedCommitToDeploy(null);
@@ -934,13 +994,17 @@ export default function AdminDeployPage() {
                 })
               }
             >
-              {startDeployMut.isPending ? "Iniciando deploy…" : isUnknown ? "Implantar esta versão" : "Iniciar deploy"}
+              {startDeployMut.isPending ? "Iniciando deploy…" : "Implantar em produção"}
             </button>
-          </div>
+          </DialogFooter>
         }
       >
         <div className="space-y-3.5 py-1 text-[13px]">
           <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Ambiente:</span>
+              <span className="font-semibold text-emerald-400">Produção</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-gray-400">Produção atual:</span>
               <span className="font-mono text-gray-300">
@@ -966,6 +1030,10 @@ export default function AdminDeployPage() {
                 {selectedCommitToDeploy ? selectedCommitToDeploy.message : latest ? latest.message : "Última versão"}
               </span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Serviços afetados:</span>
+              <span className="font-mono text-[12px] text-gray-300">api, web</span>
+            </div>
           </div>
 
           <div className="flex items-start gap-2.5 rounded-lg bg-amber-500/[0.08] p-3 text-amber-200">
@@ -988,10 +1056,10 @@ export default function AdminDeployPage() {
         description="Você está prestes a reverter a produção para uma versão anterior bem-sucedida."
         size="md"
         footer={
-          <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
+          <DialogFooter>
             <button
               type="button"
-              className="admin-btn-ghost h-9"
+              className="admin-btn-secondary h-9"
               onClick={() => setRollbackOpen(false)}
             >
               Cancelar
@@ -1004,7 +1072,7 @@ export default function AdminDeployPage() {
             >
               {rollbackMut.isPending ? "Restaurando…" : "Confirmar restauração"}
             </button>
-          </div>
+          </DialogFooter>
         }
       >
         {rollbackTarget ? (
@@ -1021,6 +1089,10 @@ export default function AdminDeployPage() {
                 <span className="max-w-[240px] truncate text-right font-medium text-white">
                   {rollbackTarget.commitMessage}
                 </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Serviços afetados:</span>
+                <span className="font-mono text-[12px] text-gray-300">api, web</span>
               </div>
             </div>
             <p className="text-[12px] text-gray-300">
@@ -1116,17 +1188,17 @@ export default function AdminDeployPage() {
         description="Configure a conexão utilizada para implantar novas versões em produção."
         size="md"
         footer={
-          <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
+          <DialogFooter>
             <button
               type="button"
-              className="admin-btn-ghost h-9 text-[12.5px]"
+              className="admin-btn-secondary h-9"
               onClick={() => setConfigModalOpen(false)}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="admin-btn-secondary h-9 text-[12.5px]"
+              className="admin-btn-ghost h-9 text-brand-300 hover:text-brand-200"
               disabled={testConnMut.isPending || !cfgUrl.trim() || !cfgProject.trim() || !cfgService.trim()}
               onClick={() =>
                 testConnMut.mutate({
@@ -1142,7 +1214,7 @@ export default function AdminDeployPage() {
             </button>
             <button
               type="button"
-              className="admin-btn-primary h-9 text-[12.5px]"
+              className="admin-btn-primary h-9"
               disabled={saveConfigMut.isPending || !cfgUrl.trim() || !cfgProject.trim() || !cfgService.trim()}
               onClick={() =>
                 saveConfigMut.mutate({
@@ -1155,78 +1227,77 @@ export default function AdminDeployPage() {
             >
               {saveConfigMut.isPending ? "Salvando…" : "Salvar configuração"}
             </button>
-          </div>
+          </DialogFooter>
         }
       >
-        <div className="space-y-4 py-1 text-[13px]">
+        <div className="space-y-4 py-1">
           {/* Campo: URL do EasyPanel */}
-          <div>
-            <label className="block text-[12px] font-semibold text-gray-300 mb-1">
-              URL do servidor EasyPanel
-            </label>
+          <FormField label="URL do servidor EasyPanel" required hint="Endereço HTTPS completo da sua instância EasyPanel">
             <input
               type="url"
-              className="admin-input w-full h-9 text-[13px]"
-              placeholder="https://painel.exemplo.com"
+              className="input"
+              placeholder="https://easypanel.dominio.com.br"
               value={cfgUrl}
               onChange={(e) => setCfgUrl(e.target.value)}
             />
-          </div>
+          </FormField>
 
           {/* Grid: Projeto e Serviço */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="block text-[12px] font-semibold text-gray-300 mb-1">
-                Projeto
-              </label>
+            <FormField label="Projeto" required hint="Nome do projeto no painel">
               <input
                 type="text"
-                className="admin-input w-full h-9 text-[13px]"
+                className="input"
                 placeholder="i9atendimento"
                 value={cfgProject}
                 onChange={(e) => setCfgProject(e.target.value)}
               />
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold text-gray-300 mb-1">
-                Serviço / Compose
-              </label>
+            </FormField>
+
+            <FormField label="Serviço / Compose" required hint="Nome do serviço compose">
               <input
                 type="text"
-                className="admin-input w-full h-9 text-[13px]"
+                className="input"
                 placeholder="nexaflow"
                 value={cfgService}
                 onChange={(e) => setCfgService(e.target.value)}
               />
-            </div>
+            </FormField>
           </div>
 
           {/* Campo: Token da API */}
-          <div>
-            <label className="block text-[12px] font-semibold text-gray-300 mb-1">
-              Token da API (EasyPanel API Key)
-            </label>
-            <input
-              type="password"
-              className="admin-input w-full h-9 text-[13px]"
-              placeholder={configQuery.data?.hasToken ? "•••••••••••••••• (deixe vazio para manter)" : "Insira o token de API do EasyPanel"}
-              value={cfgToken}
-              onChange={(e) => setCfgToken(e.target.value)}
-              autoComplete="new-password"
-            />
-            <p className="mt-1 text-[11px] text-gray-500">
-              O token é criptografado em repouso no servidor (AES-256) e nunca é exposto ao navegador.
-            </p>
-          </div>
+          <FormField
+            label="Token da API (EasyPanel API Key)"
+            hint="O token é criptografado em repouso no servidor (AES-256) e nunca é exposto ao navegador."
+          >
+            <div className="relative">
+              <input
+                type={showToken ? "text" : "password"}
+                className="input pr-10"
+                placeholder={configQuery.data?.hasToken ? "•••••••••••••••• (deixe vazio para manter)" : "Insira o token de API do EasyPanel"}
+                value={cfgToken}
+                onChange={(e) => setCfgToken(e.target.value)}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                onClick={() => setShowToken((s) => !s)}
+                tabIndex={-1}
+              >
+                {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </FormField>
 
           {/* Banner de Resultado do Teste de Conexão */}
           {testResult ? (
             <div
               className={cn(
-                "rounded-lg p-3 text-[12px] flex items-start gap-2.5",
+                "rounded-xl p-3.5 text-[12.5px] flex items-start gap-2.5 border transition-all",
                 testResult.success
-                  ? "bg-emerald-500/[0.08] text-emerald-300 border border-emerald-500/20"
-                  : "bg-rose-500/[0.08] text-rose-300 border border-rose-500/20"
+                  ? "bg-emerald-500/[0.08] text-emerald-300 border-emerald-500/20"
+                  : "bg-rose-500/[0.08] text-rose-300 border-rose-500/20"
               )}
             >
               {testResult.success ? (
@@ -1237,7 +1308,7 @@ export default function AdminDeployPage() {
               <div>
                 <p className="font-semibold">{testResult.message}</p>
                 {testResult.details ? (
-                  <p className="mt-0.5 text-[11px] opacity-80">
+                  <p className="mt-1 text-[11px] opacity-80 leading-relaxed">
                     URL: {testResult.details.urlAccessible ? "OK" : "Inacessível"} · Autenticação: {testResult.details.authValid ? "Válida" : "Inválida"} · Projeto: {testResult.details.projectFound ? "OK" : "Não encontrado"} · Serviço: {testResult.details.serviceFound ? "OK" : "Não encontrado"}
                   </p>
                 ) : null}

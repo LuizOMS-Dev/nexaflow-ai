@@ -91,8 +91,17 @@ export class DeploymentOrchestrator {
         deployedBy: latestCompleted.startedBy?.name || null,
         isKnown: true,
       };
-    } else if (process.env.DEPLOYED_COMMIT_SHA || process.env.GIT_COMMIT_SHA) {
-      const sha = (process.env.DEPLOYED_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "").trim();
+    } else if (
+      process.env.NEXAFLOW_GIT_SHA ||
+      process.env.DEPLOYED_COMMIT_SHA ||
+      process.env.GIT_COMMIT_SHA
+    ) {
+      const sha = (
+        process.env.NEXAFLOW_GIT_SHA ||
+        process.env.DEPLOYED_COMMIT_SHA ||
+        process.env.GIT_COMMIT_SHA ||
+        ""
+      ).trim();
       if (sha) {
         currentCommit = {
           sha,
@@ -353,7 +362,7 @@ export class DeploymentOrchestrator {
           metadata: { deploymentId, durationSeconds, commitSha: dep?.commitSha },
         });
       } else {
-        const err = healthResult.error || "A implantação terminou, mas a aplicação não ficou saudável.";
+        const err = healthResult.error || "A implantação foi concluída, mas a aplicação não ficou saudável.";
         log(`✕ Falha no Health Check: ${err}`);
 
         await safeUpdate({
