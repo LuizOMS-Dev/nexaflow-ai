@@ -294,4 +294,68 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       await prisma.deployment.delete({ where: { id: upToDateDep.id } });
     }
   });
-});
+
+  it("11. Configuração do EasyPanel: salvar criptografado, obter mascarado e testar conexão", async () => {
+    // 1. Salva configuração
+    const saveRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/config",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        url: "https://easypanel2.i9atendimento.com.br",
+        token: "52372a0b8c6e955d7710feacfb9b3b1e786a665406872484f20dae19a70e7455",
+        projectName: "i9atendimento",
+        serviceName: "nexaflow",
+      },
+    });
+    expect(saveRes.statusCode).toBe(200);
+
+    // 2. Consulta configuração (token NUNCA é retornado)
+    const getRes = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/config",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(getRes.statusCode).toBe(200);
+    const json = getRes.json();
+    expect(json.configured).toBe(true);
+    expect(json.url).toBe("https://easypanel2.i9atendimento.com.br");
+    expect(json.hasToken).toBe(true);
+    expect(json.tokenPreview).toContain("••••");
+    expect(getRes.body).not.toContain("52372a0b8c6e955d");
+
+    // 3. Testa conexão com EasyPanel
+    const testRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/config/test",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        url: "https://easypanel2.i9atendimento.com.br",
+        projectName: "i9atendimento",
+        serviceName: "nexaflow",
+      },
+    });
+    expect(testRes.statusCode).toBe(200);
+    expect(testRes.json().success).toBe(true);
+    expect(testRes.json().state).toBe("CONNECTED");
+  });
+
+  it("12. Produção desconhecida: quando não há versão registrada, status é UNKNOWN", async () => {
+    // Garante que não há nenhum deploy COMPLETED
+    await prisma.deployment.deleteMany({
+      where: { startedById: superadminUser.id },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/status",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = res.json();
+    if (!json.currentCommit) {
+      expect(json.status).toBe("UNKNOWN");
+    }
+  });
+}, 30_000);

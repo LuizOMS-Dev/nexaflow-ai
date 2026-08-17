@@ -1,28 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
-  Clock,
   Copy,
-  ExternalLink,
   GitBranch,
   GitCommit,
-  GitPullRequest,
+  HelpCircle,
   History,
   Info,
+  KeyRound,
   Layers,
   RefreshCw,
   Rocket,
   RotateCcw,
   Server,
-  ShieldCheck,
+  Settings,
   Sparkles,
   Terminal,
-  X,
+  XCircle,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { formatDate, formatRelativeTime, cn } from "@/lib/utils";
@@ -91,6 +89,27 @@ type DeployOverviewResponse = {
     startedByName: string;
     durationSeconds: number;
   } | null;
+};
+
+type EasyPanelConfigResponse = {
+  configured: boolean;
+  url: string;
+  projectName: string;
+  serviceName: string;
+  hasToken: boolean;
+  tokenPreview: string;
+};
+
+type TestConnectionResponse = {
+  success: boolean;
+  message: string;
+  state: EasyPanelState;
+  details?: {
+    urlAccessible: boolean;
+    authValid: boolean;
+    projectFound: boolean;
+    serviceFound: boolean;
+  };
 };
 
 type HistoryItem = {
@@ -193,6 +212,13 @@ export default function AdminDeployPage() {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [page, setPage] = useState(1);
 
+  // Form states do Modal de Configuração do EasyPanel
+  const [cfgUrl, setCfgUrl] = useState("");
+  const [cfgProject, setCfgProject] = useState("");
+  const [cfgService, setCfgService] = useState("");
+  const [cfgToken, setCfgToken] = useState("");
+  const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null);
+
   // 1. Status geral de deploy
   const overviewQuery = useQuery({
     queryKey: ["admin-deploy-status"],
@@ -225,6 +251,71 @@ export default function AdminDeployPage() {
     enabled: Boolean(selectedDetailId) && user?.platformRole === "SUPERADMIN",
     refetchInterval: () =>
       overviewQuery.data?.activeDeployment?.id === selectedDetailId ? 3000 : false,
+  });
+
+  // 4. Configuração salva do EasyPanel
+  const configQuery = useQuery({
+    queryKey: ["admin-deploy-config"],
+    queryFn: () => api<EasyPanelConfigResponse>("/admin/deploy/config"),
+    enabled: configModalOpen && user?.platformRole === "SUPERADMIN",
+  });
+
+  useEffect(() => {
+    if (configQuery.data) {
+      setCfgUrl(configQuery.data.url || "");
+      setCfgProject(configQuery.data.projectName || "i9atendimento");
+      setCfgService(configQuery.data.serviceName || "nexaflow");
+      setCfgToken("");
+      setTestResult(null);
+    }
+  }, [configQuery.data]);
+
+  // Mutação: Testar conexão
+  const testConnMut = useMutation({
+    mutationFn: (body: { url: string; token?: string; projectName: string; serviceName: string }) =>
+      api<TestConnectionResponse>("/admin/deploy/config/test", {
+        method: "POST",
+        json: body,
+      }),
+    onSuccess: (res) => {
+      setTestResult(res);
+      if (res.success) {
+        toast({ title: "Conexão estabelecida", description: res.message, kind: "success" });
+      } else {
+        toast({ title: "Falha na conexão", description: res.message, kind: "error" });
+      }
+    },
+    onError: (e) => {
+      const msg = e instanceof Error ? e.message : "Não foi possível testar a conexão.";
+      setTestResult({ success: false, state: "UNAVAILABLE", message: msg });
+      toast({ title: "Erro no teste", description: msg, kind: "error" });
+    },
+  });
+
+  // Mutação: Salvar configuração
+  const saveConfigMut = useMutation({
+    mutationFn: (body: { url: string; token?: string; projectName: string; serviceName: string }) =>
+      api<{ success: boolean; message: string }>("/admin/deploy/config", {
+        method: "POST",
+        json: body,
+      }),
+    onSuccess: () => {
+      setConfigModalOpen(false);
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-config"] });
+      toast({
+        title: "Configuração salva",
+        description: "Parâmetros do EasyPanel atualizados com sucesso.",
+        kind: "success",
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Não foi possível salvar",
+        description: e instanceof Error ? e.message : "Erro interno ao salvar configuração.",
+        kind: "error",
+      });
+    },
   });
 
   // Mutação: Iniciar deploy
@@ -306,29 +397,31 @@ export default function AdminDeployPage() {
   const current = data.currentCommit;
   const latest = data.latestGitHubCommit;
   const active = data.activeDeployment;
-  const isUpToDate = data.status === "UP_TO_DATE";
-  const isUpdateAvailable = data.status === "UPDATE_AVAILABLE";
+  const status = data.status; // "UP_TO_DATE" | "UPDATE_AVAILABLE" | "UNKNOWN" | "DEPLOYING"
+  const isUpToDate = status === "UP_TO_DATE";
+  const isUpdateAvailable = status === "UPDATE_AVAILABLE";
+  const isUnknown = status === "UNKNOWN";
   const historyItems = historyQuery.data?.items || [];
   const totalPages = historyQuery.data?.totalPages || 1;
 
-  // EasyPanel card values
+  // Estados semânticos oficiais do EasyPanel
   const epState = data.easyPanel?.state || (data.easyPanel?.connected ? "CONNECTED" : "NOT_CONFIGURED");
   let epLabel = "Conectado";
-  let epTone: "success" | "neutral" | "danger" = "success";
-  let epHint = `Serviço ${data.easyPanel?.serviceName} · Projeto ${data.easyPanel?.projectName}`;
+  let epTone: "success" | "neutral" | "warning" | "danger" = "success";
+  let epHint = `Projeto: ${data.easyPanel?.projectName || "i9atendimento"} · Serviço: ${data.easyPanel?.serviceName || "nexaflow"}`;
 
   if (epState === "NOT_CONFIGURED") {
     epLabel = "Não configurado";
     epTone = "neutral";
     epHint = "Configure a integração para habilitar deployments.";
-  } else if (epState === "AUTH_FAILED") {
-    epLabel = "Erro de autenticação";
-    epTone = "danger";
-    epHint = "Chave de API ou token do EasyPanel inválido.";
   } else if (epState === "UNAVAILABLE") {
     epLabel = "Indisponível";
+    epTone = "warning";
+    epHint = "URL do EasyPanel inacessível temporariamente.";
+  } else if (epState === "AUTH_FAILED") {
+    epLabel = "Credenciais inválidas";
     epTone = "danger";
-    epHint = "Não foi possível conectar ao EasyPanel.";
+    epHint = "Token inválido ou sem permissão de acesso.";
   }
 
   return (
@@ -338,19 +431,29 @@ export default function AdminDeployPage() {
         title="Deploy"
         description="Controle as versões implantadas em produção com integração direta GitHub → EasyPanel."
         actions={
-          <button
-            type="button"
-            className="admin-btn-ghost h-9 text-[12.5px]"
-            onClick={() => {
-              void overviewQuery.refetch();
-              void historyQuery.refetch();
-              toast({ title: "Sincronizado", description: "Dados atualizados do GitHub e EasyPanel.", kind: "success" });
-            }}
-            disabled={overviewQuery.isFetching}
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", overviewQuery.isFetching && "animate-spin")} />
-            Atualizar status
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="admin-btn-ghost h-9 text-[12.5px]"
+              onClick={() => setConfigModalOpen(true)}
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Configurar EasyPanel
+            </button>
+            <button
+              type="button"
+              className="admin-btn-ghost h-9 text-[12.5px]"
+              onClick={() => {
+                void overviewQuery.refetch();
+                void historyQuery.refetch();
+                toast({ title: "Sincronizado", description: "Dados atualizados do GitHub e EasyPanel.", kind: "success" });
+              }}
+              disabled={overviewQuery.isFetching}
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", overviewQuery.isFetching && "animate-spin")} />
+              Atualizar status
+            </button>
+          </div>
         }
       />
 
@@ -434,7 +537,7 @@ export default function AdminDeployPage() {
       {/* 4. Card de Ação Principal: Comparativo de Versão */}
       <AdminSection
         title="Status da Versão"
-        description="Comparação em tempo real entre a versão atual e a branch principal no GitHub."
+        description="Comparação em tempo real entre a versão atual em produção e a branch principal no GitHub."
       >
         <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -491,10 +594,15 @@ export default function AdminDeployPage() {
                   <Sparkles className="h-4 w-4 shrink-0" />
                   <span className="text-[13px] font-semibold">Nova versão disponível</span>
                 </div>
+              ) : isUnknown ? (
+                <div className="flex items-center gap-2 rounded-lg bg-white/[0.05] px-3.5 py-2 text-gray-300">
+                  <HelpCircle className="h-4 w-4 shrink-0 text-gray-400" />
+                  <span className="text-[13px] font-semibold">Não foi possível determinar a versão implantada</span>
+                </div>
               ) : null}
 
-              {/* Se houver versão nova: exibe o botão de implantar */}
-              {isUpdateAvailable ? (
+              {/* Botão de deploy: se houver versão nova ou se versão for desconhecida */}
+              {(isUpdateAvailable || isUnknown) ? (
                 <div className="flex flex-col items-end gap-1.5">
                   <button
                     type="button"
@@ -503,7 +611,7 @@ export default function AdminDeployPage() {
                     onClick={() => setConfirmOpen(true)}
                   >
                     <Rocket className="h-4 w-4" />
-                    Implantar nova versão
+                    {isUnknown ? "Implantar versão" : "Implantar nova versão"}
                   </button>
 
                   {!data.easyPanel?.connected ? (
@@ -514,24 +622,12 @@ export default function AdminDeployPage() {
                         className="text-violet-400 hover:underline"
                         onClick={() => setConfigModalOpen(true)}
                       >
-                        Ver configuração
+                        Configurar integração
                       </button>
                     </div>
                   ) : null}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  {!data.easyPanel?.connected ? (
-                    <button
-                      type="button"
-                      className="admin-btn-ghost h-9 text-[12px]"
-                      onClick={() => setConfigModalOpen(true)}
-                    >
-                      <Info className="h-3.5 w-3.5" /> Ver configuração EasyPanel
-                    </button>
-                  ) : null}
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -696,8 +792,8 @@ export default function AdminDeployPage() {
       <Modal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        title="Implantar nova versão em produção?"
-        description="Confirme o disparo da nova versão para o ambiente de produção."
+        title={isUnknown ? "Implantar versão em produção?" : "Implantar nova versão em produção?"}
+        description="Confirme o disparo da versão para o ambiente de produção."
         size="md"
         footer={
           <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
@@ -714,7 +810,7 @@ export default function AdminDeployPage() {
               disabled={startDeployMut.isPending}
               onClick={() => startDeployMut.mutate({})}
             >
-              {startDeployMut.isPending ? "Iniciando deploy…" : "Iniciar deploy"}
+              {startDeployMut.isPending ? "Iniciando deploy…" : isUnknown ? "Implantar esta versão" : "Iniciar deploy"}
             </button>
           </div>
         }
@@ -722,7 +818,13 @@ export default function AdminDeployPage() {
         <div className="space-y-3.5 py-1 text-[13px]">
           <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
             <div className="flex justify-between">
-              <span className="text-gray-400">Versão:</span>
+              <span className="text-gray-400">Produção atual:</span>
+              <span className="font-mono text-gray-300">
+                {current ? current.shortSha : "Versão desconhecida"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Versão selecionada:</span>
               <code className="font-mono font-bold text-violet-300">
                 {latest ? latest.shortSha : "main"}
               </code>
@@ -736,10 +838,6 @@ export default function AdminDeployPage() {
               <span className="max-w-[240px] truncate text-right font-medium text-white" title={latest?.message}>
                 {latest ? latest.message : "Última versão"}
               </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Serviços afetados:</span>
-              <span className="font-medium text-white">nexaflow (API + Web)</span>
             </div>
           </div>
 
@@ -883,47 +981,142 @@ export default function AdminDeployPage() {
         </div>
       </Modal>
 
-      {/* MODAL 4: Visualizador Seguro de Configuração do EasyPanel */}
+      {/* MODAL 4: Área Segura de Configuração do EasyPanel */}
       <Modal
         open={configModalOpen}
         onClose={() => setConfigModalOpen(false)}
         title="Integração com o EasyPanel"
-        description="Parâmetros de conexão necessários no servidor para habilitar deployments."
+        description="Configure a conexão utilizada para implantar novas versões em produção."
         size="md"
         footer={
-          <button
-            type="button"
-            className="admin-btn-secondary h-9 w-full sm:w-auto text-[12px]"
-            onClick={() => setConfigModalOpen(false)}
-          >
-            Fechar
-          </button>
+          <div className="flex w-full flex-col-reverse justify-end gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              className="admin-btn-ghost h-9 text-[12.5px]"
+              onClick={() => setConfigModalOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9 text-[12.5px]"
+              disabled={testConnMut.isPending || !cfgUrl.trim() || !cfgProject.trim() || !cfgService.trim()}
+              onClick={() =>
+                testConnMut.mutate({
+                  url: cfgUrl,
+                  token: cfgToken || undefined,
+                  projectName: cfgProject,
+                  serviceName: cfgService,
+                })
+              }
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", testConnMut.isPending && "animate-spin")} />
+              {testConnMut.isPending ? "Testando…" : "Testar conexão"}
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9 text-[12.5px]"
+              disabled={saveConfigMut.isPending || !cfgUrl.trim() || !cfgProject.trim() || !cfgService.trim()}
+              onClick={() =>
+                saveConfigMut.mutate({
+                  url: cfgUrl,
+                  token: cfgToken || undefined,
+                  projectName: cfgProject,
+                  serviceName: cfgService,
+                })
+              }
+            >
+              {saveConfigMut.isPending ? "Salvando…" : "Salvar configuração"}
+            </button>
+          </div>
         }
       >
-        <div className="space-y-3 py-1 text-[12.5px]">
-          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Projeto EasyPanel:</span>
-              <code className="font-mono text-white">{data.easyPanel?.projectName || "i9atendimento"}</code>
+        <div className="space-y-4 py-1 text-[13px]">
+          {/* Campo: URL do EasyPanel */}
+          <div>
+            <label className="block text-[12px] font-semibold text-gray-300 mb-1">
+              URL do servidor EasyPanel
+            </label>
+            <input
+              type="url"
+              className="admin-input w-full h-9 text-[13px]"
+              placeholder="https://painel.exemplo.com"
+              value={cfgUrl}
+              onChange={(e) => setCfgUrl(e.target.value)}
+            />
+          </div>
+
+          {/* Grid: Projeto e Serviço */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-[12px] font-semibold text-gray-300 mb-1">
+                Projeto
+              </label>
+              <input
+                type="text"
+                className="admin-input w-full h-9 text-[13px]"
+                placeholder="i9atendimento"
+                value={cfgProject}
+                onChange={(e) => setCfgProject(e.target.value)}
+              />
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Serviço Compose:</span>
-              <code className="font-mono text-white">{data.easyPanel?.serviceName || "nexaflow"}</code>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">URL do Servidor:</span>
-              <span className="text-white">{data.easyPanel?.hasUrl ? "Configurada" : "Ausente"}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-400">Token de API:</span>
-              <span className={cn("font-medium", data.easyPanel?.hasToken ? "text-emerald-400" : "text-amber-400")}>
-                {data.easyPanel?.hasToken ? "Definido no servidor" : "Não configurado"}
-              </span>
+            <div>
+              <label className="block text-[12px] font-semibold text-gray-300 mb-1">
+                Serviço / Compose
+              </label>
+              <input
+                type="text"
+                className="admin-input w-full h-9 text-[13px]"
+                placeholder="nexaflow"
+                value={cfgService}
+                onChange={(e) => setCfgService(e.target.value)}
+              />
             </div>
           </div>
-          <p className="text-[11.5px] text-gray-400 leading-relaxed">
-            As credenciais do EasyPanel são gerenciadas de forma segura nas variáveis de ambiente do backend e nunca expostas ao navegador.
-          </p>
+
+          {/* Campo: Token da API */}
+          <div>
+            <label className="block text-[12px] font-semibold text-gray-300 mb-1">
+              Token da API (EasyPanel API Key)
+            </label>
+            <input
+              type="password"
+              className="admin-input w-full h-9 text-[13px]"
+              placeholder={configQuery.data?.hasToken ? "•••••••••••••••• (deixe vazio para manter)" : "Insira o token de API do EasyPanel"}
+              value={cfgToken}
+              onChange={(e) => setCfgToken(e.target.value)}
+              autoComplete="new-password"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              O token é criptografado em repouso no servidor (AES-256) e nunca é exposto ao navegador.
+            </p>
+          </div>
+
+          {/* Banner de Resultado do Teste de Conexão */}
+          {testResult ? (
+            <div
+              className={cn(
+                "rounded-lg p-3 text-[12px] flex items-start gap-2.5",
+                testResult.success
+                  ? "bg-emerald-500/[0.08] text-emerald-300 border border-emerald-500/20"
+                  : "bg-rose-500/[0.08] text-rose-300 border border-rose-500/20"
+              )}
+            >
+              {testResult.success ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-400" />
+              ) : (
+                <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+              )}
+              <div>
+                <p className="font-semibold">{testResult.message}</p>
+                {testResult.details ? (
+                  <p className="mt-0.5 text-[11px] opacity-80">
+                    URL: {testResult.details.urlAccessible ? "OK" : "Inacessível"} · Autenticação: {testResult.details.authValid ? "Válida" : "Inválida"} · Projeto: {testResult.details.projectFound ? "OK" : "Não encontrado"} · Serviço: {testResult.details.serviceFound ? "OK" : "Não encontrado"}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </Modal>
     </div>

@@ -120,8 +120,7 @@ export class DeploymentOrchestrator {
 
       comparisonStatus = isSame ? "UP_TO_DATE" : "UPDATE_AVAILABLE";
     } else if (latestGh && !currentCommit) {
-      // Se não há histórico no banco, mas GitHub está acessível, permitimos a primeira implantação
-      comparisonStatus = "UPDATE_AVAILABLE";
+      comparisonStatus = "UNKNOWN";
     }
 
     const activeInfo = activeDeployment
