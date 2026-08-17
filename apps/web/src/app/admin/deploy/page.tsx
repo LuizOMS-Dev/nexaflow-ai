@@ -1801,11 +1801,22 @@ export default function AdminDeployPage() {
 
                         if (match) {
                           const rawTime = match[1] || "";
-                          timeStr = rawTime.includes("T")
-                            ? rawTime.split("T")[1]?.split(".")[0] || rawTime
-                            : rawTime;
                           stage = match[2] || "";
                           message = match[3] || "";
+
+                          if (rawTime) {
+                            const d = new Date(rawTime);
+                            if (!isNaN(d.getTime())) {
+                              timeStr = new Intl.DateTimeFormat("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                                hour12: false,
+                              }).format(d);
+                            } else {
+                              timeStr = rawTime;
+                            }
+                          }
                         }
 
                         const isSuccess = stage === "SUCCESS" || message.includes("✓") || message.includes("concluído") || message.includes("operacionais");

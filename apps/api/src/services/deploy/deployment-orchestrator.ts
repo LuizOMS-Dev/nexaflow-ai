@@ -471,8 +471,7 @@ export class DeploymentOrchestrator {
     let logBuffer = "";
     const log = (stage: string, msg: string) => {
       const now = new Date();
-      const timeStr = now.toTimeString().split(" ")[0]; // HH:mm:ss
-      const line = `[${timeStr}] [${stage}] ${msg}\n`;
+      const line = `[${now.toISOString()}] [${stage}] ${msg}\n`;
       logBuffer += line;
     };
 
