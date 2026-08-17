@@ -1234,77 +1234,77 @@ export default function AdminDeployPage() {
       ) : null}
 
       {/* 4. Faixa Refinada: Comparação de Versão (Produção vs GitHub) + Status e Ação */}
-      <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-4.5 sm:p-5">
-        <div className="flex flex-col gap-4.5 lg:flex-row lg:items-center lg:justify-between">
-          {/* Bloco de Comparação: Produção e GitHub (Grid simétrico que posiciona a seta exatamente no centro) */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-6 flex-1 min-w-0">
+      <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-5 sm:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          {/* Bloco de Comparação: Produção e GitHub (Grid [1fr_48px_1fr] garantindo a seta no centro absoluto) */}
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_48px_1fr] items-center gap-4 md:gap-6 flex-1 min-w-0">
             {/* Lado 1: Produção */}
-            <div className="min-w-0 space-y-1">
+            <div className="w-full min-w-0 space-y-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
                 Versão em produção
               </span>
               <div className="flex items-center gap-2">
-                <code className="font-mono text-[14px] font-bold text-violet-300">
+                <code className="font-mono text-[14.5px] font-bold text-violet-300">
                   {current ? current.shortSha : "Não identificada"}
                 </code>
               </div>
-              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={current?.message ? formatCommitMessagePtBr(current.message) : undefined}>
+              <p className="text-[12px] text-gray-400 truncate" title={current?.message ? formatCommitMessagePtBr(current.message) : undefined}>
                 {current?.deployedAt
                   ? `Implantado há ${formatRelativeTime(current.deployedAt)}`
                   : current?.message ? formatCommitMessagePtBr(current.message) : "Sem versão registrada em produção"}
               </p>
             </div>
 
-            {/* Divisor / Comparador Central perfeitamente no meio */}
-            <div className="hidden sm:flex items-center justify-center shrink-0 px-1">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.03] text-gray-300 shadow-sm">
-                <ArrowRight className="h-3.5 w-3.5 stroke-[2]" />
+            {/* Divisor Central: Seta perfeitamente no centro */}
+            <div className="hidden md:flex items-center justify-center w-full">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.03] text-gray-300 shadow-sm">
+                <ArrowRight className="h-4 w-4 stroke-[2]" />
               </div>
             </div>
 
-            {/* Lado 2: GitHub */}
-            <div className="min-w-0 space-y-1">
+            {/* Lado 2: GitHub (com margem lateral para respirar e nunca encostar na barra) */}
+            <div className="w-full min-w-0 space-y-1 md:pr-6">
               <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400 block">
                 {active
                   ? `Versão sendo implantada · ${data.gitHub?.branch || "main"}`
                   : `Último no GitHub · ${data.gitHub?.branch || "main"}`}
               </span>
               <div className="flex items-center gap-2">
-                <code className={cn("font-mono text-[14px] font-bold", isGitHubConnected ? "text-emerald-300" : "text-gray-400")}>
+                <code className={cn("font-mono text-[14.5px] font-bold", isGitHubConnected ? "text-emerald-300" : "text-gray-400")}>
                   {latest ? latest.shortSha : "—"}
                 </code>
               </div>
-              <p className="text-[12px] text-gray-400 truncate max-w-sm sm:max-w-md" title={latest?.message ? formatCommitMessagePtBr(latest.message) : undefined}>
+              <p className="text-[12px] text-gray-400 truncate" title={latest?.message ? formatCommitMessagePtBr(latest.message) : undefined}>
                 {isGitHubConnected ? (latest?.message ? formatCommitMessagePtBr(latest.message) : "Nenhum commit encontrado") : "Não foi possível consultar o GitHub"}
               </p>
             </div>
           </div>
 
-          {/* Lado Direito / Inferior: Status Semântico + CTA Único Principal */}
-          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 pt-3 border-t border-white/[0.06] lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-white/[0.08] shrink-0">
+          {/* Lado Direito: Status Semântico + CTA com separador bem respirado */}
+          <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3 pt-4 border-t border-white/[0.06] xl:border-t-0 xl:pt-0 xl:pl-8 xl:border-l xl:border-white/[0.08] shrink-0">
             {/* Status Semântico Discreto */}
             {active ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 text-violet-300 text-[12px] font-medium">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-violet-300 text-[12px] font-medium">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
                 <span>Em implantação</span>
               </div>
             ) : !isGitHubConnected ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3 py-1.5 text-gray-400 border border-white/[0.06]">
+              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.04] px-3.5 py-1.5 text-gray-400 border border-white/[0.06]">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-400/80" />
                 <span className="text-[12px] font-medium">Não foi possível consultar o GitHub</span>
               </div>
             ) : isUpToDate ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/[0.1] px-3 py-1.5 text-emerald-300 border border-emerald-500/20">
+              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-500/[0.1] px-3.5 py-1.5 text-emerald-300 border border-emerald-500/20">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 <span className="text-[12px] font-medium">Produção atualizada</span>
               </div>
             ) : isUpdateAvailable ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/[0.12] px-3 py-1.5 text-violet-200 border border-violet-500/25 shadow-[0_0_12px_rgba(139,92,246,0.1)]">
+              <div className="flex items-center gap-1.5 rounded-lg bg-violet-500/[0.12] px-3.5 py-1.5 text-violet-200 border border-violet-500/25 shadow-[0_0_12px_rgba(139,92,246,0.1)]">
                 <Sparkles className="h-3.5 w-3.5 text-violet-400" />
                 <span className="text-[12px] font-medium">Atualização disponível</span>
               </div>
             ) : isUnknown ? (
-              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-gray-300 border border-white/[0.08]">
+              <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3.5 py-1.5 text-gray-300 border border-white/[0.08]">
                 <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
                 <span className="text-[12px] font-medium">Versão atual não identificada</span>
               </div>
@@ -1314,7 +1314,7 @@ export default function AdminDeployPage() {
             {!active && isGitHubConnected && (isUpdateAvailable || isUnknown) ? (
               <button
                 type="button"
-                className="admin-btn-primary h-9 px-4 text-[12.5px] font-semibold shadow-sm"
+                className="admin-btn-primary h-9.5 px-4.5 text-[12.5px] font-semibold shadow-sm"
                 disabled={startDeployMut.isPending || !data.easyPanel?.connected}
                 onClick={() => {
                   setSelectedCommitToDeploy(null);
