@@ -281,6 +281,7 @@ export default function AdminDeployPage() {
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
+  const [clearDeployHistoryOpen, setClearDeployHistoryOpen] = useState(false);
   const [visibleCommitCount, setVisibleCommitCount] = useState(5);
   const [isReplacingToken, setIsReplacingToken] = useState(false);
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
@@ -390,6 +391,31 @@ export default function AdminDeployPage() {
       toast({
         title: "Não foi possível limpar o histórico",
         description: e instanceof Error ? e.message : "Erro interno ao limpar histórico visual.",
+        kind: "error",
+      });
+    },
+  });
+
+  // Mutação: Limpar histórico de deploys finalizados
+  const clearDeployHistoryMut = useMutation({
+    mutationFn: () =>
+      api<{ success: boolean; count: number; message: string }>(
+        "/admin/deploy/history/clear",
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      setClearDeployHistoryOpen(false);
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
+      toast({
+        title: "Histórico de deploys limpo",
+        description: "Os registros de implantações passadas foram removidos.",
+        kind: "success",
+      });
+    },
+    onError: (e) => {
+      toast({
+        title: "Não foi possível limpar o histórico",
+        description: e instanceof Error ? e.message : "Erro interno ao limpar histórico de implantações.",
         kind: "error",
       });
     },
@@ -953,6 +979,18 @@ export default function AdminDeployPage() {
       <AdminSection
         title="Histórico de Deploys"
         description="Registro auditável de todas as implantações, durações e validações de saúde."
+        action={
+          historyItems.length > 0 ? (
+            <button
+              type="button"
+              className="admin-btn-ghost h-7 px-2 text-[11.5px] text-gray-400 hover:text-rose-400"
+              onClick={() => setClearDeployHistoryOpen(true)}
+              title="Limpar todos os registros de implantações passadas deste painel"
+            >
+              <Trash2 className="h-3 w-3" /> Limpar histórico
+            </button>
+          ) : null
+        }
         flush
       >
         {historyItems.length === 0 ? (
@@ -1768,6 +1806,41 @@ export default function AdminDeployPage() {
         <div className="py-2 text-[12.5px] text-gray-300">
           <p>
             Esta ação limpa exclusivamente a lista de visualização do painel. Novos commits enviados para a branch principal voltarão a aparecer aqui automaticamente.
+          </p>
+        </div>
+      </Modal>
+
+      {/* MODAL 6: Confirmação de Limpeza do Histórico de Deploys */}
+      <Modal
+        open={clearDeployHistoryOpen}
+        onClose={() => setClearDeployHistoryOpen(false)}
+        title="Limpar histórico de deploys?"
+        description="Todos os registros de implantações passadas serão removidos deste painel. Esta ação é irreversível e não afeta a versão atualmente em produção."
+        size="sm"
+        footer={
+          <DialogFooter>
+            <button
+              type="button"
+              className="admin-btn-secondary h-9"
+              disabled={clearDeployHistoryMut.isPending}
+              onClick={() => setClearDeployHistoryOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500"
+              disabled={clearDeployHistoryMut.isPending}
+              onClick={() => clearDeployHistoryMut.mutate()}
+            >
+              {clearDeployHistoryMut.isPending ? "Limpando…" : "Limpar histórico"}
+            </button>
+          </DialogFooter>
+        }
+      >
+        <div className="py-2 text-[12.5px] text-gray-300">
+          <p>
+            Esta ação limpa o log auditável de implantações concluídas e falhadas. O status da aplicação e a versão atual continuam funcionando normalmente.
           </p>
         </div>
       </Modal>

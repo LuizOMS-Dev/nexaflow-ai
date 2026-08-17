@@ -192,6 +192,20 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     return deploymentOrchestrator.listHistory(page, limit);
   });
 
+  // 7.1 Limpar histórico de deploys (apenas finalizados)
+  app.post("/admin/deploy/history/clear", async (request, reply) => {
+    reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const user = request.user;
+    if (!user) throw new AppError("Não autenticado.", 401, "UNAUTHORIZED");
+
+    const result = await deploymentOrchestrator.clearHistory(user.sub, request.ip);
+    return {
+      success: true,
+      message: "Histórico de implantações limpo com sucesso.",
+      count: result.count,
+    };
+  });
+
   // 8. Detalhes e logs de um deployment específico
   app.get("/admin/deploy/:id", async (request, reply) => {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");

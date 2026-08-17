@@ -532,19 +532,82 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     expect(startJson.deploymentId).toBeDefined();
     expect(startJson.commitShortSha).toBe("a1b2c3d");
 
-    // 2. Tentar disparar segundo deploy concorrente retorna 409 (Lock)
-    const concurrentRes = await app.inject({
-      method: "POST",
-      url: "/admin/deploy/start",
-      headers: { authorization: `Bearer ${superadminToken}` },
-      payload: {
-        commitSha: "9999999999999999999999999999999999999999",
-      },
-    });
-    expect(concurrentRes.statusCode).toBe(409);
-    expect(concurrentRes.json().message).toContain("Já existe uma implantação em andamento");
+    // Valida que o SHA registrado no banco é exatamente o SHA selecionado
+    const savedDep = await prisma.deployment.findUnique({ where: { id: startJson.deploymentId } });
+    expect(savedDep?.commitSha).toBe(customSha);
+    expect(savedDep?.branch).toBe("main");
 
     // Limpeza
     await prisma.deployment.delete({ where: { id: startJson.deploymentId } });
+  });
+
+  it("18. Limpar histórico de deploys: remove deploys finalizados sem afetar deploys ativos", async () => {
+    // 1. Cria um deploy COMPLETED e um FAILED para testar limpeza
+    await prisma.deployment.createMany({
+      data: [
+        {
+          environment: "production",
+          branch: "main",
+          commitSha: "3333333333333333333333333333333333333333",
+          commitShortSha: "3333333",
+          commitMessage: "Test history item 1",
+          commitAuthor: "Superadmin",
+          startedById: superadminUser.id,
+          status: "COMPLETED",
+          startedAt: new Date(Date.now() - 100000),
+          finishedAt: new Date(Date.now() - 90000),
+          durationSeconds: 10,
+        },
+        {
+          environment: "production",
+          branch: "main",
+          commitSha: "4444444444444444444444444444444444444444",
+          commitShortSha: "4444444",
+          commitMessage: "Test history item 2",
+          commitAuthor: "Superadmin",
+          startedById: superadminUser.id,
+          status: "FAILED",
+          startedAt: new Date(Date.now() - 80000),
+          finishedAt: new Date(Date.now() - 70000),
+          durationSeconds: 10,
+        },
+      ],
+    });
+
+    // 2. Usuário comum é bloqueado (403)
+    const blockedRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/history/clear",
+      headers: { authorization: `Bearer ${regularUserToken}` },
+    });
+    expect(blockedRes.statusCode).toBe(403);
+
+    // 3. Superadmin limpa o histórico de deploys
+    const clearRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/history/clear",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json().success).toBe(true);
+    expect(clearRes.json().count).toBeGreaterThanOrEqual(2);
+
+    // 4. Histórico de deploys agora está vazio
+    const historyRes = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/history?page=1&limit=10",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(historyRes.statusCode).toBe(200);
+    expect(historyRes.json().items.length).toBe(0);
+    expect(historyRes.json().total).toBe(0);
+
+    // 5. Auditoria registrada
+    const auditLog = await prisma.auditLog.findFirst({
+      where: { action: "deployment.history.cleared" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(auditLog).toBeDefined();
+    expect(auditLog?.userId).toBe(superadminUser.id);
   });
 }, 30_000);

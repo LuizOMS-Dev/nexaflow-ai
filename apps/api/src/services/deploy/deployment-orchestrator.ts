@@ -625,6 +625,26 @@ export class DeploymentOrchestrator {
   }
 
   /**
+   * Limpa os registros do histórico de deployments finalizados (não remove deploys ativos)
+   */
+  async clearHistory(userId: string, ip?: string) {
+    const deleted = await prisma.deployment.deleteMany({
+      where: {
+        status: { notIn: ACTIVE_STATUSES },
+      },
+    });
+
+    await audit({
+      action: "deployment.history.cleared",
+      userId,
+      ip,
+      metadata: { count: deleted.count },
+    });
+
+    return { success: true, count: deleted.count };
+  }
+
+  /**
    * Lista o histórico paginado de deployments
    */
   async listHistory(page = 1, limit = 10) {
