@@ -42,7 +42,7 @@ import {
   StatusBadge,
 } from "@/components/admin";
 import { DialogFooter, FormField, Modal, useToast } from "@/components/ui";
-import { ActionMenu, DropdownMenu, MenuItem } from "@/components/ui-menu";
+import { ActionMenu } from "@/components/ui-menu";
 
 type EasyPanelState = "CONNECTED" | "NOT_CONFIGURED" | "AUTH_FAILED" | "UNAVAILABLE" | "CHECKING";
 
@@ -474,6 +474,7 @@ export default function AdminDeployPage() {
   const [rollbackOpen, setRollbackOpen] = useState(false);
   const [rollbackTarget, setRollbackTarget] = useState<HistoryItem | null>(null);
   const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null);
+  const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
   const [clearDeployHistoryOpen, setClearDeployHistoryOpen] = useState(false);
@@ -992,67 +993,15 @@ export default function AdminDeployPage() {
         description="Controle as versões implantadas em produção com integração direta GitHub → EasyPanel."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {/* 1. Menu Dropdown: Integrações */}
-            <DropdownMenu
-              align="right"
-              minWidth={240}
-              trigger={
-                <button
-                  type="button"
-                  className="admin-btn-secondary h-9 px-3 text-[12.5px] font-medium flex items-center gap-2"
-                >
-                  <Layers className="h-3.5 w-3.5 text-gray-400" />
-                  <span>Integrações</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-gray-400 -mr-0.5" />
-                </button>
-              }
+            {/* 1. Ação: Integrações (Abre o modal compacto de conexões) */}
+            <button
+              type="button"
+              className="admin-btn-secondary h-9 px-3.5 text-[12.5px] font-medium flex items-center gap-2"
+              onClick={() => setIntegrationsModalOpen(true)}
             >
-              {/* Item 1: EasyPanel */}
-              <MenuItem
-                icon={Layers}
-                onClick={() => setConfigModalOpen(true)}
-                trailing={
-                  epState === "CONNECTED" ? (
-                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Conectado
-                    </span>
-                  ) : epState === "AUTH_FAILED" ? (
-                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-rose-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Inválido
-                    </span>
-                  ) : epState === "UNAVAILABLE" ? (
-                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Indisponível
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" /> Não configurado
-                    </span>
-                  )
-                }
-              >
-                EasyPanel
-              </MenuItem>
-
-              {/* Item 2: GitHub */}
-              <MenuItem
-                icon={GitBranch}
-                onClick={() => setGithubConfigModalOpen(true)}
-                trailing={
-                  data.gitHub?.connected ? (
-                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Conectado
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" /> Não configurado
-                    </span>
-                  )
-                }
-              >
-                GitHub
-              </MenuItem>
-            </DropdownMenu>
+              <Layers className="h-3.5 w-3.5 text-gray-400" />
+              <span>Integrações</span>
+            </button>
 
             {/* Indicador sutil de reconexão durante reinicialização de containers */}
             {overviewQuery.isFetching && overviewQuery.isError ? (
@@ -1620,6 +1569,118 @@ export default function AdminDeployPage() {
           </>
         )}
       </AdminSection>
+
+      {/* MODAL 0: Integrações do Deploy (Acesso centralizado para EasyPanel e GitHub) */}
+      <Modal
+        open={integrationsModalOpen}
+        onClose={() => setIntegrationsModalOpen(false)}
+        title="Integrações do Deploy"
+        description="Gerencie as conexões utilizadas pelo processo de implantação."
+        size="md"
+        footer={
+          <div className="flex w-full justify-end">
+            <button
+              type="button"
+              className="admin-btn-secondary h-8.5 px-4 text-[12px] font-medium"
+              onClick={() => setIntegrationsModalOpen(false)}
+            >
+              Fechar
+            </button>
+          </div>
+        }
+      >
+        <div className="divide-y divide-white/[0.06] py-1">
+          {/* Linha 1: EasyPanel */}
+          <div className="flex items-center justify-between gap-4 py-3.5 first:pt-1 last:pb-1">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] text-gray-300 border border-white/[0.06]">
+                <Layers className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold text-white text-[13px]">EasyPanel</h4>
+                  {epState === "CONNECTED" ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Conectado
+                    </span>
+                  ) : epState === "AUTH_FAILED" ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-rose-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Credenciais inválidas
+                    </span>
+                  ) : epState === "UNAVAILABLE" ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Indisponível
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" /> Não configurado
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-gray-400 truncate">
+                  {data.easyPanel?.projectName && data.easyPanel?.serviceName
+                    ? `${data.easyPanel.projectName} / ${data.easyPanel.serviceName}`
+                    : "i9atendimento / nexaflow"}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="admin-btn-secondary h-8 px-3 text-[12px] shrink-0 font-medium"
+              onClick={() => {
+                setIntegrationsModalOpen(false);
+                setConfigModalOpen(true);
+              }}
+            >
+              Configurar
+            </button>
+          </div>
+
+          {/* Linha 2: GitHub */}
+          <div className="flex items-center justify-between gap-4 py-3.5 first:pt-1 last:pb-1">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.04] text-gray-300 border border-white/[0.06]">
+                <GitBranch className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold text-white text-[13px]">GitHub</h4>
+                  {data.gitHub?.connected ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Conectado
+                    </span>
+                  ) : isRateLimited ? (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Limitado temporariamente
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-500" /> Não configurado
+                    </span>
+                  )}
+                </div>
+                <p className="text-[12px] text-gray-400 truncate">
+                  {data.gitHub?.owner && data.gitHub?.repo
+                    ? `${data.gitHub.owner}/${data.gitHub.repo} · ${data.gitHub.branch || "main"}`
+                    : "LuizOMS-Dev/nexaflow-ai · main"}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="admin-btn-secondary h-8 px-3 text-[12px] shrink-0 font-medium"
+              onClick={() => {
+                setIntegrationsModalOpen(false);
+                setGithubConfigModalOpen(true);
+              }}
+            >
+              Configurar
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* MODAL 1: Confirmação de Deploy (Refinado e Seguro) */}
       <Modal
