@@ -1891,22 +1891,31 @@ export default function AdminDeployPage() {
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              className="admin-btn-ghost h-7 px-2 text-[11.5px]"
+                              className="admin-btn-ghost h-7 px-2.5 text-[11.5px] text-gray-300 hover:text-white"
                               onClick={() => setSelectedDetailId(item.id)}
+                              title="Ver logs e status detalhados deste deploy"
                             >
                               <Terminal className="h-3 w-3" /> Detalhes
                             </button>
 
-                            {item.status === "COMPLETED" && !isItemCurrent && !active && data.easyPanel?.connected ? (
+                            {item.status === "COMPLETED" && !isItemCurrent ? (
                               <button
                                 type="button"
-                                className="admin-btn-ghost h-7 px-2 text-[11.5px] text-amber-300 hover:text-amber-200"
+                                className="admin-btn-ghost h-7 px-2.5 text-[11.5px] text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 border border-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                                disabled={Boolean(active) || !data.easyPanel?.connected || rollbackMut.isPending}
+                                title={
+                                  active
+                                    ? "Existe um deploy em andamento no momento"
+                                    : !data.easyPanel?.connected
+                                    ? "Configure o EasyPanel para permitir restaurações"
+                                    : "Reverter produção para esta versão estável anterior (backup)"
+                                }
                                 onClick={() => {
                                   setRollbackTarget(item);
                                   setRollbackOpen(true);
                                 }}
                               >
-                                <RotateCcw className="h-3 w-3" /> Restaurar
+                                <RotateCcw className="h-3 w-3" /> Reverter
                               </button>
                             ) : null}
                           </div>
@@ -2241,55 +2250,126 @@ export default function AdminDeployPage() {
         })()}
       </Modal>
 
-      {/* MODAL 2: Confirmação de Rollback */}
+      {/* MODAL 2: Confirmação de Reversão / Rollback (Restauração de Backup) */}
       <Modal
         open={rollbackOpen && Boolean(rollbackTarget)}
         onClose={() => {
           setRollbackOpen(false);
           setRollbackTarget(null);
         }}
-        title={`Restaurar versão ${rollbackTarget?.commitShortSha}?`}
-        description="Você está prestes a reverter a produção para uma versão anterior bem-sucedida."
+        title={`Reverter para a versão ${rollbackTarget?.commitShortSha}?`}
+        description="Restaure uma versão anterior estável como backup imediato em produção."
         size="md"
         footer={
           <DialogFooter>
             <button
               type="button"
               className="admin-btn-secondary h-9"
-              onClick={() => setRollbackOpen(false)}
+              disabled={rollbackMut.isPending}
+              onClick={() => {
+                setRollbackOpen(false);
+                setRollbackTarget(null);
+              }}
             >
               Cancelar
             </button>
             <button
               type="button"
-              className="admin-btn-primary h-9 bg-amber-600 hover:bg-amber-500"
-              disabled={rollbackMut.isPending}
+              className="admin-btn-primary h-9 bg-amber-600 hover:bg-amber-500 border-amber-500/30 text-white flex items-center gap-2"
+              disabled={rollbackMut.isPending || !data.easyPanel?.connected || Boolean(active)}
               onClick={() => rollbackTarget && rollbackMut.mutate(rollbackTarget.id)}
             >
-              {rollbackMut.isPending ? "Restaurando…" : "Confirmar restauração"}
+              {rollbackMut.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Iniciando reversão…</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Confirmar reversão</span>
+                </>
+              )}
             </button>
           </DialogFooter>
         }
       >
         {rollbackTarget ? (
-          <div className="space-y-3 py-1 text-[13px]">
-            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3 space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Versão alvo:</span>
-                <code className="font-mono font-bold text-amber-300">
-                  {rollbackTarget.commitShortSha}
-                </code>
+          <div className="space-y-3.5 py-1 text-[12.5px]">
+            {/* Bloco Estruturado de Informações da Reversão */}
+            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-3">
+              {/* Linha 1: Comparação da Versão Atual com a Versão Alvo */}
+              <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-white/[0.05]">
+                <div>
+                  <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                    Versão Atual em Produção
+                  </span>
+                  <div className="mt-1 flex items-center gap-2">
+                    <code className="font-mono font-semibold text-violet-300">
+                      {current?.shortSha || "Não identificada"}
+                    </code>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                    Versão Alvo (Restauração)
+                  </span>
+                  <div className="mt-1 flex items-center gap-2">
+                    <code className="rounded bg-amber-500/20 px-1.5 py-0.5 font-mono text-[12.5px] font-bold text-amber-300">
+                      {rollbackTarget.commitShortSha}
+                    </code>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Mensagem:</span>
-                <span className="max-w-[240px] truncate text-right font-medium text-white" title={rollbackTarget?.commitMessage ? formatCommitMessagePtBr(rollbackTarget.commitMessage) : undefined}>
-                  {formatCommitMessagePtBr(rollbackTarget.commitMessage)}
+
+              {/* Linha 2: Descrição da Versão Alvo */}
+              <div className="pb-2.5 border-b border-white/[0.05]">
+                <span className="text-gray-400 text-[11px] uppercase tracking-wider block font-semibold">
+                  Descrição do Commit Alvo
                 </span>
+                <p
+                  className="mt-1 font-medium text-gray-200 leading-relaxed text-[12px]"
+                  title={rollbackTarget.commitMessage ? formatCommitMessagePtBr(rollbackTarget.commitMessage) : undefined}
+                >
+                  {rollbackTarget.commitMessage ? formatCommitMessagePtBr(rollbackTarget.commitMessage) : "Sem descrição informada"}
+                </p>
+              </div>
+
+              {/* Linha 3: Metadados originais da implantação */}
+              <div className="grid grid-cols-2 gap-3 text-[11.5px] text-gray-400">
+                <div>
+                  <span>Implantado originalmente em:</span>
+                  <strong className="text-gray-300 block mt-0.5 font-normal">{formatDate(rollbackTarget.startedAt)}</strong>
+                </div>
+                <div>
+                  <span>Responsável original:</span>
+                  <strong className="text-gray-300 block mt-0.5 font-normal">{rollbackTarget.startedBy}</strong>
+                </div>
               </div>
             </div>
-            <p className="text-[12px] text-gray-300">
-              Esta ação gerará uma nova implantação no histórico e validará a integridade do sistema pós-restauração.
-            </p>
+
+            {/* Alerta de Segurança e Funcionamento */}
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3 text-amber-200 text-[12px] leading-relaxed">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+              <div>
+                <p className="font-semibold text-amber-100">Restauração Segura de Versão</p>
+                <p className="mt-0.5 text-amber-200/90 leading-relaxed">
+                  O EasyPanel recompilará e ativará exatamente o commit <strong className="font-mono text-amber-300">{rollbackTarget.commitShortSha}</strong>. Após o deploy, o sistema validará automaticamente a integridade da API e do Web.
+                </p>
+              </div>
+            </div>
+
+            {/* Erro inline da mutação de rollback se houver */}
+            {rollbackMut.isError ? (
+              <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.08] p-2.5 text-rose-300 text-[11.5px] flex items-center gap-2">
+                <XCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>
+                  {rollbackMut.error instanceof Error
+                    ? rollbackMut.error.message
+                    : "Falha ao iniciar reversão."}
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Modal>

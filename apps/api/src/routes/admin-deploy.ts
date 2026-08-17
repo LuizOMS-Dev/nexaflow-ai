@@ -364,6 +364,8 @@ export async function adminDeployRoutes(app: FastifyInstance) {
     const result = await deploymentOrchestrator.startDeploy(
       {
         commitSha: target.commitSha,
+        commitMessage: target.commitMessage ? `Reversão para ${target.commitShortSha}: ${target.commitMessage}` : `Reversão para versão ${target.commitShortSha}`,
+        commitAuthor: target.commitAuthor || "Superadmin",
         branch: target.branch,
         isRollback: true,
         rollbackFromSha: target.commitSha,

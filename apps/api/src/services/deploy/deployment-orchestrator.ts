@@ -350,6 +350,8 @@ export class DeploymentOrchestrator {
   async startDeploy(
     input: {
       commitSha?: string;
+      commitMessage?: string;
+      commitAuthor?: string;
       branch?: string;
       isRollback?: boolean;
       rollbackFromSha?: string;
@@ -390,8 +392,8 @@ export class DeploymentOrchestrator {
       targetCommit = {
         sha: input.commitSha,
         shortSha: input.commitSha.slice(0, 7),
-        message: input.isRollback ? `Rollback para ${input.commitSha.slice(0, 7)}` : "Deploy manual de versão",
-        author: "Superadmin",
+        message: input.commitMessage || (input.isRollback ? `Reversão para ${input.commitSha.slice(0, 7)}` : "Deploy manual de versão"),
+        author: input.commitAuthor || "Superadmin",
         date: new Date().toISOString(),
       };
     } else {
