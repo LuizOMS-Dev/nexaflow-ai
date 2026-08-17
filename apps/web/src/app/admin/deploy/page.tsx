@@ -480,6 +480,12 @@ function formatCommitMessagePtBr(rawMessage?: string | null): string {
   // 4. Dicionário Extensivo de Expressões e Termos Técnicos em Inglês
   const phraseDictionary: Array<[RegExp, string]> = [
     // Expressões compostas frequentes
+    [/\bautomated vitest test suite for rollback and silent safeUpdate execution\b/gi, "suíte de testes automatizados Vitest para reversão e execução silenciosa de atualizações"],
+    [/\badd automated vitest test suite for rollback and silent safeUpdate execution\b/gi, "adiciona suíte de testes automatizados Vitest para reversão e execução silenciosa"],
+    [/\bautomated vitest test suite\b/gi, "suíte de testes automatizados com Vitest"],
+    [/\bfor rollback\b/gi, "para reversão"],
+    [/\bsilent safeUpdate execution\b/gi, "execução segura e silenciosa"],
+    [/\bperfect geometric arrow centering with 3-column fixed track and generous divider breathing room\b/gi, "centralização geométrica da seta em 3 colunas e espaçamento amplo da barra divisória"],
     [/\bperfect geometric arrow centering\b/gi, "centralização geométrica perfeita da seta"],
     [/\b3-column fixed track\b/gi, "grid de 3 colunas com trilha central fixa"],
     [/\bgenerous divider breathing room\b/gi, "espaçamento amplo na barra divisória"],
@@ -647,10 +653,10 @@ function formatCommitMessagePtBr(rawMessage?: string | null): string {
     [/\bchecks\b/gi, "verifica"],
     [/\bchecked\b/gi, "verificado"],
     [/\bcheck\b/gi, "verifica"],
-    [/\bdeploying\b/gi, "implanta"],
-    [/\bdeploys\b/gi, "implantações"],
+    [/\bdeploying\b/gi, "implantando"],
+    [/\bdeploys\b/gi, "deploys"],
     [/\bdeployed\b/gi, "implantado"],
-    [/\bdeploy\b/gi, "implantação"],
+    [/\bdeploy\b/gi, "deploy"],
     [/\bbuilding\b/gi, "compila"],
     [/\bbuilds\b/gi, "compilações"],
     [/\bbuilt\b/gi, "compilado"],
