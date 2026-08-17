@@ -3,6 +3,7 @@ import { buildApp } from "../app";
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../services/security/password";
 import { githubClient } from "../services/deploy/github-client";
+import { deploymentOrchestrator } from "../services/deploy/deployment-orchestrator";
 import type { FastifyInstance } from "fastify";
 
 describe("Módulo de Deploy Admin (/admin/deploy)", () => {
@@ -609,5 +610,38 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
     });
     expect(auditLog).toBeDefined();
     expect(auditLog?.userId).toBe(superadminUser.id);
+  });
+
+  it("19. Resiliência da versão de produção: limpar histórico de deploys NUNCA apaga a versão atual de produção", async () => {
+    // 1. Grava a versão de produção
+    await deploymentOrchestrator.recordProductionRelease({
+      sha: "8888888888888888888888888888888888888888",
+      shortSha: "8888888",
+      message: "feat: persistent release",
+      author: "Superadmin",
+      deployedAt: new Date(),
+      deployedBy: "Superadmin",
+    });
+
+    // 2. Limpa o histórico de deployments
+    const clearRes = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/history/clear",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(clearRes.statusCode).toBe(200);
+
+    // 3. Consulta status e verifica que currentCommit permanece 100% conhecido e intacto
+    const statusRes = await app.inject({
+      method: "GET",
+      url: "/admin/deploy/status",
+      headers: { authorization: `Bearer ${superadminToken}` },
+    });
+    expect(statusRes.statusCode).toBe(200);
+    const body = statusRes.json();
+    expect(body.currentCommit).toBeDefined();
+    expect(body.currentCommit.sha).toBe("8888888888888888888888888888888888888888");
+    expect(body.currentCommit.shortSha).toBe("8888888");
+    expect(body.currentCommit.isKnown).toBe(true);
   });
 }, 30_000);

@@ -217,47 +217,6 @@ function formatDuration(seconds?: number): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-function useLiveElapsed(
-  startedAt?: string | Date | null,
-  isFinished?: boolean,
-  finalSeconds?: number
-): number {
-  const [elapsed, setElapsed] = useState<number>(() => {
-    if (isFinished && typeof finalSeconds === "number") return finalSeconds;
-    if (!startedAt) return 0;
-    const start = typeof startedAt === "string" ? new Date(startedAt).getTime() : startedAt.getTime();
-    if (isNaN(start)) return finalSeconds || 0;
-    return Math.max(0, Math.floor((Date.now() - start) / 1000));
-  });
-
-  useEffect(() => {
-    if (isFinished && typeof finalSeconds === "number") {
-      setElapsed(finalSeconds);
-      return;
-    }
-    if (!startedAt) {
-      setElapsed(0);
-      return;
-    }
-
-    const start = typeof startedAt === "string" ? new Date(startedAt).getTime() : startedAt.getTime();
-    if (isNaN(start)) {
-      setElapsed(finalSeconds || 0);
-      return;
-    }
-
-    const update = () => {
-      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    };
-
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  }, [startedAt, isFinished, finalSeconds]);
-
-  return elapsed;
-}
-
 function deployStatusTone(st: DeploymentStatus): "brand" | "neutral" | "success" | "warning" | "danger" {
   switch (st) {
     case "COMPLETED":
@@ -305,7 +264,7 @@ function healthStatusLabel(status: DeploymentStatus, health?: string): string {
     return "Verificando";
   }
   if (status === "FAILED") {
-    return health === "UNHEALTHY" ? "Falha na validação" : "Falha na execução";
+    return health === "UNHEALTHY" ? "Falhou na validação" : "Falhou";
   }
   return "Aguardando validação";
 }
@@ -348,7 +307,7 @@ export default function AdminDeployPage() {
     },
   });
 
-  // 2. Lista de commits recentes do GitHub
+  // 2. Lista de commits recentes do GitHub (filtrada pelo clear marker)
   const commitsQuery = useQuery({
     queryKey: ["admin-deploy-commits"],
     queryFn: () =>
@@ -437,7 +396,7 @@ export default function AdminDeployPage() {
     },
   });
 
-  // Mutação: Limpar histórico de deploys finalizados
+  // Mutação: Limpar histórico de deploys finalizados (mantém CurrentProductionVersion intacta)
   const clearDeployHistoryMut = useMutation({
     mutationFn: () =>
       api<{ success: boolean; count: number; message: string }>(
@@ -447,6 +406,7 @@ export default function AdminDeployPage() {
     onSuccess: () => {
       setClearDeployHistoryOpen(false);
       void qc.invalidateQueries({ queryKey: ["admin-deploy-history"] });
+      void qc.invalidateQueries({ queryKey: ["admin-deploy-status"] });
       toast({
         title: "Histórico de deploys limpo",
         description: "Os registros de implantações passadas foram removidos.",
@@ -462,7 +422,7 @@ export default function AdminDeployPage() {
     },
   });
 
-  // Mutação: Testar conexão
+  // Mutação: Testar conexão com EasyPanel
   const testConnMut = useMutation({
     mutationFn: (body: { url: string; token?: string; projectName: string; serviceName: string }) =>
       api<TestConnectionResponse>("/admin/deploy/config/test", {
@@ -484,7 +444,7 @@ export default function AdminDeployPage() {
     },
   });
 
-  // Mutação: Salvar configuração
+  // Mutação: Salvar configuração do EasyPanel
   const saveConfigMut = useMutation({
     mutationFn: (body: { url: string; token?: string; projectName: string; serviceName: string }) =>
       api<{ success: boolean; message: string }>("/admin/deploy/config", {
@@ -590,42 +550,15 @@ export default function AdminDeployPage() {
     return <AdminPageSkeleton metrics={4} />;
   }
 
-  const data = overviewQuery.data || {
-    environment: "production",
-    isOnline: true,
-    healthState: "HEALTHY",
-    status: "UNKNOWN",
-    currentCommit: null,
-    latestGitHubCommit: null,
-    gitHub: { connected: false, owner: "LuizOMS-Dev", repo: "nexaflow-ai", branch: "main" },
-    easyPanel: {
-      state: "CHECKING",
-      connected: false,
-      projectName: "i9atendimento",
-      serviceName: "nexaflow",
-      serviceType: "compose",
-      hasUrl: false,
-      hasToken: false,
-    },
-    activeDeployment: null,
-  };
-
-  const active = data.activeDeployment;
-  const liveActiveElapsed = useLiveElapsed(active?.startedAt);
-
-  const isDetailFinished = detailQuery.data?.status === "COMPLETED" || detailQuery.data?.status === "FAILED";
-  const liveDetailElapsed = useLiveElapsed(
-    detailQuery.data?.startedAt,
-    isDetailFinished,
-    detailQuery.data?.durationSeconds
-  );
-
+  const data = overviewQuery.data;
   const current = data.currentCommit;
   const latest = data.latestGitHubCommit;
+  const active = data.activeDeployment;
   const status = data.status; // "UP_TO_DATE" | "UPDATE_AVAILABLE" | "UNKNOWN" | "DEPLOYING"
   const isUpToDate = status === "UP_TO_DATE";
   const isUpdateAvailable = status === "UPDATE_AVAILABLE";
   const isUnknown = status === "UNKNOWN";
+  const isGitHubConnected = Boolean(data.gitHub?.connected && latest);
 
   const allCommits = commitsQuery.data?.commits || [];
   const displayedCommits = allCommits.slice(0, visibleCommitCount);
@@ -700,12 +633,12 @@ export default function AdminDeployPage() {
         }
       />
 
-      {/* 2. Grid de Métricas Principais (Compactos e Coerentes) */}
+      {/* 2. Grid de Métricas Principais (Padronizados com mesma altura e hierarquia) */}
       <MetricGrid cols={4}>
         <MetricCard
           label="Ambiente"
           value="Produção"
-          hint={active ? "Deploy em andamento…" : "Instância online e operacional"}
+          hint={active ? "Implantação em andamento…" : "Instância online e operacional"}
           icon={<Server className="h-4 w-4" />}
           tone={active ? "warning" : "success"}
           compact
@@ -727,7 +660,7 @@ export default function AdminDeployPage() {
         <MetricCard
           label="Repositório GitHub"
           value={data.gitHub?.repo || "LuizOMS-Dev/nexaflow-ai"}
-          hint={`Branch: ${data.gitHub?.branch || "main"}`}
+          hint={data.gitHub?.connected ? `Branch: ${data.gitHub?.branch || "main"}` : "Falha na conexão com GitHub"}
           icon={<GitBranch className="h-4 w-4" />}
           tone={data.gitHub?.connected ? "neutral" : "danger"}
           compact
@@ -743,7 +676,7 @@ export default function AdminDeployPage() {
         />
       </MetricGrid>
 
-      {/* 3. Painel de Deploy Ativo (Experiência Premium com Stepper Horizontal) */}
+      {/* 3. Painel de Deploy Ativo (Stepper Horizontal) */}
       {active ? (
         <div className="rounded-xl border border-violet-500/25 bg-[#0e1017] p-4 text-white shadow-[0_8px_24px_-8px_rgba(124,58,237,0.15)]">
           <div className="flex flex-col gap-3.5">
@@ -761,7 +694,7 @@ export default function AdminDeployPage() {
                     </code>
                   </div>
                   <p className="text-[11.5px] text-gray-400 truncate max-w-lg">
-                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · há {formatDuration(liveActiveElapsed)}
+                    &quot;{active.commitMessage}&quot; · Iniciado por <strong className="text-gray-300">{active.startedByName}</strong> · há {formatDuration(active.durationSeconds)}
                   </p>
                 </div>
               </div>
@@ -775,12 +708,11 @@ export default function AdminDeployPage() {
               </button>
             </div>
 
-            {/* Stepper Horizontal Discreto */}
+            {/* Stepper Horizontal */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 pt-1">
               {STAGES.map((st, idx) => {
                 const isPast = activeStageIdx > idx;
                 const isCurrent = activeStageIdx === idx;
-                const isFuture = activeStageIdx < idx;
 
                 return (
                   <div
@@ -824,7 +756,7 @@ export default function AdminDeployPage() {
                 Etapa atual: <strong className="text-violet-300 font-semibold">{deployStatusLabel(active.stage || active.status)}</strong>
               </span>
               <span>
-                Saúde final: <strong className="text-gray-300">{healthStatusLabel(active.status, active.healthStatus)}</strong>
+                Saúde: <strong className="text-gray-300">{healthStatusLabel(active.status, active.healthStatus)}</strong>
               </span>
             </div>
           </div>
@@ -861,7 +793,7 @@ export default function AdminDeployPage() {
                   {latest ? latest.shortSha : "—"}
                 </code>
                 <span className="truncate text-[12.5px] text-gray-300" title={latest?.message}>
-                  {latest ? latest.message : "Nenhum commit retornado"}
+                  {isGitHubConnected ? latest?.message : "Não foi possível consultar o GitHub"}
                 </span>
               </div>
             </div>
@@ -877,7 +809,12 @@ export default function AdminDeployPage() {
             ) : isUpdateAvailable ? (
               <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/[0.1] px-3 py-1.5 text-amber-300">
                 <Sparkles className="h-4 w-4 shrink-0" />
-                <span className="text-[12.5px] font-semibold">Atualização disponível</span>
+                <span className="text-[12.5px] font-semibold">Nova versão disponível</span>
+              </div>
+            ) : !isGitHubConnected ? (
+              <div className="flex items-center gap-1.5 rounded-lg bg-rose-500/[0.08] px-3 py-1.5 text-rose-300">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span className="text-[12.5px] font-semibold">GitHub indisponível</span>
               </div>
             ) : isUnknown ? (
               <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.05] px-3 py-1.5 text-gray-300">
@@ -905,7 +842,7 @@ export default function AdminDeployPage() {
         </div>
       </div>
 
-      {/* 5. Commits Recentes no GitHub (Compacto com Menu ⋯ e Ação Limpar Histórico) */}
+      {/* 5. Atualizações Recentes no GitHub (Compacto com Menu ⋯ e Ação Limpar Histórico) */}
       <AdminSection
         title="Atualizações Recentes no GitHub"
         description="Histórico recente da branch principal no GitHub."
@@ -1433,7 +1370,7 @@ export default function AdminDeployPage() {
         ) : null}
       </Modal>
 
-      {/* MODAL 3: Visualizador Operacional de Detalhes da Implantação (Redesenhado) */}
+      {/* MODAL 3: Visualizador Operacional de Detalhes da Implantação */}
       <Modal
         open={Boolean(selectedDetailId)}
         onClose={() => setSelectedDetailId(null)}
@@ -1549,7 +1486,7 @@ export default function AdminDeployPage() {
                   </div>
                   <div>
                     <span className="text-gray-400 text-[11px] block">Tempo decorrido</span>
-                    <span className="font-medium text-white">{formatDuration(isDetailFinished ? detailQuery.data.durationSeconds : liveDetailElapsed)}</span>
+                    <span className="font-medium text-white">{formatDuration(detailQuery.data.durationSeconds)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400 text-[11px] block">Serviços afetados</span>
@@ -1582,10 +1519,10 @@ export default function AdminDeployPage() {
                       </span>
                     ) : detailQuery.data.apiHealth === "UNHEALTHY" ? (
                       <span className="flex items-center gap-1 text-rose-400 font-semibold text-[12px]">
-                        <XCircle className="h-3.5 w-3.5" /> Inacessível
+                        <XCircle className="h-3.5 w-3.5" /> Falhou
                       </span>
                     ) : (
-                      <span className="text-gray-500 text-[12px]">Aguardando validação</span>
+                      <span className="text-gray-500 text-[12px]">Aguardando</span>
                     )}
                   </div>
 
@@ -1602,10 +1539,10 @@ export default function AdminDeployPage() {
                       </span>
                     ) : detailQuery.data.webHealth === "UNHEALTHY" ? (
                       <span className="flex items-center gap-1 text-rose-400 font-semibold text-[12px]">
-                        <XCircle className="h-3.5 w-3.5" /> Inacessível
+                        <XCircle className="h-3.5 w-3.5" /> Falhou
                       </span>
                     ) : (
-                      <span className="text-gray-500 text-[12px]">Aguardando validação</span>
+                      <span className="text-gray-500 text-[12px]">Aguardando</span>
                     )}
                   </div>
                 </div>

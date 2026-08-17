@@ -60,15 +60,183 @@ export type DeployOverview = {
 
 export class DeploymentOrchestrator {
   /**
+   * Grava a versão confirmada de produção no PlatformSetting (fonte de verdade resiliente a limpezas de histórico)
+   */
+  async recordProductionRelease(release: {
+    sha: string;
+    shortSha: string;
+    message: string;
+    author: string;
+    deployedAt: Date;
+    deployedBy: string;
+  }) {
+    const nowIso = release.deployedAt.toISOString();
+    await prisma.platformSetting.upsert({
+      where: { key: "current_production_version" },
+      create: {
+        key: "current_production_version",
+        value: {
+          sha: release.sha,
+          shortSha: release.shortSha,
+          message: release.message,
+          author: release.author,
+          deployedAt: nowIso,
+          deployedBy: release.deployedBy,
+          environment: "production",
+          updatedAt: nowIso,
+        },
+      },
+      update: {
+        value: {
+          sha: release.sha,
+          shortSha: release.shortSha,
+          message: release.message,
+          author: release.author,
+          deployedAt: nowIso,
+          deployedBy: release.deployedBy,
+          environment: "production",
+          updatedAt: nowIso,
+        },
+      },
+    });
+  }
+
+  /**
+   * Obtém a versão de produção a partir da fonte de verdade (PlatformSetting -> Deployment -> ENV)
+   */
+  async getProductionVersion(): Promise<{
+    sha: string;
+    shortSha: string;
+    message: string;
+    author: string;
+    deployedAt: Date | null;
+    deployedBy: string | null;
+    isKnown: boolean;
+  } | null> {
+    // 1. Fonte primária: PlatformSetting
+    try {
+      const setting = await prisma.platformSetting.findUnique({
+        where: { key: "current_production_version" },
+      });
+      if (setting?.value && typeof setting.value === "object") {
+        const v = setting.value as any;
+        if (v.sha) {
+          return {
+            sha: v.sha,
+            shortSha: v.shortSha || v.sha.slice(0, 7),
+            message: v.message || "Versão em produção",
+            author: v.author || "Sistema",
+            deployedAt: v.deployedAt ? new Date(v.deployedAt) : null,
+            deployedBy: v.deployedBy || null,
+            isKnown: true,
+          };
+        }
+      }
+    } catch {}
+
+    // 2. Fonte secundária: Último deployment com status COMPLETED
+    const latestCompleted = await prisma.deployment.findFirst({
+      where: { status: "COMPLETED" },
+      orderBy: { finishedAt: "desc" },
+      include: { startedBy: { select: { name: true } } },
+    });
+
+    if (latestCompleted) {
+      const version = {
+        sha: latestCompleted.commitSha,
+        shortSha: latestCompleted.commitShortSha || latestCompleted.commitSha.slice(0, 7),
+        message: latestCompleted.commitMessage,
+        author: latestCompleted.commitAuthor || "Desconhecido",
+        deployedAt: latestCompleted.finishedAt,
+        deployedBy: latestCompleted.startedBy?.name || "Superadmin",
+        isKnown: true,
+      };
+
+      // Migra para o PlatformSetting para garantir persistência mesmo se o histórico for limpo
+      await this.recordProductionRelease({
+        sha: version.sha,
+        shortSha: version.shortSha,
+        message: version.message,
+        author: version.author,
+        deployedAt: version.deployedAt || new Date(),
+        deployedBy: version.deployedBy,
+      }).catch(() => null);
+
+      return version;
+    }
+
+    // 3. Fonte de fallback: Variáveis de ambiente
+    const envSha = (
+      process.env.NEXAFLOW_GIT_SHA ||
+      process.env.DEPLOYED_COMMIT_SHA ||
+      process.env.GIT_COMMIT_SHA ||
+      ""
+    ).trim();
+
+    if (envSha) {
+      return {
+        sha: envSha,
+        shortSha: envSha.slice(0, 7),
+        message: process.env.DEPLOYED_COMMIT_MESSAGE || "Versão base de implantação",
+        author: process.env.DEPLOYED_COMMIT_AUTHOR || "Sistema",
+        deployedAt: null,
+        deployedBy: null,
+        isKnown: true,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Reconcilia status de deploys ativos no boot da aplicação
+   */
+  async reconcileBootDeployments() {
+    if (process.env.NODE_ENV === "test") return;
+
+    try {
+      const activeDeployments = await prisma.deployment.findMany({
+        where: { status: { in: ACTIVE_STATUSES } },
+        orderBy: { createdAt: "desc" },
+        include: { startedBy: { select: { id: true, name: true, email: true } } },
+      });
+
+      for (const dep of activeDeployments) {
+        const finishedAt = new Date();
+        const durationSec = Math.max(1, Math.round((finishedAt.getTime() - dep.startedAt.getTime()) / 1000));
+
+        await prisma.deployment.update({
+          where: { id: dep.id },
+          data: {
+            status: "COMPLETED",
+            healthStatus: "HEALTHY",
+            healthCheckedAt: finishedAt,
+            finishedAt,
+            durationSeconds: durationSec,
+            logs:
+              (dep.logs || "") +
+              `\n[${finishedAt.toISOString()}] [RECONCILED] ✓ Containers reiniciados com a nova versão e ativos em produção.\n[${finishedAt.toISOString()}] [SUCCESS] ✓ Deploy concluído com sucesso em ${durationSec} segundos.\n`,
+          },
+        }).catch(() => null);
+
+        await this.recordProductionRelease({
+          sha: dep.commitSha,
+          shortSha: dep.commitShortSha,
+          message: dep.commitMessage,
+          author: dep.commitAuthor || "Superadmin",
+          deployedAt: finishedAt,
+          deployedBy: dep.startedBy?.name || "Superadmin",
+        });
+      }
+    } catch {}
+  }
+
+  /**
    * Retorna o status geral de deploy, comparando com precisão o commit em produção com o GitHub
    */
   async getOverview(): Promise<DeployOverview> {
-    let [latestCompleted, activeDeployment, ghStatus, epStatus] = await Promise.all([
-      prisma.deployment.findFirst({
-        where: { status: "COMPLETED" },
-        orderBy: { finishedAt: "desc" },
-        include: { startedBy: { select: { id: true, name: true, email: true } } },
-      }),
+    let [currentCommit, activeDeployment, ghStatus, epStatus] = await Promise.all([
+      this.getProductionVersion(),
       prisma.deployment.findFirst({
         where: { status: { in: ACTIVE_STATUSES } },
         orderBy: { createdAt: "desc" },
@@ -78,13 +246,12 @@ export class DeploymentOrchestrator {
       easyPanelClient.checkConnection(),
     ]);
 
-    // 0. Auto-reconciliação: se um deploy estava ativo e o container reiniciou com sucesso
+    // Auto-reconciliação pós-restart: se um deploy ativo foi criado antes do boot deste container ou há mais de 10 min
     if (activeDeployment && process.env.NODE_ENV !== "test") {
       const elapsedMs = Date.now() - activeDeployment.createdAt.getTime();
       const bootTimeMs = Date.now() - Math.round(process.uptime() * 1000);
 
-      // Se o deploy foi criado antes deste container ligar ou tem mais de 8 minutos ativo
-      if (activeDeployment.createdAt.getTime() < bootTimeMs - 5000 || elapsedMs > 8 * 60 * 1000) {
+      if (activeDeployment.createdAt.getTime() < bootTimeMs - 5000 || elapsedMs > 10 * 60 * 1000) {
         const finishedAt = new Date();
         const durationSec = Math.max(1, Math.round((finishedAt.getTime() - activeDeployment.startedAt.getTime()) / 1000));
 
@@ -98,60 +265,27 @@ export class DeploymentOrchestrator {
             durationSeconds: durationSec,
             logs:
               (activeDeployment.logs || "") +
-              `\n[${finishedAt.toISOString()}] ✓ Containers reiniciados com a nova versão e ativos em produção.\n[${finishedAt.toISOString()}] ✓ Deploy concluído com sucesso em ${durationSec} segundos.\n`,
+              `\n[${finishedAt.toISOString()}] [RECONCILED] ✓ Containers reiniciados com a nova versão e ativos em produção.\n[${finishedAt.toISOString()}] [SUCCESS] ✓ Deploy concluído com sucesso em ${durationSec} segundos.\n`,
           },
         }).catch(() => null);
 
-        // Recarrega os registros reconciliados
-        latestCompleted = await prisma.deployment.findFirst({
-          where: { status: "COMPLETED" },
-          orderBy: { finishedAt: "desc" },
-          include: { startedBy: { select: { id: true, name: true, email: true } } },
+        await this.recordProductionRelease({
+          sha: activeDeployment.commitSha,
+          shortSha: activeDeployment.commitShortSha,
+          message: activeDeployment.commitMessage,
+          author: activeDeployment.commitAuthor || "Superadmin",
+          deployedAt: finishedAt,
+          deployedBy: activeDeployment.startedBy?.name || "Superadmin",
         });
+
+        currentCommit = await this.getProductionVersion();
         activeDeployment = null;
       }
     }
 
     const latestGh = ghStatus.latestCommit;
 
-    // 1. Determina a fonte confiável da versão em produção
-    let currentCommit: DeployOverview["currentCommit"] = null;
-
-    if (latestCompleted) {
-      currentCommit = {
-        sha: latestCompleted.commitSha,
-        shortSha: latestCompleted.commitShortSha || latestCompleted.commitSha.slice(0, 7),
-        message: latestCompleted.commitMessage,
-        author: latestCompleted.commitAuthor || "Desconhecido",
-        deployedAt: latestCompleted.finishedAt,
-        deployedBy: latestCompleted.startedBy?.name || null,
-        isKnown: true,
-      };
-    } else if (
-      process.env.NEXAFLOW_GIT_SHA ||
-      process.env.DEPLOYED_COMMIT_SHA ||
-      process.env.GIT_COMMIT_SHA
-    ) {
-      const sha = (
-        process.env.NEXAFLOW_GIT_SHA ||
-        process.env.DEPLOYED_COMMIT_SHA ||
-        process.env.GIT_COMMIT_SHA ||
-        ""
-      ).trim();
-      if (sha) {
-        currentCommit = {
-          sha,
-          shortSha: sha.slice(0, 7),
-          message: process.env.DEPLOYED_COMMIT_MESSAGE || "Versão base de implantação",
-          author: process.env.DEPLOYED_COMMIT_AUTHOR || "Sistema",
-          deployedAt: null,
-          deployedBy: null,
-          isKnown: true,
-        };
-      }
-    }
-
-    // 2. Comparação estrita de versão (SHA completo)
+    // Comparação estrita de versão (SHA completo)
     let comparisonStatus: "UP_TO_DATE" | "UPDATE_AVAILABLE" | "DEPLOYING" | "UNKNOWN" = "UNKNOWN";
 
     if (activeDeployment) {
@@ -164,7 +298,7 @@ export class DeploymentOrchestrator {
         (curSha.length >= 7 && latSha.length >= 7 && (curSha.startsWith(latSha) || latSha.startsWith(curSha)));
 
       comparisonStatus = isSame ? "UP_TO_DATE" : "UPDATE_AVAILABLE";
-    } else if (latestGh && !currentCommit) {
+    } else {
       comparisonStatus = "UNKNOWN";
     }
 
@@ -248,7 +382,7 @@ export class DeploymentOrchestrator {
       );
     }
 
-    // 2. Resolve informações do commit alvo
+    // 2. Resolve informações do commit alvo com preservação estrita de imutabilidade
     const branch = input.branch || "main";
     let targetCommit: GitHubCommitInfo;
 
@@ -264,14 +398,9 @@ export class DeploymentOrchestrator {
       try {
         targetCommit = await githubClient.getLatestCommit();
       } catch (e: any) {
-        // Fallback resiliente: se a API REST do GitHub estiver inacessível ou em rate-limit,
-        // NÃO bloqueia o deploy! O EasyPanel fará o git pull diretamente na branch main via Git.
-        const latestFromDb = await prisma.deployment.findFirst({
-          orderBy: { createdAt: "desc" },
-          select: { commitSha: true, commitShortSha: true, commitMessage: true },
-        });
-
-        const fallbackSha = process.env.NEXAFLOW_GIT_SHA || latestFromDb?.commitSha || "main";
+        // Fallback resiliente
+        const current = await this.getProductionVersion();
+        const fallbackSha = current?.sha || "main";
         targetCommit = {
           sha: fallbackSha,
           shortSha: fallbackSha.slice(0, 7),
@@ -373,13 +502,26 @@ export class DeploymentOrchestrator {
       // Em ambiente de teste, simula o pipeline sem acionar EasyPanel real nem esperar 15s
       if (process.env.NODE_ENV === "test") {
         log("SUCCESS", "✓ [MODO TESTE] Build e implantação simulados com sucesso.");
+        const finishedAt = new Date();
         await safeUpdate({
           status: "COMPLETED",
           healthStatus: "HEALTHY",
-          finishedAt: new Date(),
+          finishedAt,
           durationSeconds: 2,
           logs: logBuffer,
         });
+
+        const testDep = await prisma.deployment.findUnique({ where: { id: deploymentId } }).catch(() => null);
+        if (testDep) {
+          await this.recordProductionRelease({
+            sha: testDep.commitSha,
+            shortSha: testDep.commitShortSha,
+            message: testDep.commitMessage,
+            author: testDep.commitAuthor || "Superadmin",
+            deployedAt: finishedAt,
+            deployedBy: "Superadmin",
+          });
+        }
         return;
       }
 
@@ -455,6 +597,17 @@ export class DeploymentOrchestrator {
           durationSeconds,
           logs: logBuffer,
         });
+
+        if (dep) {
+          await this.recordProductionRelease({
+            sha: dep.commitSha,
+            shortSha: dep.commitShortSha,
+            message: dep.commitMessage,
+            author: dep.commitAuthor || "Superadmin",
+            deployedAt: finishedAt,
+            deployedBy: "Superadmin",
+          });
+        }
 
         await audit({
           action: "deployment.succeeded",
@@ -659,7 +812,7 @@ export class DeploymentOrchestrator {
   }
 
   /**
-   * Limpa os registros do histórico de deployments finalizados (não remove deploys ativos)
+   * Limpa os registros do histórico de deployments finalizados (não remove deploys ativos nem a versão atual)
    */
   async clearHistory(userId: string, ip?: string) {
     const deleted = await prisma.deployment.deleteMany({
@@ -723,36 +876,6 @@ export class DeploymentOrchestrator {
         rollbackFromSha: d.rollbackFromSha,
       })),
     };
-  }
-
-  /**
-   * Reconcilia deployments ativos no boot do servidor (quando os containers acabaram de reiniciar)
-   */
-  async reconcileBootDeployments() {
-    if (process.env.NODE_ENV === "test") return;
-    try {
-      const activeDeps = await prisma.deployment.findMany({
-        where: { status: { in: ACTIVE_STATUSES } },
-      });
-
-      for (const d of activeDeps) {
-        const finishedAt = new Date();
-        const durationSec = Math.max(1, Math.round((finishedAt.getTime() - d.startedAt.getTime()) / 1000));
-        await prisma.deployment.update({
-          where: { id: d.id },
-          data: {
-            status: "COMPLETED",
-            healthStatus: "HEALTHY",
-            healthCheckedAt: finishedAt,
-            finishedAt,
-            durationSeconds: durationSec,
-            logs:
-              (d.logs || "") +
-              `\n[${finishedAt.toISOString()}] ✓ Containers reiniciados e aplicação restabelecida com sucesso em produção.\n[${finishedAt.toISOString()}] ✓ Deploy concluído com sucesso em ${durationSec} segundos.\n`,
-          },
-        });
-      }
-    } catch {}
   }
 }
 
