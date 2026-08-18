@@ -48,7 +48,7 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(reuse.severity).toBe("DANGER");
 
     const impersonationStart = formatSecurityEvent("IMPERSONATION_START");
-    expect(impersonationStart.label).toBe("Acesso administrativo como empresa iniciado");
+    expect(impersonationStart.label).toBe("Acesso como empresa iniciado");
     expect(impersonationStart.severity).toBe("WARNING");
 
     const impersonationStop = formatSecurityEvent("IMPERSONATION_STOP");
@@ -56,7 +56,7 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(impersonationStop.severity).toBe("INFO");
   });
 
-  it("3. executa varredura de diagnóstico com 7 verificações estruturadas e independentes", async () => {
+  it("3. executa varredura de diagnóstico com 7 verificações estruturadas contendo evidência, impacto, criticidade e dados técnicos", async () => {
     const diag = await runSystemDiagnostics();
 
     expect(diag).toHaveProperty("overallStatus");
@@ -68,15 +68,22 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
 
     expect(diag.checks.length).toBe(7);
 
-    // Grupos esperados
-    const groups = diag.checks.map((c) => c.group);
-    expect(groups).toContain("core");
-    expect(groups).toContain("database");
-    expect(groups).toContain("cache");
-    expect(groups).toContain("communications");
-    expect(groups).toContain("ai");
-    expect(groups).toContain("email");
-    expect(groups).toContain("integrations");
+    // Cada check deve conter o contrato estruturado completo
+    for (const c of diag.checks) {
+      expect(c).toHaveProperty("id");
+      expect(c).toHaveProperty("group");
+      expect(c).toHaveProperty("groupLabel");
+      expect(c).toHaveProperty("title");
+      expect(c).toHaveProperty("status");
+      expect(["CRITICAL", "IMPORTANT", "OPTIONAL"]).toContain(c.criticality);
+      expect(typeof c.summary).toBe("string");
+      expect(typeof c.evidence).toBe("string");
+      expect(typeof c.impact).toBe("string");
+      expect(c).toHaveProperty("checkedAt");
+      if (c.technical) {
+        expect(typeof c.technical).toBe("object");
+      }
+    }
 
     // Summary bate com as checagens
     expect(diag.summary.total).toBe(7);
@@ -92,6 +99,7 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     const diag = await runSystemDiagnostics();
     const deployCheck = diag.checks.find((c) => c.id === "deploy_integrations");
     expect(deployCheck).toBeDefined();
+    expect(deployCheck?.criticality).toBe("IMPORTANT");
     if (deployCheck?.details) {
       expect(deployCheck.details).toHaveProperty("github");
       expect(deployCheck.details).toHaveProperty("easypanel");

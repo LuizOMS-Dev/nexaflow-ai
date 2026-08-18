@@ -6,10 +6,12 @@ import {
   Activity,
   AlertTriangle,
   Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   Cpu,
   Database,
   Info,
@@ -66,6 +68,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
 ];
 
 type DiagnosticCheckStatus = "OK" | "WARNING" | "FAILURE" | "NOT_CONFIGURED" | "NOT_APPLICABLE";
+type DiagnosticCriticality = "CRITICAL" | "IMPORTANT" | "OPTIONAL";
 type DiagnosticCheckGroup = "core" | "database" | "cache" | "communications" | "ai" | "email" | "integrations";
 
 type DiagnosticCheck = {
@@ -74,11 +77,15 @@ type DiagnosticCheck = {
   groupLabel: string;
   title: string;
   status: DiagnosticCheckStatus;
+  criticality?: DiagnosticCriticality;
   summary: string;
-  details?: Record<string, unknown> | null;
+  evidence?: string;
+  impact?: string;
+  recommendation?: string | null;
   latencyMs?: number | null;
   checkedAt: string;
-  recommendation?: string | null;
+  technical?: Record<string, string | number | boolean | null | undefined>;
+  details?: Record<string, unknown> | null;
 };
 
 type SystemDiagnosticsDTO = {
@@ -273,13 +280,239 @@ function severityLabel(sev: string): string {
 
 function formatLatency(ms?: number | null): string {
   if (ms == null || !Number.isFinite(ms)) return "—";
-  if (ms <= 1) return "<1 ms";
+  if (ms <= 1) return "< 1 ms";
   return `${ms} ms`;
 }
 
 function str(v: unknown, fallback = "—"): string {
   if (v == null || v === "") return fallback;
   return String(v);
+}
+
+/** Componente estruturado para visualização técnica de cada probe */
+function DiagnosticTechnicalDetails({ check }: { check: DiagnosticCheck }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const textToCopy = [
+      `=== DIAGNÓSTICO: ${check.title} ===`,
+      `Status: ${checkStatusToLabel(check.status)}`,
+      `Criticidade: ${check.criticality === "CRITICAL" ? "Crítico" : check.criticality === "IMPORTANT" ? "Importante" : "Opcional"}`,
+      `Grupo: ${check.groupLabel}`,
+      `Resumo: ${check.summary}`,
+      check.evidence ? `Evidência: ${check.evidence}` : null,
+      check.impact ? `Impacto: ${check.impact}` : null,
+      check.recommendation ? `Recomendação: ${check.recommendation}` : null,
+      check.latencyMs != null ? `Latência: ${formatLatency(check.latencyMs)}` : null,
+      `Verificado em: ${formatDate(check.checkedAt)}`,
+      check.technical
+        ? `\nDados Técnicos:\n${Object.entries(check.technical)
+            .map(([k, v]) => `  - ${k}: ${v}`)
+            .join("\n")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  const tone = checkStatusToTone(check.status);
+  const criticalityLabel =
+    check.criticality === "CRITICAL"
+      ? "Crítico"
+      : check.criticality === "IMPORTANT"
+      ? "Importante"
+      : "Opcional";
+  const criticalityTone =
+    check.criticality === "CRITICAL"
+      ? "danger"
+      : check.criticality === "IMPORTANT"
+      ? "warning"
+      : "neutral";
+
+  return (
+    <div className="border-t border-line-soft dark:border-white/[0.06] bg-black/[0.02] dark:bg-black/30 p-4 sm:p-5 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <StatusBadge tone={tone} dot>
+            {checkStatusToLabel(check.status)}
+          </StatusBadge>
+          <StatusBadge tone={criticalityTone}>
+            {criticalityLabel}
+          </StatusBadge>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="admin-btn-secondary h-8 px-2.5 text-[11.5px] inline-flex items-center gap-1.5"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Copiado</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3.5 w-3.5" />
+              <span>Copiar diagnóstico</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Grid de Evidência e Impacto */}
+      <div className="grid gap-3 sm:grid-cols-2 text-[12.5px]">
+        <div className="rounded-xl border border-line-soft dark:border-white/[0.06] bg-surface-base dark:bg-[#0c0d12] p-3.5 space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted dark:text-gray-500">
+            Evidência / Resultado
+          </p>
+          <p className="text-ink dark:text-gray-200 leading-relaxed">
+            {check.evidence || check.summary}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-line-soft dark:border-white/[0.06] bg-surface-base dark:bg-[#0c0d12] p-3.5 space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted dark:text-gray-500">
+            Impacto Operacional
+          </p>
+          <p className="text-ink dark:text-gray-200 leading-relaxed">
+            {check.impact || "Operação padrão sem impacto adverso detectado."}
+          </p>
+        </div>
+      </div>
+
+      {/* Grid de Informações Técnicas */}
+      {check.technical && Object.keys(check.technical).length > 0 ? (
+        <div className="rounded-xl border border-line-soft dark:border-white/[0.06] bg-surface-base dark:bg-[#0c0d12] p-3.5 space-y-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted dark:text-gray-500">
+            Informações Técnicas do Probe
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(check.technical).map(([key, val]) => (
+              <div key={key} className="flex flex-col text-[12px]">
+                <span className="text-ink-muted dark:text-gray-500 text-[11px] font-medium">{key}</span>
+                <span className="font-mono font-medium text-ink dark:text-gray-200 truncate">
+                  {val != null ? String(val) : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Painel Lateral Estruturado para Atividade, Segurança, Webhooks e API */
+function StructuredDetailPanel({ detail }: { detail: Record<string, unknown> }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(detail, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  const title = str(detail.eventLabel || detail.message || detail.event || detail.title || "Registro");
+  const sev = str(detail.severity || "INFO");
+  const actor = str(detail.actor || detail.userName || "Sistema");
+  const tenant = str(detail.tenantName || (detail.tenantId ? `Tenant ${detail.tenantId}` : "Global"));
+  const ts = detail.timestamp || detail.createdAt || detail.updatedAt;
+  const ip = str(detail.ip || "—");
+
+  const knownKeys = new Set([
+    "id",
+    "eventLabel",
+    "message",
+    "event",
+    "severity",
+    "actor",
+    "userName",
+    "tenantName",
+    "tenantId",
+    "timestamp",
+    "createdAt",
+    "updatedAt",
+    "ip",
+    "module",
+    "userId",
+  ]);
+  const extraProps: Array<[string, unknown]> = Object.entries(detail).filter(([k]) => !knownKeys.has(k));
+
+  return (
+    <aside className="admin-section h-fit overflow-hidden rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02]">
+      <div className="border-b border-line-soft dark:border-white/[0.06] px-4 py-3 flex items-center justify-between gap-2">
+        <h2 className="text-[13px] font-semibold text-ink dark:text-white/90 truncate">
+          Detalhes do Registro
+        </h2>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="admin-btn-secondary h-7 px-2 text-[11px] inline-flex items-center gap-1 shrink-0"
+        >
+          {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+          <span>{copied ? "Copiado" : "Copiar"}</span>
+        </button>
+      </div>
+
+      <div className="p-4 space-y-3.5 text-[12.5px]">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <StatusBadge tone={severityTone(sev)}>
+              {severityLabel(sev)}
+            </StatusBadge>
+            <span className="text-[11px] text-ink-muted dark:text-gray-500">
+              {ts ? formatDate(String(ts)) : "—"}
+            </span>
+          </div>
+          <p className="font-semibold text-ink dark:text-white text-[13.5px]">
+            {title}
+          </p>
+        </div>
+
+        <div className="grid gap-2 border-t border-b border-line-soft dark:border-white/[0.06] py-2.5 text-[12px]">
+          <div className="flex justify-between gap-2">
+            <span className="text-ink-muted dark:text-gray-500">Ator:</span>
+            <span className="font-medium text-ink dark:text-gray-200 truncate">{actor}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-ink-muted dark:text-gray-500">Escopo:</span>
+            <span className="font-medium text-ink dark:text-gray-200 truncate">{tenant}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-ink-muted dark:text-gray-500">Origem / IP:</span>
+            <span className="font-mono text-ink dark:text-gray-300">{ip}</span>
+          </div>
+        </div>
+
+        {extraProps.length > 0 ? (
+          <div className="space-y-1.5">
+            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-ink-muted dark:text-gray-500">
+              Metadados Técnicos Sanitizados
+            </p>
+            <div className="max-h-56 overflow-auto rounded-xl border border-line-soft dark:border-white/[0.06] bg-surface-base dark:bg-black/30 p-2.5 space-y-1 font-mono text-[11px]">
+              {extraProps.map(([k, v]) => (
+                <div key={k} className="flex items-start gap-1">
+                  <span className="text-ink-muted dark:text-gray-500 shrink-0">{k}:</span>
+                  <span className="text-ink dark:text-gray-300 break-all">
+                    {typeof v === "object" && v !== null ? JSON.stringify(v) : String(v)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  );
 }
 
 export default function AdminDiagnosticsPage() {
@@ -594,33 +827,24 @@ export default function AdminDiagnosticsPage() {
                           )}
                         </div>
 
-                        {c.details ? (
-                          <button
-                            type="button"
-                            onClick={() => setExpandedCheckId(isExpanded ? null : c.id)}
-                            className="inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 hover:text-brand-700 dark:text-violet-400 dark:hover:text-violet-300 transition-colors"
-                          >
-                            <span>{isExpanded ? "Ocultar detalhes" : "Ver detalhes técnicos"}</span>
-                            {isExpanded ? (
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            ) : (
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCheckId(isExpanded ? null : c.id)}
+                          className="inline-flex items-center gap-1 text-[12px] font-medium text-brand-600 hover:text-brand-700 dark:text-violet-400 dark:hover:text-violet-300 transition-colors"
+                        >
+                          <span>{isExpanded ? "Ocultar detalhes" : "Ver detalhes técnicos"}</span>
+                          {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          )}
+                        </button>
                       </div>
                     </div>
 
-                    {/* Detalhes Técnicos Expansíveis (Sanitizados) */}
-                    {isExpanded && c.details ? (
-                      <div className="border-t border-line-soft dark:border-white/[0.06] bg-black/[0.02] dark:bg-black/40 p-4 transition-all">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted dark:text-gray-500 mb-2">
-                          Dados Técnicos Sanitizados
-                        </p>
-                        <pre className="max-h-60 overflow-auto rounded-xl border border-line-soft dark:border-white/[0.08] bg-surface-base dark:bg-[#0c0d12] p-3 text-[11.5px] font-mono leading-relaxed text-ink dark:text-gray-300">
-                          {JSON.stringify(sanitizeRecord(c.details), null, 2)}
-                        </pre>
-                      </div>
+                    {/* Detalhes Técnicos Estruturados */}
+                    {isExpanded ? (
+                      <DiagnosticTechnicalDetails check={c} />
                     ) : null}
                   </div>
                 );
@@ -891,7 +1115,7 @@ export default function AdminDiagnosticsPage() {
             </AdminFilterBar>
           ) : null}
 
-          {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO (Somente se IA configurada ou outra aba) */}
+          {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO */}
           {tab === "ai" && !aiData?.groqLive?.configured ? null : !listItems.length ? (
             <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-5 text-center max-w-xl mx-auto">
               <AdminEmptyState
@@ -1008,25 +1232,16 @@ export default function AdminDiagnosticsPage() {
                 </div>
               </AdminSection>
 
-              {/* PAINEL LATERAL DE DETALHE SANITIZADO */}
-              <aside className="admin-section h-fit overflow-hidden rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02]">
-                <div className="border-b border-line-soft dark:border-white/[0.06] px-4 py-3">
-                  <h2 className="text-[13px] font-semibold text-ink dark:text-white/90">
-                    Detalhe Sanitizado
-                  </h2>
-                </div>
-                <div className="p-4">
-                  {safeDetail ? (
-                    <pre className="max-h-[420px] overflow-auto rounded-xl border border-line-soft dark:border-white/[0.06] bg-surface-base dark:bg-black/30 p-3 text-[11px] leading-relaxed text-ink dark:text-gray-300 font-mono">
-                      {JSON.stringify(safeDetail, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="text-[12.5px] text-ink-muted dark:text-gray-500 py-6 text-center">
-                      Selecione um registro na tabela para inspecionar os detalhes técnicos sanitizados.
-                    </p>
-                  )}
-                </div>
-              </aside>
+              {/* PAINEL LATERAL DE DETALHES ESTRUTURADO */}
+              {safeDetail ? (
+                <StructuredDetailPanel detail={safeDetail} />
+              ) : (
+                <aside className="admin-section h-fit overflow-hidden rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-6 text-center text-ink-muted dark:text-gray-500">
+                  <p className="text-[12.5px]">
+                    Selecione um registro na tabela para inspecionar os detalhes técnicos estruturados.
+                  </p>
+                </aside>
+              )}
             </div>
           )}
         </div>

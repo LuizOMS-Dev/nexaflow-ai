@@ -139,7 +139,7 @@ const SECURITY_EVENT_MAP: Record<string, { label: string; severity: "INFO" | "WA
   MFA_DISABLED: { label: "Autenticação de dois fatores desativada", severity: "WARNING" },
   REFRESH_REUSE: { label: "Reutilização indevida de refresh token", severity: "DANGER" },
   TOKEN_REVOKED: { label: "Token de autenticação revogado", severity: "INFO" },
-  IMPERSONATION_START: { label: "Acesso administrativo como empresa iniciado", severity: "WARNING" },
+  IMPERSONATION_START: { label: "Acesso como empresa iniciado", severity: "WARNING" },
   IMPERSONATION_STOP: { label: "Acesso como empresa finalizado", severity: "INFO" },
   IMPERSONATION_END: { label: "Acesso como empresa finalizado", severity: "INFO" },
   PASSWORD_RESET_REQUEST: { label: "Solicitação de redefinição de senha", severity: "INFO" },
@@ -647,6 +647,7 @@ export async function getPlatformHealthDetailed() {
 }
 
 export type DiagnosticCheckStatus = "OK" | "WARNING" | "FAILURE" | "NOT_CONFIGURED" | "NOT_APPLICABLE";
+export type DiagnosticCriticality = "CRITICAL" | "IMPORTANT" | "OPTIONAL";
 export type DiagnosticCheckGroup = "core" | "database" | "cache" | "communications" | "ai" | "email" | "integrations";
 
 export type DiagnosticCheckResult = {
@@ -655,11 +656,15 @@ export type DiagnosticCheckResult = {
   groupLabel: string;
   title: string;
   status: DiagnosticCheckStatus;
+  criticality: DiagnosticCriticality;
   summary: string;
-  details?: Record<string, unknown> | null;
+  evidence: string;
+  impact: string;
+  recommendation?: string | null;
   latencyMs?: number | null;
   checkedAt: string;
-  recommendation?: string | null;
+  technical?: Record<string, string | number | boolean | null | undefined>;
+  details?: Record<string, unknown> | null;
 };
 
 export type SystemDiagnosticsDTO = {
@@ -699,11 +704,24 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
     (async (): Promise<DiagnosticCheckResult> => {
       const t0 = performance.now();
       const mem = process.memoryUsage();
+      let heapLimitMb = 1400;
+      try {
+        const v8 = await import("node:v8");
+        const stats = v8.getHeapStatistics();
+        heapLimitMb = Math.round(stats.heap_size_limit / 1024 / 1024);
+      } catch {
+        heapLimitMb = 1400;
+      }
       const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
       const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
       const rssMb = Math.round(mem.rss / 1024 / 1024);
+      const externalMb = Math.round(mem.external / 1024 / 1024);
+      const arrayBuffersMb = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
       const latencyMs = Math.max(1, Math.round(performance.now() - t0));
       const uptimeSec = Math.floor(process.uptime());
+      const hours = Math.floor(uptimeSec / 3600);
+      const minutes = Math.floor((uptimeSec % 3600) / 60);
+      const uptimeFormatted = `${hours}h ${minutes}m ${uptimeSec % 60}s`;
 
       const isHighMem = heapUsedMb > 700;
 
@@ -713,13 +731,28 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
         groupLabel: "Núcleo & API",
         title: "API & Processo Runtime",
         status: isHighMem ? "WARNING" : "OK",
-        summary: `API ativa · Uptime: ${uptimeSec}s · Heap: ${heapUsedMb}MB / ${heapTotalMb}MB (RSS: ${rssMb}MB)`,
+        criticality: "CRITICAL",
+        summary: `API ativa · Uptime: ${uptimeFormatted} · Heap: ${heapUsedMb} MB / ${heapTotalMb} MB (RSS: ${rssMb} MB)`,
+        evidence: `Processo Node.js ${process.version} (${process.platform}) operacional com ${heapUsedMb} MB de heap em uso.`,
+        impact: "Execução de rotas HTTP, processamento assíncrono e WebSocket.",
+        technical: {
+          "Versão do Node": process.version,
+          "Plataforma": process.platform,
+          "Uptime": uptimeFormatted,
+          "Heap em Uso": `${heapUsedMb} MB`,
+          "Heap Alocado": `${heapTotalMb} MB`,
+          "Limite da Heap": `${heapLimitMb} MB`,
+          "Memória RSS": `${rssMb} MB`,
+          "Buffers": `${arrayBuffersMb} MB`,
+          "External": `${externalMb} MB`,
+        },
         details: {
           nodeVersion: process.version,
           platform: process.platform,
           uptimeSeconds: uptimeSec,
           heapUsedMb,
           heapTotalMb,
+          heapLimitMb,
           rssMb,
           env: env.nodeEnv,
         },
@@ -743,9 +776,21 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Banco de Dados",
           title: "PostgreSQL & Conexão",
           status: isSlow ? "WARNING" : "OK",
+          criticality: "CRITICAL",
           summary: isSlow
             ? `PostgreSQL conectado, mas com latência elevada (${latencyMs}ms).`
             : `PostgreSQL conectado e respondendo normalmente (${latencyMs}ms).`,
+          evidence: isSlow
+            ? `Consulta SELECT 1 executada com sucesso, mas excedeu o limite recomendado de 500ms (${latencyMs}ms).`
+            : `Consulta de integridade SELECT 1 executada com sucesso em ${latencyMs}ms.`,
+          impact: "Persistência transacional, autenticação, multitenancy e auditoria.",
+          technical: {
+            "Comando de Teste": "SELECT 1",
+            "Motor de Banco": "PostgreSQL",
+            "Status da Conexão": "Conectado",
+            "Latência da Consulta": `${latencyMs} ms`,
+            "Timeout Aplicado": "2500 ms",
+          },
           details: {
             query: "SELECT 1",
             latencyMs,
@@ -758,13 +803,24 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
         };
       } catch (err) {
         const latencyMs = Math.max(1, Math.round(performance.now() - t0));
+        const isTimeout = err instanceof Error && err.message.includes("Timeout");
         return {
           id: "database_postgres",
           group: "database",
           groupLabel: "Banco de Dados",
           title: "PostgreSQL & Conexão",
           status: "FAILURE",
+          criticality: "CRITICAL",
           summary: "Falha de conexão com o banco de dados PostgreSQL.",
+          evidence: isTimeout
+            ? "Tempo limite de 2.5s excedido ao tentar executar consulta no PostgreSQL."
+            : "Não foi possível estabelecer conexão com o banco de dados PostgreSQL.",
+          impact: "Persistência transacional, autenticação, multitenancy e auditoria.",
+          technical: {
+            "Comando de Teste": "SELECT 1",
+            "Status": isTimeout ? "Timeout" : "Erro de Conexão",
+            "Latência": `${latencyMs} ms`,
+          },
           details: {
             error: err instanceof Error ? redactString(err.message, 120) : "db_connection_error",
             latencyMs,
@@ -780,6 +836,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
     (async (): Promise<DiagnosticCheckResult> => {
       const t0 = performance.now();
       const critical = isRedisCritical();
+      const criticality: DiagnosticCriticality = critical ? "CRITICAL" : "OPTIONAL";
 
       if (!shouldUseRedis()) {
         return {
@@ -788,7 +845,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Cache & Filas",
           title: "Redis & Cache Distribuído",
           status: "NOT_CONFIGURED",
+          criticality: "OPTIONAL",
           summary: "Redis não configurado. Sessões e rate limits operam em memória local.",
+          evidence: "Instância Redis não configurada no ambiente. O sistema está utilizando armazenamento em memória local.",
+          impact: "Cache em memória local e rate limiting por instância.",
+          technical: {
+            "Modo Operacional": "Memória Local (In-Memory)",
+            "Conexão Externa": "Desativada",
+          },
           details: {
             mode: "in-memory",
             critical,
@@ -808,7 +872,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
             groupLabel: "Cache & Filas",
             title: "Redis & Cache Distribuído",
             status: critical ? "FAILURE" : "NOT_CONFIGURED",
+            criticality,
             summary: "Não foi possível conectar ao servidor Redis.",
+            evidence: "Cliente Redis não conseguiu estabelecer conexão inicial com o servidor.",
+            impact: critical ? "Sessões distribuídas e filas de background." : "Cache opcional.",
+            technical: {
+              "Status": "Desconectado",
+              "Modo": "Redis Distribuído",
+            },
             details: {
               mode: "redis",
               connected: false,
@@ -829,9 +900,20 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Cache & Filas",
           title: "Redis & Cache Distribuído",
           status: pong === "PONG" ? (isSlow ? "WARNING" : "OK") : "FAILURE",
+          criticality,
           summary: pong === "PONG"
             ? (isSlow ? `Redis respondendo com latência elevada (${latencyMs}ms).` : `Redis conectado com sucesso (${latencyMs}ms).`)
             : "Resposta inválida ao comando PING no Redis.",
+          evidence: pong === "PONG"
+            ? `Comando PING executado com sucesso e resposta PONG recebida em ${latencyMs}ms.`
+            : `Servidor Redis retornou resposta inesperada: ${pong}`,
+          impact: critical ? "Sessões distribuídas, controle de taxa e filas." : "Cache distribuído.",
+          technical: {
+            "Comando de Probe": "PING",
+            "Resposta do Servidor": pong,
+            "Latência de Comunicação": `${latencyMs} ms`,
+            "Timeout Aplicado": "2000 ms",
+          },
           details: {
             ping: pong,
             latencyMs,
@@ -849,7 +931,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Cache & Filas",
           title: "Redis & Cache Distribuído",
           status: critical ? "FAILURE" : "WARNING",
+          criticality,
           summary: "Serviço Redis inacessível ou com erro.",
+          evidence: "Falha ao enviar comando PING para a instância do Redis.",
+          impact: critical ? "Sessões distribuídas e filas de background." : "Cache opcional.",
+          technical: {
+            "Status": "Inacessível",
+            "Latência": `${latencyMs} ms`,
+          },
           details: {
             error: err instanceof Error ? redactString(err.message, 120) : "redis_error",
             latencyMs,
@@ -873,9 +962,19 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Comunicação",
           title: "Gateway WhatsApp",
           status: "OK",
+          criticality: "IMPORTANT",
           summary: provider === "baileys"
             ? "Gateway Baileys embutido ativo com persistência de sessões."
             : "Gateway simulado ativo para desenvolvimento/testes.",
+          evidence: provider === "baileys"
+            ? "Módulo Baileys em execução com sessões segregadas por tenant."
+            : "Instância simulada respondendo para testes de ambiente.",
+          impact: "Envio e recepção de mensagens nos canais WhatsApp dos clientes.",
+          technical: {
+            "Provedor Ativo": provider === "baileys" ? "Baileys" : "Simulado",
+            "Modo de Execução": "Embutido (Embedded)",
+            "Isolamento": "Por empresa (Tenant)",
+          },
           details: {
             provider,
             mode: "embedded",
@@ -894,7 +993,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Comunicação",
           title: "Gateway WhatsApp",
           status: "NOT_CONFIGURED",
+          criticality: "OPTIONAL",
           summary: "URL do gateway WhatsApp não configurada.",
+          evidence: "Variável WA_GATEWAY_URL não definida no ambiente.",
+          impact: "Canais WhatsApp das empresas não poderão se conectar via gateway externo.",
+          technical: {
+            "Provedor": provider.toUpperCase(),
+            "Status": "Não Configurado",
+          },
           details: {
             provider,
             ready: false,
@@ -925,11 +1031,26 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Comunicação",
           title: "Gateway WhatsApp",
           status: res.ok ? "OK" : "WARNING",
+          criticality: "IMPORTANT",
           summary: res.ok
             ? `Gateway ${provider.toUpperCase()} conectado e respondendo (${latencyMs}ms).`
             : isAuthError
             ? "O Gateway WhatsApp respondeu, mas recusou a autenticação configurada (HTTP 401)."
             : `Gateway ${provider.toUpperCase()} retornou status HTTP ${res.status}.`,
+          evidence: isAuthError
+            ? "O servidor do gateway está acessível na rede, porém a credencial configurada foi recusada (HTTP 401 Unauthorized)."
+            : res.ok
+            ? `Endpoint /health do gateway respondeu com status HTTP ${res.status} OK.`
+            : `Endpoint /health do gateway retornou código HTTP ${res.status}.`,
+          impact: "As operações que exigem comunicação com o gateway podem falhar até a correção da chave.",
+          technical: {
+            "Provedor": provider.toUpperCase(),
+            "Resposta HTTP": `${res.status} ${res.statusText || (isAuthError ? "Unauthorized" : "")}`.trim(),
+            "Conectividade de Rede": "Acessível (Servidor respondeu)",
+            "Status de Autenticação": isAuthError ? "Recusada" : res.ok ? "Aceita" : "Indefinida",
+            "Latência": `${latencyMs} ms`,
+            "Timeout Aplicado": "2500 ms",
+          },
           details: {
             provider,
             statusCode: res.status,
@@ -952,7 +1073,15 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Comunicação",
           title: "Gateway WhatsApp",
           status: "FAILURE",
+          criticality: "IMPORTANT",
           summary: `Servidor do gateway WhatsApp (${provider}) inacessível.`,
+          evidence: "Não foi possível conectar ao servidor do gateway no tempo limite de 2.5s.",
+          impact: "Canais WhatsApp das empresas não conseguem transacionar mensagens.",
+          technical: {
+            "Provedor": provider.toUpperCase(),
+            "Conectividade": "Inacessível / Timeout",
+            "Latência": `${latencyMs} ms`,
+          },
           details: {
             provider,
             latencyMs,
@@ -975,7 +1104,15 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Inteligência Artificial",
           title: "Provedor de IA & Modelos",
           status: "NOT_CONFIGURED",
+          criticality: "OPTIONAL",
           summary: "Provedor de IA não configurado.",
+          evidence: "Nenhum provedor de inteligência artificial configurado no ambiente.",
+          impact: "Recursos que dependem de IA (agentes, NIA e automações inteligentes) permanecem inativos.",
+          technical: {
+            "Provedor": "Não definido",
+            "Probe Pago": "Não realizado",
+            "Consumo de Tokens": "0 tokens",
+          },
           details: {
             configured: false,
           },
@@ -994,7 +1131,15 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
         groupLabel: "Inteligência Artificial",
         title: "Provedor de IA & Modelos",
         status: "OK",
+        criticality: "OPTIONAL",
         summary: `Provedor ${providerName} (${modelName}) configurado e ativo.`,
+        evidence: `Provedor ${providerName} inicializado com modelo padrão ${modelName}.`,
+        impact: "Agentes autônomos e assistente NIA operando normalmente.",
+        technical: {
+          "Provedor": providerName,
+          "Modelo Padrão": modelName,
+          "Status de Configuração": "Ativo",
+        },
         details: {
           provider: aiStatus.provider,
           model: aiStatus.model,
@@ -1017,7 +1162,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "E-mail & Entregas",
           title: "Serviço de E-mail",
           status: "NOT_CONFIGURED",
+          criticality: "OPTIONAL",
           summary: "Provedor de entrega de e-mails não configurado.",
+          evidence: "Nenhum provedor de entrega de e-mails configurado no ambiente.",
+          impact: "Convites e recuperação de senhas não serão enviados.",
+          technical: {
+            "Provedor": "Nenhum",
+            "Status": "Desativado",
+          },
           details: {
             provider: mail.provider,
             canSend: false,
@@ -1035,7 +1187,15 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "E-mail & Entregas",
           title: "Serviço de E-mail",
           status: "NOT_CONFIGURED",
+          criticality: "OPTIONAL",
           summary: "Modo local ativo: Mensagens são registradas no log interno, sem entrega externa.",
+          evidence: "Modo local ativo: e-mails de convite e recuperação são registrados no console/log interno para desenvolvimento.",
+          impact: "E-mails reais não são entregues para caixas de entrada externas.",
+          technical: {
+            "Modo Operacional": "Local (Log / Console)",
+            "Entrega Externa": "Desativada",
+            "Persistência Interna": "Ativa",
+          },
           details: {
             provider: "log",
             canSend: false,
@@ -1052,9 +1212,16 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
         groupLabel: "E-mail & Entregas",
         title: "Serviço de E-mail",
         status: mail.canSend ? "OK" : "WARNING",
+        criticality: "OPTIONAL",
         summary: mail.canSend
           ? `Provedor ${mail.provider.toUpperCase()} configurado e pronto para envios.`
           : "Configuração de e-mail incompleta.",
+        evidence: `Provedor ${mail.provider.toUpperCase()} configurado com credenciais válidas.`,
+        impact: "Envio transacional de convites e recuperação de senhas ativo.",
+        technical: {
+          "Provedor": mail.provider.toUpperCase(),
+          "Status de Envio": mail.canSend ? "Pronto" : "Incompleto",
+        },
         details: {
           provider: mail.provider,
           canSend: mail.canSend,
@@ -1106,13 +1273,24 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           ? "Falha de autenticação em uma ou mais integrações de deploy."
           : "Integrações de deploy operando com configuração parcial ou avisos.";
 
+        const evidence = `GitHub (${ghConnected ? "Conectado" : ghResult.state}) · EasyPanel (${epConnected ? "Conectado" : epResult.state})`;
+        const impact = "Sincronização de código, verificação de versões e deploys no EasyPanel.";
+
         return {
           id: "deploy_integrations",
           group: "integrations",
           groupLabel: "Deploy & DevOps",
           title: "Integrações GitHub & EasyPanel",
           status,
+          criticality: "IMPORTANT",
           summary,
+          evidence,
+          impact,
+          technical: {
+            "GitHub": ghConnected ? "Conectado" : ghResult.state,
+            "EasyPanel": epConnected ? "Conectado" : epResult.state,
+            "Latência": `${latencyMs} ms`,
+          },
           details: {
             github: {
               state: ghResult.state,
@@ -1138,7 +1316,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Deploy & DevOps",
           title: "Integrações GitHub & EasyPanel",
           status: "WARNING",
+          criticality: "IMPORTANT",
           summary: "Não foi possível verificar status das integrações de deploy.",
+          evidence: "Falha ao consultar endpoints de status de deploy.",
+          impact: "Sincronização de código e deploys automatizados.",
+          technical: {
+            "Status": "Aviso",
+            "Latência": `${latencyMs} ms`,
+          },
           details: {
             latencyMs,
           },
@@ -1152,14 +1337,20 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
 
   const checks: DiagnosticCheckResult[] = [];
 
-  const fallbackDefs: Array<{ id: string; group: DiagnosticCheckGroup; groupLabel: string; title: string }> = [
-    { id: "core_api", group: "core", groupLabel: "Núcleo & API", title: "API & Processo Runtime" },
-    { id: "database_postgres", group: "database", groupLabel: "Banco de Dados", title: "PostgreSQL & Conexão" },
-    { id: "cache_redis", group: "cache", groupLabel: "Cache & Filas", title: "Redis & Cache Distribuído" },
-    { id: "whatsapp_gateway", group: "communications", groupLabel: "Comunicação", title: "Gateway WhatsApp" },
-    { id: "ai_provider", group: "ai", groupLabel: "Inteligência Artificial", title: "Provedor de IA & Modelos" },
-    { id: "email_service", group: "email", groupLabel: "E-mail & Entregas", title: "Serviço de E-mail" },
-    { id: "deploy_integrations", group: "integrations", groupLabel: "Deploy & DevOps", title: "Integrações GitHub & EasyPanel" },
+  const fallbackDefs: Array<{
+    id: string;
+    group: DiagnosticCheckGroup;
+    groupLabel: string;
+    title: string;
+    criticality: DiagnosticCriticality;
+  }> = [
+    { id: "core_api", group: "core", groupLabel: "Núcleo & API", title: "API & Processo Runtime", criticality: "CRITICAL" },
+    { id: "database_postgres", group: "database", groupLabel: "Banco de Dados", title: "PostgreSQL & Conexão", criticality: "CRITICAL" },
+    { id: "cache_redis", group: "cache", groupLabel: "Cache & Filas", title: "Redis & Cache Distribuído", criticality: "CRITICAL" },
+    { id: "whatsapp_gateway", group: "communications", groupLabel: "Comunicação", title: "Gateway WhatsApp", criticality: "IMPORTANT" },
+    { id: "ai_provider", group: "ai", groupLabel: "Inteligência Artificial", title: "Provedor de IA & Modelos", criticality: "OPTIONAL" },
+    { id: "email_service", group: "email", groupLabel: "E-mail & Entregas", title: "Serviço de E-mail", criticality: "OPTIONAL" },
+    { id: "deploy_integrations", group: "integrations", groupLabel: "Deploy & DevOps", title: "Integrações GitHub & EasyPanel", criticality: "IMPORTANT" },
   ];
 
   const results = [coreCheck, dbCheck, redisCheck, waCheck, aiCheck, mailCheck, deployCheck];
@@ -1175,7 +1366,10 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
         groupLabel: def.groupLabel,
         title: def.title,
         status: "FAILURE",
+        criticality: def.criticality,
         summary: "Falha interna ao executar diagnóstico.",
+        evidence: "Exceção inesperada na execução da rotina de probe.",
+        impact: "Não foi possível mensurar o estado operacional desta dependência.",
         details: null,
         latencyMs: null,
         checkedAt,
@@ -1196,7 +1390,16 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
     else if (c.status === "NOT_CONFIGURED") notConfigured++;
   }
 
-  const overallStatus = failure > 0 ? "FAILURE" : warning > 0 ? "WARNING" : "OK";
+  const criticalFailure = checks.some((c) => c.criticality === "CRITICAL" && c.status === "FAILURE");
+  const criticalWarning = checks.some((c) => c.criticality === "CRITICAL" && c.status === "WARNING");
+  const importantFailure = checks.some((c) => c.criticality === "IMPORTANT" && c.status === "FAILURE");
+
+  const overallStatus = criticalFailure
+    ? "FAILURE"
+    : criticalWarning || importantFailure || warning > 0
+    ? "WARNING"
+    : "OK";
+
   const durationMs = Math.round(performance.now() - startTime);
 
   return {
