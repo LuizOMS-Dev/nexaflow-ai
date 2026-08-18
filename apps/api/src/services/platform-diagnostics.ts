@@ -454,3 +454,551 @@ export async function getPlatformHealthDetailed() {
   const { getPlatformHealth } = await import("./platform-health");
   return getPlatformHealth();
 }
+
+export type DiagnosticCheckStatus = "OK" | "WARNING" | "FAILURE" | "NOT_CONFIGURED" | "NOT_APPLICABLE";
+export type DiagnosticCheckGroup = "core" | "database" | "cache" | "communications" | "ai" | "email" | "integrations";
+
+export type DiagnosticCheckResult = {
+  id: string;
+  group: DiagnosticCheckGroup;
+  groupLabel: string;
+  title: string;
+  status: DiagnosticCheckStatus;
+  summary: string;
+  details?: Record<string, unknown> | null;
+  latencyMs?: number | null;
+  checkedAt: string;
+  recommendation?: string | null;
+};
+
+export type SystemDiagnosticsDTO = {
+  overallStatus: "OK" | "WARNING" | "FAILURE";
+  checkedAt: string;
+  durationMs: number;
+  summary: {
+    total: number;
+    ok: number;
+    warning: number;
+    failure: number;
+    notConfigured: number;
+  };
+  checks: DiagnosticCheckResult[];
+};
+
+export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
+  const startTime = performance.now();
+  const checkedAt = new Date().toISOString();
+
+  const { env, isWaGatewayReady } = await import("../lib/env");
+  const { getAiStatus } = await import("./ai");
+  const { getMailStatus } = await import("./security/mail");
+  const { isRedisCritical, getRedis, shouldUseRedis } = await import("./security/redis");
+
+  // Executa todos os checks de diagnóstico em paralelo
+  const [
+    coreCheck,
+    dbCheck,
+    redisCheck,
+    waCheck,
+    aiCheck,
+    mailCheck,
+    deployCheck,
+  ] = await Promise.allSettled([
+    // 1. API & Runtime
+    (async (): Promise<DiagnosticCheckResult> => {
+      const t0 = performance.now();
+      const mem = process.memoryUsage();
+      const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
+      const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
+      const rssMb = Math.round(mem.rss / 1024 / 1024);
+      const latencyMs = Math.round(performance.now() - t0);
+      const uptimeSec = Math.floor(process.uptime());
+
+      const isHighMem = heapUsedMb > 700;
+
+      return {
+        id: "core_api",
+        group: "core",
+        groupLabel: "Núcleo & API",
+        title: "API & Processo Runtime",
+        status: isHighMem ? "WARNING" : "OK",
+        summary: `API ativa · Uptime: ${uptimeSec}s · Heap: ${heapUsedMb}MB / ${heapTotalMb}MB (RSS: ${rssMb}MB)`,
+        details: {
+          nodeVersion: process.version,
+          platform: process.platform,
+          uptimeSeconds: uptimeSec,
+          heapUsedMb,
+          heapTotalMb,
+          rssMb,
+          env: env.nodeEnv,
+        },
+        latencyMs,
+        checkedAt,
+        recommendation: isHighMem ? "Consumo de memória elevado no processo Node. Monitore possíveis vazamentos." : null,
+      };
+    })(),
+
+    // 2. Banco de Dados PostgreSQL
+    (async (): Promise<DiagnosticCheckResult> => {
+      const t0 = performance.now();
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+        const latencyMs = Math.round(performance.now() - t0);
+        const isSlow = latencyMs > 500;
+
+        return {
+          id: "database_postgres",
+          group: "database",
+          groupLabel: "Banco de Dados",
+          title: "PostgreSQL & Conexão",
+          status: isSlow ? "WARNING" : "OK",
+          summary: isSlow
+            ? `PostgreSQL conectado, mas com latência elevada (${latencyMs}ms).`
+            : `PostgreSQL conectado e respondendo normalmente (${latencyMs}ms).`,
+          details: {
+            query: "SELECT 1",
+            latencyMs,
+            engine: "PostgreSQL",
+            status: "CONNECTED",
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: isSlow ? "Verifique gargalos de rede ou concorrência no pool de conexões do banco." : null,
+        };
+      } catch (err) {
+        const latencyMs = Math.round(performance.now() - t0);
+        return {
+          id: "database_postgres",
+          group: "database",
+          groupLabel: "Banco de Dados",
+          title: "PostgreSQL & Conexão",
+          status: "FAILURE",
+          summary: "Falha de conexão com o banco de dados PostgreSQL.",
+          details: {
+            error: err instanceof Error ? redactString(err.message, 120) : "db_connection_error",
+            latencyMs,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: "Verifique se o container PostgreSQL está em execução e acessível.",
+        };
+      }
+    })(),
+
+    // 3. Redis & Cache
+    (async (): Promise<DiagnosticCheckResult> => {
+      const t0 = performance.now();
+      const critical = isRedisCritical();
+
+      if (!shouldUseRedis()) {
+        return {
+          id: "cache_redis",
+          group: "cache",
+          groupLabel: "Cache & Filas",
+          title: "Redis & Cache Distribuído",
+          status: "NOT_CONFIGURED",
+          summary: "Redis não configurado. Sessões e rate limits operam em memória local.",
+          details: {
+            mode: "in-memory",
+            critical,
+          },
+          latencyMs: null,
+          checkedAt,
+          recommendation: null,
+        };
+      }
+
+      try {
+        const redis = await getRedis();
+        if (!redis) {
+          return {
+            id: "cache_redis",
+            group: "cache",
+            groupLabel: "Cache & Filas",
+            title: "Redis & Cache Distribuído",
+            status: critical ? "FAILURE" : "NOT_CONFIGURED",
+            summary: "Não foi possível conectar ao servidor Redis.",
+            details: {
+              mode: "redis",
+              connected: false,
+            },
+            latencyMs: Math.round(performance.now() - t0),
+            checkedAt,
+            recommendation: "Verifique a variável REDIS_URL e a conectividade com a porta do Redis.",
+          };
+        }
+
+        const pong = await redis.ping();
+        const latencyMs = Math.round(performance.now() - t0);
+        const isSlow = latencyMs > 250;
+
+        return {
+          id: "cache_redis",
+          group: "cache",
+          groupLabel: "Cache & Filas",
+          title: "Redis & Cache Distribuído",
+          status: pong === "PONG" ? (isSlow ? "WARNING" : "OK") : "FAILURE",
+          summary: pong === "PONG"
+            ? (isSlow ? `Redis respondendo com latência elevada (${latencyMs}ms).` : `Redis conectado com sucesso (${latencyMs}ms).`)
+            : "Resposta inválida ao comando PING no Redis.",
+          details: {
+            ping: pong,
+            latencyMs,
+            critical,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: isSlow ? "Verifique latência de rede entre a aplicação e o Redis." : null,
+        };
+      } catch (err) {
+        const latencyMs = Math.round(performance.now() - t0);
+        return {
+          id: "cache_redis",
+          group: "cache",
+          groupLabel: "Cache & Filas",
+          title: "Redis & Cache Distribuído",
+          status: critical ? "FAILURE" : "WARNING",
+          summary: "Serviço Redis inacessível ou com erro.",
+          details: {
+            error: err instanceof Error ? redactString(err.message, 120) : "redis_error",
+            latencyMs,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: "Verifique se o serviço Redis está ativo na infraestrutura.",
+        };
+      }
+    })(),
+
+    // 4. WhatsApp Gateway
+    (async (): Promise<DiagnosticCheckResult> => {
+      const t0 = performance.now();
+      const provider = env.waGatewayProvider || "baileys";
+
+      if (provider === "simulated" || provider === "baileys") {
+        return {
+          id: "whatsapp_gateway",
+          group: "communications",
+          groupLabel: "Comunicação",
+          title: "Gateway WhatsApp",
+          status: "OK",
+          summary: provider === "baileys"
+            ? "Gateway Baileys embutido ativo com persistência de sessões."
+            : "Gateway simulado ativo para desenvolvimento/testes.",
+          details: {
+            provider,
+            mode: "embedded",
+            ready: true,
+          },
+          latencyMs: 1,
+          checkedAt,
+          recommendation: null,
+        };
+      }
+
+      if (!isWaGatewayReady() || !env.waGatewayUrl) {
+        return {
+          id: "whatsapp_gateway",
+          group: "communications",
+          groupLabel: "Comunicação",
+          title: "Gateway WhatsApp",
+          status: "NOT_CONFIGURED",
+          summary: "URL do gateway WhatsApp não configurada.",
+          details: {
+            provider,
+            ready: false,
+          },
+          latencyMs: null,
+          checkedAt,
+          recommendation: "Configure WA_GATEWAY_URL para habilitar o envio via Evolution/WAHA.",
+        };
+      }
+
+      try {
+        const cleanUrl = env.waGatewayUrl.replace(/\/+$/, "");
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 2500);
+
+        const res = await fetch(`${cleanUrl}/health`, {
+          method: "GET",
+          signal: controller.signal,
+          headers: env.waGatewayApiKey ? { apikey: env.waGatewayApiKey } : {},
+        }).finally(() => clearTimeout(timer));
+
+        const latencyMs = Math.round(performance.now() - t0);
+
+        return {
+          id: "whatsapp_gateway",
+          group: "communications",
+          groupLabel: "Comunicação",
+          title: "Gateway WhatsApp",
+          status: res.ok ? "OK" : "WARNING",
+          summary: res.ok
+            ? `Gateway ${provider.toUpperCase()} conectado e respondendo (${latencyMs}ms).`
+            : `Gateway ${provider.toUpperCase()} retornou status HTTP ${res.status}.`,
+          details: {
+            provider,
+            statusCode: res.status,
+            latencyMs,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: !res.ok ? "Verifique os logs do servidor de WhatsApp Gateway." : null,
+        };
+      } catch {
+        const latencyMs = Math.round(performance.now() - t0);
+        return {
+          id: "whatsapp_gateway",
+          group: "communications",
+          groupLabel: "Comunicação",
+          title: "Gateway WhatsApp",
+          status: "FAILURE",
+          summary: `Servidor do gateway WhatsApp (${provider}) inacessível.`,
+          details: {
+            provider,
+            latencyMs,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: "Verifique se o serviço do gateway WhatsApp está online e a URL está correta.",
+        };
+      }
+    })(),
+
+    // 5. Provider de IA
+    (async (): Promise<DiagnosticCheckResult> => {
+      const aiStatus = getAiStatus();
+
+      if (!aiStatus.configured) {
+        return {
+          id: "ai_provider",
+          group: "ai",
+          groupLabel: "Inteligência Artificial",
+          title: "Provedor de IA & Modelos",
+          status: "NOT_CONFIGURED",
+          summary: "Provedor de IA não configurado.",
+          details: {
+            configured: false,
+          },
+          latencyMs: null,
+          checkedAt,
+          recommendation: "Defina AI_API_KEY e AI_PROVIDER caso deseje utilizar recursos de NIA e agentes.",
+        };
+      }
+
+      const providerName = (aiStatus.provider || "IA").toUpperCase();
+      const modelName = aiStatus.model || "padrão";
+
+      return {
+        id: "ai_provider",
+        group: "ai",
+        groupLabel: "Inteligência Artificial",
+        title: "Provedor de IA & Modelos",
+        status: "OK",
+        summary: `Provedor ${providerName} (${modelName}) configurado e ativo.`,
+        details: {
+          provider: aiStatus.provider,
+          model: aiStatus.model,
+          configured: true,
+        },
+        latencyMs: null,
+        checkedAt,
+        recommendation: null,
+      };
+    })(),
+
+    // 6. E-mail
+    (async (): Promise<DiagnosticCheckResult> => {
+      const mail = getMailStatus();
+
+      if (!mail.configured || mail.provider === "none") {
+        return {
+          id: "email_service",
+          group: "email",
+          groupLabel: "E-mail & Entregas",
+          title: "Serviço de E-mail",
+          status: "NOT_CONFIGURED",
+          summary: "Provedor de entrega de e-mails não configurado.",
+          details: {
+            provider: mail.provider,
+            canSend: false,
+          },
+          latencyMs: null,
+          checkedAt,
+          recommendation: "Configure RESEND_API_KEY ou MAIL_PROVIDER para habilitar envios de convites por e-mail.",
+        };
+      }
+
+      if (mail.provider === "log" || mail.provider === "console") {
+        return {
+          id: "email_service",
+          group: "email",
+          groupLabel: "E-mail & Entregas",
+          title: "Serviço de E-mail",
+          status: "NOT_CONFIGURED",
+          summary: "Modo local ativo: mensagens são registradas internamente sem envio externo.",
+          details: {
+            provider: "log",
+            canSend: false,
+          },
+          latencyMs: null,
+          checkedAt,
+          recommendation: null,
+        };
+      }
+
+      return {
+        id: "email_service",
+        group: "email",
+        groupLabel: "E-mail & Entregas",
+        title: "Serviço de E-mail",
+        status: mail.canSend ? "OK" : "WARNING",
+        summary: mail.canSend
+          ? `Provedor ${mail.provider.toUpperCase()} configurado e pronto para envios.`
+          : "Configuração de e-mail incompleta.",
+        details: {
+          provider: mail.provider,
+          canSend: mail.canSend,
+        },
+        latencyMs: null,
+        checkedAt,
+        recommendation: !mail.canSend ? "Verifique as chaves de API do provedor de e-mails." : null,
+      };
+    })(),
+
+    // 7. Deploy & Infraestrutura (GitHub / EasyPanel)
+    (async (): Promise<DiagnosticCheckResult> => {
+      const t0 = performance.now();
+      try {
+        const { GitHubClient } = await import("./deploy/github-client");
+        const { EasyPanelClient } = await import("./deploy/easypanel-client");
+
+        const ghClient = new GitHubClient();
+        const epClient = new EasyPanelClient();
+
+        const [ghTest, epTest] = await Promise.allSettled([
+          ghClient.testConnection(),
+          epClient.checkConnection(),
+        ]);
+
+        const ghResult = ghTest.status === "fulfilled" ? ghTest.value : { state: "UNAVAILABLE", success: false };
+        const epResult = epTest.status === "fulfilled" ? epTest.value : { state: "UNAVAILABLE", success: false };
+
+        const latencyMs = Math.round(performance.now() - t0);
+
+        const hasAnyFailure = ghResult.state === "AUTH_FAILED" || epResult.state === "AUTH_FAILED";
+        const allConfiguredAndOk = ghResult.state === "CONNECTED" && epResult.state === "CONNECTED";
+        const isNotConfigured = ghResult.state === "NOT_CONFIGURED" && epResult.state === "NOT_CONFIGURED";
+
+        const status: DiagnosticCheckStatus = isNotConfigured
+          ? "NOT_CONFIGURED"
+          : hasAnyFailure
+          ? "FAILURE"
+          : allConfiguredAndOk
+          ? "OK"
+          : "WARNING";
+
+        return {
+          id: "deploy_integrations",
+          group: "integrations",
+          groupLabel: "Deploy & DevOps",
+          title: "Integrações GitHub & EasyPanel",
+          status,
+          summary: isNotConfigured
+            ? "Credenciais de deploy (GitHub / EasyPanel) não configuradas."
+            : allConfiguredAndOk
+            ? `Integrações de deploy conectadas com sucesso (${latencyMs}ms).`
+            : "Integrações de deploy operando com avisos ou configuração parcial.",
+          details: {
+            githubState: ghResult.state,
+            easypanelState: epResult.state,
+            latencyMs,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: hasAnyFailure ? "Verifique tokens de autenticação do GitHub e EasyPanel em /admin/deploy." : null,
+        };
+      } catch {
+        const latencyMs = Math.round(performance.now() - t0);
+        return {
+          id: "deploy_integrations",
+          group: "integrations",
+          groupLabel: "Deploy & DevOps",
+          title: "Integrações GitHub & EasyPanel",
+          status: "WARNING",
+          summary: "Não foi possível verificar status das integrações de deploy.",
+          details: {
+            latencyMs,
+          },
+          latencyMs,
+          checkedAt,
+          recommendation: null,
+        };
+      }
+    })(),
+  ]);
+
+  const checks: DiagnosticCheckResult[] = [];
+
+  const fallbackDefs: Array<{ id: string; group: DiagnosticCheckGroup; groupLabel: string; title: string }> = [
+    { id: "core_api", group: "core", groupLabel: "Núcleo & API", title: "API & Processo Runtime" },
+    { id: "database_postgres", group: "database", groupLabel: "Banco de Dados", title: "PostgreSQL & Conexão" },
+    { id: "cache_redis", group: "cache", groupLabel: "Cache & Filas", title: "Redis & Cache Distribuído" },
+    { id: "whatsapp_gateway", group: "communications", groupLabel: "Comunicação", title: "Gateway WhatsApp" },
+    { id: "ai_provider", group: "ai", groupLabel: "Inteligência Artificial", title: "Provedor de IA & Modelos" },
+    { id: "email_service", group: "email", groupLabel: "E-mail & Entregas", title: "Serviço de E-mail" },
+    { id: "deploy_integrations", group: "integrations", groupLabel: "Deploy & DevOps", title: "Integrações GitHub & EasyPanel" },
+  ];
+
+  const results = [coreCheck, dbCheck, redisCheck, waCheck, aiCheck, mailCheck, deployCheck];
+
+  results.forEach((res, i) => {
+    if (res.status === "fulfilled") {
+      checks.push(res.value);
+    } else {
+      const def = fallbackDefs[i];
+      checks.push({
+        id: def.id,
+        group: def.group,
+        groupLabel: def.groupLabel,
+        title: def.title,
+        status: "FAILURE",
+        summary: "Falha interna ao executar diagnóstico.",
+        details: null,
+        latencyMs: null,
+        checkedAt,
+        recommendation: "Verifique os logs da aplicação para mais detalhes.",
+      });
+    }
+  });
+
+  let ok = 0;
+  let warning = 0;
+  let failure = 0;
+  let notConfigured = 0;
+
+  for (const c of checks) {
+    if (c.status === "OK") ok++;
+    else if (c.status === "WARNING") warning++;
+    else if (c.status === "FAILURE") failure++;
+    else if (c.status === "NOT_CONFIGURED") notConfigured++;
+  }
+
+  const overallStatus = failure > 0 ? "FAILURE" : warning > 0 ? "WARNING" : "OK";
+  const durationMs = Math.round(performance.now() - startTime);
+
+  return {
+    overallStatus,
+    checkedAt,
+    durationMs,
+    summary: {
+      total: checks.length,
+      ok,
+      warning,
+      failure,
+      notConfigured,
+    },
+    checks,
+  };
+}
+

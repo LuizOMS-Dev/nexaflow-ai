@@ -13,8 +13,21 @@ import {
   getDiagnosticWebhooks,
   getDiagnosticWhatsApp,
   getPlatformHealthDetailed,
+  runSystemDiagnostics,
 } from "../services/platform-diagnostics";
 export async function platformDiagnosticsRoutes(app: FastifyInstance) {
+  app.get(
+    "/admin/diagnostics/run",
+    { preHandler: [app.authenticate, app.requireSuperadmin] },
+    async () => runSystemDiagnostics()
+  );
+
+  app.post(
+    "/admin/diagnostics/run",
+    { preHandler: [app.authenticate, app.requireSuperadmin] },
+    async () => runSystemDiagnostics()
+  );
+
   app.get(
     "/admin/diagnostics/overview",
     { preHandler: [app.authenticate, app.requireSuperadmin] },
