@@ -496,15 +496,6 @@ export default function AdminCompaniesPage() {
               icon={<Building2 className="h-5 w-5" strokeWidth={1.5} />}
               title="Nenhuma empresa cadastrada"
               description="Comece cadastrando a primeira empresa na plataforma."
-              action={
-                <button
-                  type="button"
-                  className="admin-btn-primary text-[12px]"
-                  onClick={() => setOpenCreate(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Nova empresa
-                </button>
-              }
             />
           )
         ) : (
