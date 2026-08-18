@@ -24,6 +24,8 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(formatAuditAction("admin.cost.create")).toBe("Custo operacional registrado");
     expect(formatAuditAction("admin.subscription.cancel")).toBe("Assinatura de empresa cancelada");
     expect(formatAuditAction("admin.lead.convert")).toBe("Lead comercial convertido em empresa");
+    expect(formatAuditAction("admin.impersonate")).toBe("Acesso como empresa iniciado");
+    expect(formatAuditAction("admin.impersonate.stop")).toBe("Acesso como empresa finalizado");
     expect(formatAuditAction("tenant.create")).toBe("Empresa cadastrada");
     expect(formatAuditAction("custom_module.some_action")).toBe("Custom module › Some action");
   });
@@ -111,9 +113,10 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(stringified).not.toContain("Bearer ");
   });
 
-  it("6. gera telemetria de 24h a partir de dados reais com definição de período móvel", async () => {
+  it("6. gera telemetria de 24h a partir de dados reais com definição de período móvel e persistência", async () => {
     const overview = await getDiagnosticsOverview();
     expect(overview).toHaveProperty("period", "24h");
+    expect(overview).toHaveProperty("windowLabel", "Janela móvel das últimas 24 horas");
     expect(overview).toHaveProperty("generatedAt");
     expect(overview).toHaveProperty("metrics");
     expect(typeof overview.metrics.activityEvents).toBe("number");
@@ -122,15 +125,16 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(typeof overview.metrics.whatsappChannels).toBe("number");
     expect(typeof overview.metrics.aiExecutions).toBe("number");
     expect(typeof overview.metrics.securityEvents).toBe("number");
-    expect(typeof overview.metrics.apiCalls).toBe("number");
   });
 
-  it("7. retorna dados reais de runtime da API sem mocks", async () => {
+  it("7. retorna dados reais de runtime da API com métricas de Heap V8 e RSS sem mocks", async () => {
     const apiDiag = await getDiagnosticApi({ take: 10 });
     expect(apiDiag).toHaveProperty("runtime");
     expect(apiDiag.runtime?.readiness).toBe("OPERATIONAL");
     expect(typeof apiDiag.runtime?.uptimeSeconds).toBe("number");
     expect(typeof apiDiag.runtime?.heapUsedMb).toBe("number");
+    expect(typeof apiDiag.runtime?.heapTotalMb).toBe("number");
+    expect(typeof apiDiag.runtime?.heapLimitMb).toBe("number");
     expect(typeof apiDiag.runtime?.rssMb).toBe("number");
     expect(apiDiag).toHaveProperty("telemetry");
     expect(apiDiag).toHaveProperty("items");

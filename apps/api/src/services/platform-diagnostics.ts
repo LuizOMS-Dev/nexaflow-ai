@@ -39,6 +39,7 @@ export async function getDiagnosticsOverview() {
 
   return {
     period: "24h",
+    windowLabel: "Janela móvel das últimas 24 horas",
     generatedAt: new Date().toISOString(),
     metrics: {
       activityEvents: audit24h,
@@ -47,7 +48,17 @@ export async function getDiagnosticsOverview() {
       whatsappChannels: waProblemChannels,
       aiExecutions: aiUsage24h,
       securityEvents: securityEvents24h,
-      apiCalls: apiUsage24h,
+      apiCalls: apiUsage24h > 0 ? apiUsage24h : null,
+      isApiInstrumented: apiUsage24h > 0,
+    },
+    flatMetrics: {
+      activityEvents: audit24h,
+      webhookFailures: webhookFailed24h,
+      webhookPending,
+      whatsappChannels: waProblemChannels,
+      aiExecutions: aiUsage24h,
+      securityEvents: securityEvents24h,
+      apiCalls: apiUsage24h > 0 ? apiUsage24h : null,
     },
   };
 }
@@ -88,7 +99,9 @@ const AUDIT_ACTION_MAP: Record<string, string> = {
   "admin.lead.status_change": "Status do lead comercial atualizado",
   "admin.lead.update": "Dados do lead comercial atualizados",
   "admin.lead.delete": "Lead comercial removido",
-  // Admin Audit
+  // Admin Impersonate & Audit
+  "admin.impersonate": "Acesso como empresa iniciado",
+  "admin.impersonate.stop": "Acesso como empresa finalizado",
   "admin.audit.cleared": "Histórico de auditoria limpo",
   // Tenant & Users
   "tenant.create": "Empresa cadastrada",
@@ -100,6 +113,7 @@ const AUDIT_ACTION_MAP: Record<string, string> = {
   "user.update": "Usuário atualizado",
   "user.delete": "Usuário removido",
   "user.impersonate": "Acesso como empresa iniciado",
+  "user.impersonate.stop": "Acesso como empresa finalizado",
 };
 
 export function formatAuditAction(action: string): string {
@@ -541,9 +555,19 @@ export async function getDiagnosticApi(params: { take?: number; tenantId?: strin
   ]);
 
   const mem = process.memoryUsage();
+  let heapLimitMb = 1400;
+  try {
+    const v8 = await import("node:v8");
+    const stats = v8.getHeapStatistics();
+    heapLimitMb = Math.round(stats.heap_size_limit / 1024 / 1024);
+  } catch {
+    heapLimitMb = 1400;
+  }
   const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
   const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
   const rssMb = Math.round(mem.rss / 1024 / 1024);
+  const externalMb = Math.round(mem.external / 1024 / 1024);
+  const arrayBuffersMb = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
   const uptimeSec = Math.floor(process.uptime());
   const hours = Math.floor(uptimeSec / 3600);
   const minutes = Math.floor((uptimeSec % 3600) / 60);
@@ -555,7 +579,10 @@ export async function getDiagnosticApi(params: { take?: number; tenantId?: strin
       uptimeFormatted: `${hours}h ${minutes}m ${uptimeSec % 60}s`,
       heapUsedMb,
       heapTotalMb,
+      heapLimitMb,
       rssMb,
+      externalMb,
+      arrayBuffersMb,
       nodeVersion: process.version,
       platform: process.platform,
     },

@@ -19,7 +19,6 @@ import {
   Play,
   Radio,
   RefreshCw,
-  Search,
   Server,
   Shield,
   Sparkles,
@@ -100,13 +99,14 @@ type Overview = {
   period: string;
   windowLabel?: string;
   metrics: {
-    activityEvents?: { value: number; hasData: boolean; label: string; description: string };
-    webhooks?: { failed: number; pending: number; totalIssues: number; hasData: boolean };
-    whatsapp?: { activeChannels: number; hasData: boolean };
-    ai?: { executions: number; hasData: boolean; isConfigured: boolean };
-    security?: { events: number; hasData: boolean };
-    api?: { calls: number; hasData: boolean; isInstrumented: boolean };
-    activityEventsCount?: number;
+    activityEvents: number;
+    webhookFailures: number;
+    webhookPending: number;
+    whatsappChannels: number;
+    aiExecutions: number;
+    securityEvents: number;
+    apiCalls: number | null;
+    isApiInstrumented?: boolean;
   };
   flatMetrics?: {
     activityEvents: number;
@@ -115,7 +115,7 @@ type Overview = {
     whatsappChannels: number;
     aiExecutions: number;
     securityEvents: number;
-    apiCalls: number;
+    apiCalls: number | null;
   };
   generatedAt: string;
 };
@@ -165,7 +165,10 @@ type ApiDiag = {
     uptimeFormatted: string;
     heapUsedMb: number;
     heapTotalMb: number;
+    heapLimitMb: number;
     rssMb: number;
+    externalMb: number;
+    arrayBuffersMb: number;
     nodeVersion: string;
     platform: string;
   };
@@ -343,7 +346,7 @@ export default function AdminDiagnosticsPage() {
   const diagData = diagnosticsQuery.data;
   const isRunning = diagnosticsQuery.isFetching || runMutation.isPending;
 
-  const flatM = overview.data?.flatMetrics;
+  const flatM = overview.data?.flatMetrics || overview.data?.metrics;
   const listItems =
     listQuery.data && "items" in listQuery.data
       ? (listQuery.data as { items: Array<Record<string, unknown>> }).items
@@ -688,8 +691,8 @@ export default function AdminDiagnosticsPage() {
               <MetricCard
                 label="API (Chamadas registradas)"
                 value={
-                  (flatM?.apiCalls ?? 0) > 0
-                    ? flatM?.apiCalls
+                  flatM?.apiCalls != null
+                    ? flatM.apiCalls
                     : "Não instrumentado"
                 }
                 icon={<Activity className="h-4 w-4" />}
@@ -700,7 +703,7 @@ export default function AdminDiagnosticsPage() {
             <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-4 text-[12.5px] text-ink-muted dark:text-gray-400 flex items-start gap-2.5">
               <Info className="h-4 w-4 text-brand-600 dark:text-violet-400 shrink-0 mt-0.5" />
               <span>
-                Janela móvel das últimas 24 horas. As métricas agregam registros reais de auditoria, entregas de webhooks, canais e eventos de segurança.
+                Janela móvel das últimas 24 horas. As métricas agregam registros persistidos de auditoria, entregas de webhooks, canais e eventos de segurança.
               </span>
             </div>
           </div>
@@ -767,7 +770,7 @@ export default function AdminDiagnosticsPage() {
           {aiData ? (
             <div className="space-y-4">
               {!aiData.groqLive?.configured ? (
-                <div className="flex items-start gap-3 rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-5 text-[13px] text-ink-muted dark:text-gray-400">
+                <div className="flex items-start gap-3 rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-5 text-[13px] text-ink-muted dark:text-gray-400 max-w-2xl mx-auto">
                   <Bot className="h-5 w-5 text-brand-600 dark:text-violet-400 shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-ink dark:text-white">Provider de IA não configurado</p>
@@ -853,17 +856,26 @@ export default function AdminDiagnosticsPage() {
                   compact
                 />
                 <MetricCard
-                  label="Memória Heap"
-                  value={`${apiData.runtime.heapUsedMb} MB / ${apiData.runtime.heapTotalMb} MB`}
+                  label="Memória Heap (Em Uso)"
+                  value={`${apiData.runtime.heapUsedMb} MB`}
                   icon={<Cpu className="h-4 w-4" />}
                   compact
                 />
                 <MetricCard
-                  label="Memória RSS"
+                  label="Memória RSS (Processo)"
                   value={`${apiData.runtime.rssMb} MB`}
                   compact
                 />
               </MetricGrid>
+
+              <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-4 text-[12px] text-ink-muted dark:text-gray-400 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Heap V8 alocada: <strong className="text-ink dark:text-gray-200">{apiData.runtime.heapTotalMb} MB</strong> · Limite da Heap: <strong className="text-ink dark:text-gray-200">{apiData.runtime.heapLimitMb} MB</strong> · Buffers: <strong className="text-ink dark:text-gray-200">{apiData.runtime.arrayBuffersMb} MB</strong>
+                </span>
+                <span>
+                  Node {apiData.runtime.nodeVersion} ({apiData.runtime.platform})
+                </span>
+              </div>
             </div>
           ) : null}
 
@@ -879,13 +891,27 @@ export default function AdminDiagnosticsPage() {
             </AdminFilterBar>
           ) : null}
 
-          {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO */}
-          {!listItems.length ? (
-            <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-6 text-center">
+          {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO (Somente se IA configurada ou outra aba) */}
+          {tab === "ai" && !aiData?.groqLive?.configured ? null : !listItems.length ? (
+            <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-5 text-center max-w-xl mx-auto">
               <AdminEmptyState
                 compact
-                title="Nenhum evento registrado nas últimas 24 horas"
-                description="Sem registros recentes nesta categoria."
+                title={
+                  tab === "webhooks"
+                    ? "Nenhum evento de webhook nas últimas 24 horas"
+                    : tab === "whatsapp"
+                    ? "Nenhum canal de WhatsApp cadastrado"
+                    : tab === "api"
+                    ? "Sem registros de chamadas de API nas últimas 24 horas"
+                    : "Nenhum evento registrado nas últimas 24 horas"
+                }
+                description={
+                  tab === "whatsapp"
+                    ? "As conexões com o WhatsApp são gerenciadas individualmente pelas empresas nas configurações de canais."
+                    : tab === "api"
+                    ? "A instrumentação detalhada de requests HTTP opera sem middleware pesado de escrita contínua."
+                    : "Sem registros recentes nesta categoria para o período selecionado."
+                }
               />
             </div>
           ) : (
