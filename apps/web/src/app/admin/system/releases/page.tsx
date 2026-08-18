@@ -298,13 +298,15 @@ export default function AdminReleasesPage() {
               <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
               {isFetching ? "Atualizando…" : "Atualizar"}
             </button>
-            <button
-              type="button"
-              className="admin-btn-primary h-9 px-3.5 text-[13px]"
-              onClick={openCreate}
-            >
-              <Plus className="h-4 w-4" /> Nova versão
-            </button>
+            {sorted.length > 0 ? (
+              <button
+                type="button"
+                className="admin-btn-primary h-9 px-3.5 text-[13px]"
+                onClick={openCreate}
+              >
+                <Plus className="h-4 w-4" /> Nova versão
+              </button>
+            ) : null}
           </div>
         }
       />
