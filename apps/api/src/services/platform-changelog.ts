@@ -1,5 +1,5 @@
 /**
- * Changelog / Novidades da NexaFlow — produto, não auditoria técnica.
+ * Changelog / Novidades da NexaFlow — Fonte oficial de releases e versões.
  */
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/errors";
@@ -10,28 +10,58 @@ export type ReleaseStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 export type ReleaseVisibility = "ALL" | "SUPERADMIN";
 
 export type ReleaseItemInput = {
-  category: ReleaseCategory;
+  category: ReleaseCategory | string;
   body: string;
   sortOrder?: number;
 };
 
-const CATEGORIES = new Set(["NEW", "IMPROVEMENT", "FIX", "SECURITY"]);
+const CATEGORY_MAP: Record<string, ReleaseCategory> = {
+  NEW: "NEW",
+  NOVO: "NEW",
+  FEATURE: "NEW",
+  IMPROVEMENT: "IMPROVEMENT",
+  MELHORIA: "IMPROVEMENT",
+  FIX: "FIX",
+  CORRECAO: "FIX",
+  CORREÇÃO: "FIX",
+  SECURITY: "SECURITY",
+  SEGURANCA: "SECURITY",
+  SEGURANÇA: "SECURITY",
+};
+
+/**
+ * Sanitiza textos contra injeções de script / tags HTML perigosas
+ */
+export function sanitizeChangelogText(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, "")
+    .trim();
+}
 
 function normalizeItems(items: ReleaseItemInput[]) {
   return (items || [])
-    .map((it, i) => ({
-      category: String(it.category || "").toUpperCase(),
-      body: String(it.body || "").trim(),
-      sortOrder: it.sortOrder ?? i,
-    }))
-    .filter((it) => it.body && CATEGORIES.has(it.category)) as Array<{
+    .map((it, i) => {
+      const rawCat = String(it.category || "").toUpperCase().trim();
+      const category = CATEGORY_MAP[rawCat] || "IMPROVEMENT";
+      const body = sanitizeChangelogText(String(it.body || ""));
+      return {
+        category,
+        body,
+        sortOrder: it.sortOrder ?? i,
+      };
+    })
+    .filter((it) => it.body.length > 0) as Array<{
     category: ReleaseCategory;
     body: string;
     sortOrder: number;
   }>;
 }
 
-/** Textos internos que nunca devem ir para o changelog do cliente. */
+/** Textos internos técnicos que nunca devem ir para o changelog do cliente. */
 const INTERNAL_CHANGELOG_RE =
   /\b(superadmin|admin\s+global|painel\s+administrativ|diagn[oó]stico\s+(interno|t[eé]cnico)|sa[uú]de\s+da\s+plataforma|docker|easypanel|redis|postgres|migration|worker|job\b|allowlist|rbac|access\s*gate|multi-?tenant\b|endpoint|health\s*check|runtime|fallback\s+provider|structured\s+output)\b/i;
 
@@ -45,12 +75,14 @@ export async function listPublishedReleases(params: {
   take?: number;
 }) {
   const take = Math.min(params.take ?? 30, 50);
-  // Página pública "Novidades": sempre visibility ALL (Superadmin edita no /admin)
+  
+  // Regra de segurança rígida: usuários não-superadmin NUNCA recebem releases SUPERADMIN
+  const whereClause = params.isSuperadmin
+    ? { status: "PUBLISHED" as const }
+    : { status: "PUBLISHED" as const, visibility: "ALL" as const };
+
   const releases = await prisma.platformRelease.findMany({
-    where: {
-      status: "PUBLISHED",
-      visibility: "ALL",
-    },
+    where: whereClause,
     orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     take,
     include: {
@@ -77,7 +109,7 @@ export async function listPublishedReleases(params: {
     visibility: r.visibility,
     seen: seenSet.has(r.id),
     items: r.items
-      .filter((i) => isCustomerFacingChangelogBody(i.body))
+      .filter((i) => params.isSuperadmin || isCustomerFacingChangelogBody(i.body))
       .map((i) => ({
         id: i.id,
         category: i.category,
@@ -87,25 +119,32 @@ export async function listPublishedReleases(params: {
   }));
 }
 
-export async function countUnseenReleases(userId: string, _isSuperadmin = false) {
-  // Novos usuários não herdam dezenas de "não vistas" antigas:
-  // só contam releases publicadas após a criação da conta.
+export async function countUnseenReleases(userId: string, isSuperadmin = false) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { createdAt: true },
   });
   const since = user?.createdAt ?? new Date(0);
 
+  const whereClause = isSuperadmin
+    ? {
+        status: "PUBLISHED" as const,
+        OR: [
+          { publishedAt: { gte: since } },
+          { publishedAt: null, createdAt: { gte: since } },
+        ],
+      }
+    : {
+        status: "PUBLISHED" as const,
+        visibility: "ALL" as const,
+        OR: [
+          { publishedAt: { gte: since } },
+          { publishedAt: null, createdAt: { gte: since } },
+        ],
+      };
+
   const published = await prisma.platformRelease.findMany({
-    where: {
-      status: "PUBLISHED",
-      visibility: "ALL",
-      OR: [
-        { publishedAt: { gte: since } },
-        // fallback se publishedAt nulo (legado)
-        { publishedAt: null, createdAt: { gte: since } },
-      ],
-    },
+    where: whereClause,
     select: { id: true },
   });
   if (!published.length) return 0;
@@ -166,7 +205,7 @@ export async function adminGetRelease(id: string) {
     where: { id },
     include: { items: { orderBy: { sortOrder: "asc" } } },
   });
-  if (!r) throw new AppError("Versão não encontrada", 404);
+  if (!r) throw new AppError("Versão não encontrada.", 404, "RELEASE_NOT_FOUND");
   return r;
 }
 
@@ -180,21 +219,26 @@ export async function adminCreateRelease(params: {
 }) {
   const version = params.version.trim();
   if (!isVersionFormat(version)) {
-    throw new AppError("Versão inválida. Use o formato 1.0.0", 400, "INVALID_VERSION");
+    throw new AppError("Informe uma versão válida, como 1.8.0.", 400, "INVALID_VERSION");
   }
-  const title = params.title.trim();
-  if (!title) throw new AppError("Título obrigatório", 400);
+  const title = sanitizeChangelogText(params.title);
+  if (!title) throw new AppError("O título da versão é obrigatório.", 400, "INVALID_TITLE");
 
   const dup = await prisma.platformRelease.findUnique({ where: { version } });
-  if (dup) throw new AppError("Já existe uma release com esta versão", 409, "VERSION_EXISTS");
+  if (dup) throw new AppError("Esta versão já está cadastrada.", 409, "VERSION_EXISTS");
 
   const items = normalizeItems(params.items || []);
+  if (!items.length) {
+    throw new AppError("A versão precisa conter pelo menos um item no changelog.", 400, "EMPTY_ITEMS");
+  }
+
+  const summary = params.summary ? sanitizeChangelogText(params.summary) : null;
 
   return prisma.platformRelease.create({
     data: {
       version,
       title,
-      summary: params.summary?.trim() || null,
+      summary: summary || null,
       visibility: params.visibility === "SUPERADMIN" ? "SUPERADMIN" : "ALL",
       status: "DRAFT",
       createdById: params.createdById || null,
@@ -222,10 +266,10 @@ export async function adminUpdateRelease(params: {
   if (params.version && params.version !== existing.version) {
     const v = params.version.trim();
     if (!isVersionFormat(v)) {
-      throw new AppError("Versão inválida. Use o formato 1.0.0", 400, "INVALID_VERSION");
+      throw new AppError("Informe uma versão válida, como 1.8.0.", 400, "INVALID_VERSION");
     }
     const dup = await prisma.platformRelease.findUnique({ where: { version: v } });
-    if (dup) throw new AppError("Já existe uma release com esta versão", 409, "VERSION_EXISTS");
+    if (dup) throw new AppError("Esta versão já está cadastrada.", 409, "VERSION_EXISTS");
   }
 
   const data: {
@@ -235,14 +279,23 @@ export async function adminUpdateRelease(params: {
     visibility?: string;
   } = {};
   if (params.version) data.version = params.version.trim();
-  if (params.title !== undefined) data.title = params.title.trim();
-  if (params.summary !== undefined) data.summary = params.summary?.trim() || null;
+  if (params.title !== undefined) {
+    const cleanTitle = sanitizeChangelogText(params.title);
+    if (!cleanTitle) throw new AppError("O título da versão é obrigatório.", 400, "INVALID_TITLE");
+    data.title = cleanTitle;
+  }
+  if (params.summary !== undefined) {
+    data.summary = params.summary ? sanitizeChangelogText(params.summary) : null;
+  }
   if (params.visibility) {
     data.visibility = params.visibility === "SUPERADMIN" ? "SUPERADMIN" : "ALL";
   }
 
   if (params.items) {
     const items = normalizeItems(params.items);
+    if (!items.length) {
+      throw new AppError("A versão precisa conter pelo menos um item no changelog.", 400, "EMPTY_ITEMS");
+    }
     await prisma.$transaction([
       prisma.platformReleaseItem.deleteMany({ where: { releaseId: params.id } }),
       prisma.platformRelease.update({
@@ -272,7 +325,7 @@ export async function adminUpdateRelease(params: {
 export async function adminPublishRelease(id: string) {
   const r = await adminGetRelease(id);
   if (r.status === "ARCHIVED") {
-    throw new AppError("Release arquivada não pode ser publicada", 400);
+    throw new AppError("Uma versão arquivada não pode ser publicada diretamente.", 400, "ARCHIVED_LOCKED");
   }
 
   const wasAlreadyPublished = r.status === "PUBLISHED";
@@ -285,8 +338,7 @@ export async function adminPublishRelease(id: string) {
     include: { items: { orderBy: { sortOrder: "asc" } } },
   });
 
-  // Gatilho: somente transição para PUBLICADA + visibilidade cliente.
-  // Edição / republicação acidental / retry → idempotente (sem nova notificação).
+  // Notificação idempotente na primeira publicação
   if (!wasAlreadyPublished && published.visibility === "ALL") {
     try {
       const { notifyPlatformReleasePublished } = await import("./platform-release-notify");
@@ -300,7 +352,6 @@ export async function adminPublishRelease(id: string) {
       });
     } catch (err) {
       console.error("[platform-changelog] notify on publish failed", err);
-      // Publicação não falha se notificação falhar — release já está PUBLISHED
     }
   }
 
@@ -329,34 +380,40 @@ export async function adminDeleteRelease(id: string) {
   const r = await adminGetRelease(id);
   if (r.status === "PUBLISHED") {
     throw new AppError(
-      "Não é possível excluir uma release publicada. Arquive-a.",
+      "Não é possível excluir uma versão publicada. Despublique-a ou arquive-a antes de excluir.",
       400,
       "PUBLISHED_LOCKED"
     );
   }
-  await prisma.platformRelease.delete({ where: { id } });
-  return { ok: true };
+
+  await prisma.$transaction([
+    prisma.userReleaseSeen.deleteMany({ where: { releaseId: id } }),
+    prisma.platformReleaseItem.deleteMany({ where: { releaseId: id } }),
+    prisma.platformRelease.delete({ where: { id } }),
+  ]);
+
+  return { ok: true, id };
 }
 
-export async function adminDuplicateRelease(id: string, createdById?: string) {
+export async function adminDuplicateRelease(id: string, customVersion?: string, createdById?: string) {
   const r = await adminGetRelease(id);
-  let version = `${r.version}-copy`;
-  let n = 1;
-  while (await prisma.platformRelease.findUnique({ where: { version } })) {
-    n += 1;
-    version = `${r.version}-copy${n}`;
-  }
-  // force valid-ish version if base wasn't copyable
-  if (!isVersionFormat(version.replace(/-copy\d*$/, ".0"))) {
-    version = `0.0.${Date.now() % 10000}`;
-  }
-  // Prefer bump patch for duplicate draft
-  const parts = r.version.split(".");
-  if (parts.length >= 3 && /^\d+$/.test(parts[2]!)) {
-    const candidate = `${parts[0]}.${parts[1]}.${Number(parts[2]) + 1}`;
-    if (!(await prisma.platformRelease.findUnique({ where: { version: candidate } }))) {
-      version = candidate;
+  
+  let version = customVersion?.trim();
+  if (!version) {
+    let candidate = `${r.version}-copy`;
+    let n = 1;
+    while (await prisma.platformRelease.findUnique({ where: { version: candidate } })) {
+      n += 1;
+      candidate = `${r.version}-copy${n}`;
     }
+    const parts = r.version.split(".");
+    if (parts.length >= 3 && /^\d+$/.test(parts[2]!)) {
+      const nextPatch = `${parts[0]}.${parts[1]}.${Number(parts[2]) + 1}`;
+      if (!(await prisma.platformRelease.findUnique({ where: { version: nextPatch } }))) {
+        candidate = nextPatch;
+      }
+    }
+    version = candidate;
   }
 
   return adminCreateRelease({

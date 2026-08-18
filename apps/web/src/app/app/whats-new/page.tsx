@@ -136,7 +136,18 @@ export default function WhatsNewPage() {
             const open =
               openId === r.id || (openId === null && idx === 0) || deepReleaseId === r.id;
             const byCat = r.items.reduce<Record<string, ReleaseItem[]>>((acc, it) => {
-              (acc[it.category] ||= []).push(it);
+              const catKey = String(it.category || "").toUpperCase().trim();
+              const normalized =
+                catKey === "FEATURE" || catKey === "NOVO"
+                  ? "NEW"
+                  : catKey === "MELHORIA"
+                  ? "IMPROVEMENT"
+                  : catKey === "CORRECAO" || catKey === "CORREÇÃO"
+                  ? "FIX"
+                  : catKey === "SEGURANCA" || catKey === "SEGURANÇA"
+                  ? "SECURITY"
+                  : catKey;
+              (acc[normalized] ||= []).push(it);
               return acc;
             }, {});
             return (

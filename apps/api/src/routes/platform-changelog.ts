@@ -1,5 +1,5 @@
 /**
- * Rotas de Novidades (tenant) + gestão de releases (superadmin).
+ * Rotas de Novidades (tenant) + Gestão oficial de releases (superadmin).
  */
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -21,7 +21,7 @@ import { audit } from "../services/audit";
 import { isTrueSuperadmin } from "../services/security/rbac";
 
 const itemSchema = z.object({
-  category: z.enum(["NEW", "IMPROVEMENT", "FIX", "SECURITY"]),
+  category: z.string().min(1).max(30),
   body: z.string().min(1).max(500),
   sortOrder: z.number().int().optional(),
 });
@@ -99,7 +99,7 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
           title: z.string().min(1).max(200),
           summary: z.string().max(2000).optional().nullable(),
           visibility: z.enum(["ALL", "SUPERADMIN"]).optional(),
-          items: z.array(itemSchema).max(40).optional(),
+          items: z.array(itemSchema).min(1).max(50),
         })
         .parse(request.body);
 
@@ -107,14 +107,16 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
         ...body,
         createdById: request.user.sub,
       });
+
       await audit({
         userId: request.user.sub,
-        action: "changelog.created",
+        action: "release.created",
         entity: "platform_release",
         entityId: release.id,
-        metadata: { version: release.version },
+        metadata: { version: release.version, title: release.title, visibility: release.visibility },
         ip: request.ip,
       });
+
       return release;
     }
   );
@@ -130,19 +132,21 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
           title: z.string().min(1).max(200).optional(),
           summary: z.string().max(2000).optional().nullable(),
           visibility: z.enum(["ALL", "SUPERADMIN"]).optional(),
-          items: z.array(itemSchema).max(40).optional(),
+          items: z.array(itemSchema).min(1).max(50).optional(),
         })
         .parse(request.body);
 
       const release = await adminUpdateRelease({ id, ...body });
+
       await audit({
         userId: request.user.sub,
-        action: "changelog.updated",
+        action: "release.updated",
         entity: "platform_release",
         entityId: id,
-        metadata: { version: release.version },
+        metadata: { version: release.version, title: release.title },
         ip: request.ip,
       });
+
       return release;
     }
   );
@@ -153,19 +157,20 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
     async (request) => {
       const { id } = request.params as { id: string };
       const release = await adminPublishRelease(id);
+
       await audit({
         userId: request.user.sub,
-        action: "changelog.published",
+        action: "release.published",
         entity: "platform_release",
         entityId: id,
         metadata: {
           version: release.version,
           visibility: release.visibility,
           status: release.status,
-          event: "platform.release.published",
         },
         ip: request.ip,
       });
+
       return release;
     }
   );
@@ -175,7 +180,18 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
     { preHandler: [app.authenticate, app.requireSuperadmin] },
     async (request) => {
       const { id } = request.params as { id: string };
-      return adminUnpublishRelease(id);
+      const release = await adminUnpublishRelease(id);
+
+      await audit({
+        userId: request.user.sub,
+        action: "release.unpublished",
+        entity: "platform_release",
+        entityId: id,
+        metadata: { version: release.version },
+        ip: request.ip,
+      });
+
+      return release;
     }
   );
 
@@ -185,14 +201,16 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
     async (request) => {
       const { id } = request.params as { id: string };
       const release = await adminArchiveRelease(id);
+
       await audit({
         userId: request.user.sub,
-        action: "changelog.archived",
+        action: "release.archived",
         entity: "platform_release",
         entityId: id,
         metadata: { version: release.version },
         ip: request.ip,
       });
+
       return release;
     }
   );
@@ -202,7 +220,25 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
     { preHandler: [app.authenticate, app.requireSuperadmin] },
     async (request) => {
       const { id } = request.params as { id: string };
-      return adminDuplicateRelease(id, request.user.sub);
+      const body = z
+        .object({
+          version: z.string().min(1).max(32).optional(),
+        })
+        .optional()
+        .parse(request.body || {});
+
+      const release = await adminDuplicateRelease(id, body?.version, request.user.sub);
+
+      await audit({
+        userId: request.user.sub,
+        action: "release.duplicated",
+        entity: "platform_release",
+        entityId: release.id,
+        metadata: { originalId: id, newVersion: release.version },
+        ip: request.ip,
+      });
+
+      return release;
     }
   );
 
@@ -211,7 +247,19 @@ export async function platformChangelogRoutes(app: FastifyInstance) {
     { preHandler: [app.authenticate, app.requireSuperadmin] },
     async (request) => {
       const { id } = request.params as { id: string };
-      return adminDeleteRelease(id);
+      const release = await adminGetRelease(id);
+      const result = await adminDeleteRelease(id);
+
+      await audit({
+        userId: request.user.sub,
+        action: "release.deleted",
+        entity: "platform_release",
+        entityId: id,
+        metadata: { version: release.version },
+        ip: request.ip,
+      });
+
+      return result;
     }
   );
 }
