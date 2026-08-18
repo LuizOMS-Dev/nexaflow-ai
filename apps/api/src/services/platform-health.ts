@@ -86,7 +86,7 @@ async function checkApiHealth(): Promise<ServiceHealthResult> {
   const heapUsedMb = Math.round(memory.heapUsed / 1024 / 1024);
   const heapTotalMb = Math.round(memory.heapTotal / 1024 / 1024);
   const uptime = formatUptime(process.uptime());
-  const latencyMs = Math.round(performance.now() - start);
+  const latencyMs = Math.max(1, Math.round(performance.now() - start));
 
   return {
     id: "api",
@@ -94,7 +94,7 @@ async function checkApiHealth(): Promise<ServiceHealthResult> {
     criticality: "CRITICAL",
     status: "operational",
     latencyMs,
-    message: `Uptime: ${uptime} · Memória: ${heapUsedMb}MB / ${heapTotalMb}MB`,
+    message: `Uptime: ${uptime} · Heap: ${heapUsedMb} MB / ${heapTotalMb} MB`,
     impact: "Plataforma inteira",
     checkedAt: now,
   };
@@ -111,7 +111,7 @@ async function checkPostgresHealth(): Promise<ServiceHealthResult> {
       2500,
       "Timeout ao consultar o banco de dados (> 2.5s)"
     );
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
     
     // Latência acima de 500ms é considerada degradada
     if (latencyMs > 500) {
@@ -138,7 +138,7 @@ async function checkPostgresHealth(): Promise<ServiceHealthResult> {
       checkedAt: now,
     };
   } catch (err) {
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
     const isTimeout = err instanceof Error && err.message.includes("Timeout");
     return {
       id: "postgres",
@@ -197,7 +197,7 @@ async function checkRedisHealth(): Promise<ServiceHealthResult> {
     }
 
     const pong = await withTimeout(redis.ping(), 2000, "Timeout no ping do Redis");
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
 
     if (pong !== "PONG") {
       return {
@@ -236,7 +236,7 @@ async function checkRedisHealth(): Promise<ServiceHealthResult> {
       checkedAt: now,
     };
   } catch {
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
     return {
       id: "redis",
       name: "Redis",
@@ -311,7 +311,8 @@ async function checkWhatsAppGatewayHealth(): Promise<ServiceHealthResult> {
       },
     }).finally(() => clearTimeout(timer));
 
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
+    const isAuthError = res.status === 401 || res.status === 403;
 
     if (res.ok) {
       return {
@@ -332,12 +333,14 @@ async function checkWhatsAppGatewayHealth(): Promise<ServiceHealthResult> {
       criticality: "OPTIONAL",
       status: "degraded",
       latencyMs,
-      message: `Gateway respondeu com status HTTP ${res.status}.`,
+      message: isAuthError
+        ? "Gateway acessível, mas a autenticação foi recusada (HTTP 401)."
+        : `Gateway respondeu com status HTTP ${res.status}.`,
       impact: "Canais WhatsApp dos tenants",
       checkedAt: now,
     };
   } catch {
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
     return {
       id: "whatsapp",
       name: "WhatsApp Gateway",
@@ -444,13 +447,11 @@ async function checkMailHealth(): Promise<ServiceHealthResult> {
 /**
  * Cálculo Único e Canônico do Status Geral da Plataforma
  *
- * Regra Semântica:
+ * Regra Semântica Rigorosa:
  * - Se qualquer serviço CRITICAL for DOWN => DOWN
  * - Se qualquer serviço CRITICAL for DEGRADED => DEGRADED
- * - Se todos os serviços CRITICAL forem OPERATIONAL:
- *   - Serviços OPTIONAL que estão NOT_CONFIGURED NÃO rebaixam o status geral (permanece OPERATIONAL).
- *   - Se um serviço OPTIONAL configurado estiver DOWN => DEGRADED (aviso operacional, sem derrubar a plataforma).
- *   - Caso contrário => OPERATIONAL.
+ * - Se todos os serviços CRITICAL forem OPERATIONAL => OPERATIONAL
+ *   (serviços opcionais degradados ou não configurados não derrubam a plataforma).
  */
 export function calculateOverallPlatformStatus(services: ServiceHealthResult[]): OverallPlatformStatus {
   const critical = services.filter((s) => s.criticality === "CRITICAL");
@@ -460,13 +461,6 @@ export function calculateOverallPlatformStatus(services: ServiceHealthResult[]):
   }
 
   if (critical.some((s) => s.status === "degraded")) {
-    return "degraded";
-  }
-
-  const optionalConfiguredDown = services.some(
-    (s) => s.criticality === "OPTIONAL" && s.status === "down"
-  );
-  if (optionalConfiguredDown) {
     return "degraded";
   }
 

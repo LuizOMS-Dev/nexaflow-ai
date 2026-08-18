@@ -329,7 +329,9 @@ export default function AdminHealthPage() {
                   </div>
 
                   <StatusBadge tone={serviceTone} dot>
-                    {statusLabel[s.status] || s.status}
+                    {s.id === "mail" && s.message?.includes("Modo local")
+                      ? "Modo local"
+                      : statusLabel[s.status] || s.status}
                   </StatusBadge>
                 </div>
 
@@ -355,7 +357,7 @@ export default function AdminHealthPage() {
                 <div className="mt-3.5 border-t border-line-soft dark:border-white/[0.05] pt-2 flex items-center justify-between text-[11.5px] tabular-nums text-ink-muted dark:text-gray-500">
                   <span>Latência de resposta</span>
                   <span className="font-mono font-medium text-ink-secondary dark:text-gray-300">
-                    {s.latencyMs} ms
+                    {s.latencyMs <= 1 ? "< 1 ms" : `${s.latencyMs} ms`}
                   </span>
                 </div>
               ) : null}

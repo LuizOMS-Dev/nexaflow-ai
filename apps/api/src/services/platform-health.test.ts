@@ -10,8 +10,8 @@ describe("Platform Health Service", () => {
     vi.clearAllMocks();
   });
 
-  describe("calculateOverallPlatformStatus", () => {
-    it("returns 'operational' when all critical services are operational and optional services are not_configured", () => {
+  describe("calculateOverallPlatformStatus (Matriz de Status Global)", () => {
+    it("1. retorna 'operational' quando todos os serviços críticos estão operacionais e opcionais estão degradados ou não configurados", () => {
       const services: ServiceHealthResult[] = [
         {
           id: "api",
@@ -41,7 +41,7 @@ describe("Platform Health Service", () => {
           id: "whatsapp",
           name: "WhatsApp Gateway",
           criticality: "OPTIONAL",
-          status: "not_configured",
+          status: "degraded",
           impact: "WA",
           checkedAt: new Date().toISOString(),
         },
@@ -67,7 +67,7 @@ describe("Platform Health Service", () => {
       expect(overall).toBe("operational");
     });
 
-    it("returns 'down' if any CRITICAL service is down", () => {
+    it("2. retorna 'down' se qualquer serviço CRÍTICO estiver down", () => {
       const services: ServiceHealthResult[] = [
         {
           id: "api",
@@ -91,7 +91,7 @@ describe("Platform Health Service", () => {
       expect(overall).toBe("down");
     });
 
-    it("returns 'degraded' if any CRITICAL service is degraded", () => {
+    it("3. retorna 'degraded' se qualquer serviço CRÍTICO estiver degraded", () => {
       const services: ServiceHealthResult[] = [
         {
           id: "api",
@@ -115,7 +115,7 @@ describe("Platform Health Service", () => {
       expect(overall).toBe("degraded");
     });
 
-    it("returns 'degraded' if an OPTIONAL service is configured but down", () => {
+    it("4. serviços opcionais não configurados não degradam a plataforma", () => {
       const services: ServiceHealthResult[] = [
         {
           id: "api",
@@ -134,17 +134,17 @@ describe("Platform Health Service", () => {
           checkedAt: new Date().toISOString(),
         },
         {
-          id: "whatsapp",
-          name: "WhatsApp Gateway",
+          id: "ai",
+          name: "Provider de IA",
           criticality: "OPTIONAL",
-          status: "down",
-          impact: "WA",
+          status: "not_configured",
+          impact: "AI",
           checkedAt: new Date().toISOString(),
         },
       ];
 
       const overall = calculateOverallPlatformStatus(services);
-      expect(overall).toBe("degraded");
+      expect(overall).toBe("operational");
     });
   });
 
@@ -153,6 +153,7 @@ describe("Platform Health Service", () => {
       const health = await getPlatformHealth();
 
       expect(health).toHaveProperty("overall");
+      expect(["operational", "degraded", "down"]).toContain(health.overall);
       expect(health).toHaveProperty("checkedAt");
       expect(health).toHaveProperty("env");
       expect(health).toHaveProperty("summary");
