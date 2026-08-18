@@ -37,6 +37,7 @@ import {
   AdminPageHeader,
   AdminPageSkeleton,
   AdminSection,
+  CriticalActionDialog,
   MetricCard,
   MetricGrid,
   StatusBadge,
@@ -2385,8 +2386,8 @@ export default function AdminDeployPage() {
         ) : null}
       </Modal>
 
-      {/* MODAL 2.1: Modal 2 — Confirmação Crítica em Produção */}
-      <Modal
+      {/* MODAL 2.1: Modal 2 — Confirmação Crítica de Reversão em Produção */}
+      <CriticalActionDialog
         open={rollbackConfirmOpen && Boolean(rollbackTarget)}
         onClose={() => {
           setRollbackConfirmOpen(false);
@@ -2395,133 +2396,63 @@ export default function AdminDeployPage() {
         }}
         title="Confirmar reversão em produção"
         description="Você está prestes a substituir a versão atualmente ativa pela versão selecionada. Revise os dados e confirme a operação."
-        size="md"
-        footer={
-          <DialogFooter>
-            <button
-              type="button"
-              className="admin-btn-secondary h-9"
-              disabled={rollbackMut.isPending}
-              onClick={() => {
-                setRollbackConfirmOpen(false);
-                setRollbackOpen(true);
-              }}
-            >
-              Voltar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-              disabled={
-                !rollbackCheckbox ||
-                !rollbackTarget ||
-                rollbackConfirmInput.trim().toLowerCase() !== rollbackTarget.commitShortSha.toLowerCase() ||
-                rollbackMut.isPending ||
-                !data.easyPanel?.connected ||
-                Boolean(active)
-              }
-              onClick={() => {
-                if (rollbackTarget) {
-                  rollbackMut.mutate({
-                    id: rollbackTarget.id,
-                    expectedCurrentSha: current?.sha || current?.shortSha,
-                  });
-                }
-              }}
-            >
-              {rollbackMut.isPending ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Iniciando reversão…</span>
-                </>
-              ) : (
-                <span>Executar reversão</span>
-              )}
-            </button>
-          </DialogFooter>
+        tone="amber"
+        summaryRows={[
+          {
+            label: "Ambiente",
+            value: <span className="font-semibold text-emerald-400">Produção</span>,
+            tone: "neutral",
+          },
+          {
+            label: "Versão atual",
+            value: (
+              <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11.5px] text-violet-300 border border-violet-500/20 font-semibold">
+                {current?.shortSha || "Não identificada"}
+              </code>
+            ),
+            tone: "neutral",
+          },
+          {
+            label: "Versão que será restaurada",
+            value: (
+              <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11.5px] text-amber-300 border border-amber-500/25 font-bold">
+                {rollbackTarget?.commitShortSha}
+              </code>
+            ),
+            tone: "neutral",
+          },
+        ]}
+        attentionText="A versão atualmente em produção será substituída pela versão selecionada."
+        checkboxLabel="Entendo e desejo continuar com esta reversão."
+        checkboxChecked={rollbackCheckbox}
+        onCheckboxChange={setRollbackCheckbox}
+        confirmExpectedText={rollbackTarget?.commitShortSha || ""}
+        confirmInput={rollbackConfirmInput}
+        onConfirmInputChange={setRollbackConfirmInput}
+        cancelLabel="Voltar"
+        onCancel={() => {
+          setRollbackConfirmOpen(false);
+          setRollbackOpen(true);
+        }}
+        actionLabel="Executar reversão"
+        actionLoadingLabel="Iniciando reversão…"
+        isLoading={rollbackMut.isPending}
+        errorMessage={
+          rollbackMut.isError
+            ? rollbackMut.error instanceof Error
+              ? rollbackMut.error.message
+              : "Não foi possível concluir a reversão. Verifique os logs da implantação."
+            : null
         }
-      >
-        {rollbackTarget ? (
-          <div className="space-y-4 py-1 text-[12.5px]">
-            {/* Bloco superior compacto */}
-            <div className="space-y-2 text-[12px]">
-              <div className="flex items-center justify-between text-gray-300">
-                <span className="text-gray-400 font-normal">Ambiente</span>
-                <span className="font-semibold text-emerald-400">Produção</span>
-              </div>
-              <div className="flex items-center justify-between text-gray-300">
-                <span className="text-gray-400 font-normal">Versão atual</span>
-                <code className="rounded bg-violet-500/10 px-1.5 py-0.5 font-mono text-[11.5px] text-violet-300 border border-violet-500/20 font-semibold">{current?.shortSha || "Não identificada"}</code>
-              </div>
-              <div className="flex items-center justify-between text-gray-300">
-                <span className="text-gray-400 font-normal">Versão que será restaurada</span>
-                <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[11.5px] text-amber-300 border border-amber-500/25 font-bold">{rollbackTarget.commitShortSha}</code>
-              </div>
-            </div>
-
-            {/* Linha de atenção compacta */}
-            <div className="flex items-center gap-2 text-[12px] text-amber-300/90 pt-0.5">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-              <span>A versão atualmente em produção será substituída pela versão selecionada.</span>
-            </div>
-
-            {/* Divisor sutil */}
-            <div className="border-t border-white/[0.06]" />
-
-            {/* Checkbox simples e integrado (sem card) */}
-            <label className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-gray-200 leading-snug">
-              <Checkbox
-                checked={rollbackCheckbox}
-                onCheckedChange={setRollbackCheckbox}
-                className="mt-0.5 shrink-0"
-              />
-              <span>Entendo e desejo continuar com esta reversão.</span>
-            </label>
-
-            {/* Confirmação Textual (sem card) */}
-            <div className="space-y-1.5 pt-1">
-              <label htmlFor="rollback-sha-input" className="block text-[12px] font-medium text-gray-300">
-                Para confirmar, digite <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all border border-amber-500/25">{rollbackTarget.commitShortSha}</code>
-              </label>
-              <div className="relative">
-                <input
-                  id="rollback-sha-input"
-                  type="text"
-                  value={rollbackConfirmInput}
-                  onChange={(e) => setRollbackConfirmInput(e.target.value)}
-                  placeholder={rollbackTarget.commitShortSha}
-                  className={cn(
-                    "input h-9 w-full text-[13px] bg-[#08090d] border-white/10 transition-colors pr-8",
-                    rollbackConfirmInput.trim().toLowerCase() === rollbackTarget.commitShortSha.toLowerCase()
-                      ? "border-emerald-500/40 focus:border-emerald-500/60"
-                      : "focus:border-amber-500/50"
-                  )}
-                  autoFocus
-                  autoComplete="off"
-                  spellCheck="false"
-                />
-                {rollbackConfirmInput.trim().toLowerCase() === rollbackTarget.commitShortSha.toLowerCase() ? (
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center text-emerald-400">
-                    <CheckCircle2 className="h-4 w-4 stroke-[2]" />
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            {/* Erro inline da mutação de rollback se houver */}
-            {rollbackMut.isError ? (
-              <div className="rounded-lg border border-rose-500/20 bg-rose-500/[0.08] p-2.5 text-rose-300 text-[11.5px] flex items-center gap-2">
-                <XCircle className="h-4 w-4 shrink-0 text-rose-400" />
-                <span>
-                  {rollbackMut.error instanceof Error
-                    ? rollbackMut.error.message
-                    : "Não foi possível concluir a reversão. Verifique os logs da implantação."}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
+        onAction={() => {
+          if (rollbackTarget) {
+            rollbackMut.mutate({
+              id: rollbackTarget.id,
+              expectedCurrentSha: current?.sha || current?.shortSha,
+            });
+          }
+        }}
+      />
 
       {/* MODAL 3: Visualizador Operacional de Detalhes da Implantação */}
       <Modal
@@ -3300,7 +3231,7 @@ export default function AdminDeployPage() {
       </Modal>
 
       {/* MODAL 6.1: Confirmação Crítica de Limpeza do Histórico de Implantações (Etapa 2 de 2) */}
-      <Modal
+      <CriticalActionDialog
         open={clearDeployConfirmOpen}
         onClose={() => {
           setClearDeployConfirmOpen(false);
@@ -3310,108 +3241,48 @@ export default function AdminDeployPage() {
         }}
         title="Confirmar limpeza do histórico de implantações"
         description="Você está prestes a remover do painel o histórico administrativo de implantações. Essa ação não altera a versão em produção nem remove versões, backups ou registros técnicos necessários para restauração."
-        size="md"
-        footer={
-          <DialogFooter>
-            <button
-              type="button"
-              className="admin-btn-secondary h-9"
-              disabled={clearDeployHistoryMut.isPending}
-              onClick={() => {
-                setClearDeployConfirmOpen(false);
-                setClearDeployHistoryOpen(true);
-              }}
-            >
-              Voltar
-            </button>
-            <button
-              type="button"
-              className="admin-btn-primary h-9 bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-              disabled={
-                !clearDeployCheckbox ||
-                clearDeployInput.trim() !== "LIMPAR HISTÓRICO" ||
-                clearDeployHistoryMut.isPending
-              }
-              onClick={() => clearDeployHistoryMut.mutate()}
-            >
-              {clearDeployHistoryMut.isPending ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Limpando…</span>
-                </>
-              ) : (
-                <span>Limpar histórico</span>
-              )}
-            </button>
-          </DialogFooter>
+        tone="danger"
+        summaryTitle="O que acontece"
+        summaryRows={[
+          {
+            label: "Será removido",
+            value: "Histórico administrativo exibido no painel",
+            tone: "danger",
+          },
+          {
+            label: "Permanece intacto",
+            value: "Produção atual, GitHub e EasyPanel",
+            tone: "success",
+          },
+          {
+            label: "Será preservado",
+            value: "Backups, restaurações e logs técnicos",
+            tone: "success",
+          },
+        ]}
+        checkboxLabel="Entendo que o histórico administrativo exibido no painel será removido."
+        checkboxChecked={clearDeployCheckbox}
+        onCheckboxChange={setClearDeployCheckbox}
+        confirmExpectedText="LIMPAR HISTÓRICO"
+        confirmInput={clearDeployInput}
+        onConfirmInputChange={setClearDeployInput}
+        cancelLabel="Voltar"
+        onCancel={() => {
+          setClearDeployConfirmOpen(false);
+          setClearDeployHistoryOpen(true);
+        }}
+        actionLabel="Limpar histórico"
+        actionLoadingLabel="Limpando…"
+        isLoading={clearDeployHistoryMut.isPending}
+        errorMessage={
+          clearDeployHistoryMut.isError
+            ? clearDeployHistoryMut.error instanceof Error
+              ? clearDeployHistoryMut.error.message
+              : "Não foi possível limpar o histórico de implantações."
+            : null
         }
-      >
-        <div className="space-y-4 py-1 text-[12.5px]">
-          {/* O que acontece sem card externo grande */}
-          <div className="space-y-2.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-              O que acontece
-            </span>
-            <div className="space-y-2 text-[12px]">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
-                <span className="text-rose-400 font-medium shrink-0">Será removido</span>
-                <span className="text-gray-300 sm:text-right">Histórico administrativo exibido no painel</span>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
-                <span className="text-emerald-400 font-medium shrink-0">Permanece intacto</span>
-                <span className="text-gray-300 sm:text-right">Produção atual, GitHub e EasyPanel</span>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
-                <span className="text-emerald-400 font-medium shrink-0">Será preservado</span>
-                <span className="text-gray-300 sm:text-right">Backups, restaurações e logs técnicos</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Divisor sutil */}
-          <div className="border-t border-white/[0.06]" />
-
-          {/* Checkbox simples e integrado (sem card) */}
-          <label className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-gray-200 leading-snug">
-            <Checkbox
-              checked={clearDeployCheckbox}
-              onCheckedChange={setClearDeployCheckbox}
-              className="mt-0.5 shrink-0"
-            />
-            <span>Entendo que o histórico administrativo exibido no painel será removido.</span>
-          </label>
-
-          {/* Confirmação Textual (sem card) */}
-          <div className="space-y-1.5 pt-1">
-            <label htmlFor="clear-history-confirm-input" className="block text-[12px] font-medium text-gray-300">
-              Para confirmar, digite <code className="rounded bg-rose-500/15 px-1.5 py-0.5 font-mono font-bold text-rose-300 select-all border border-rose-500/25">LIMPAR HISTÓRICO</code>
-            </label>
-            <div className="relative">
-              <input
-                id="clear-history-confirm-input"
-                type="text"
-                value={clearDeployInput}
-                onChange={(e) => setClearDeployInput(e.target.value)}
-                placeholder="LIMPAR HISTÓRICO"
-                className={cn(
-                  "input h-9 w-full text-[13px] bg-[#08090d] border-white/10 transition-colors pr-8",
-                  clearDeployInput.trim() === "LIMPAR HISTÓRICO"
-                    ? "border-emerald-500/40 focus:border-emerald-500/60"
-                    : "focus:border-rose-500/50"
-                )}
-                autoFocus
-                autoComplete="off"
-                spellCheck="false"
-              />
-              {clearDeployInput.trim() === "LIMPAR HISTÓRICO" ? (
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4 stroke-[2]" />
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </Modal>
+        onAction={() => clearDeployHistoryMut.mutate()}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ export * from "./data-table";
 export * from "./skeleton";
 export * from "./error-state";
 export * from "./sidebar";
+export * from "./critical-action-dialog";
 
 /** Re-export compatível com imports antigos do admin-page-header */
 export { AdminPageHeader as AdminPageHeader } from "./page-header";

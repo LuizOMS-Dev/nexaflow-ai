@@ -40,6 +40,7 @@ import {
   AdminSection,
   AdminSelectFilter,
   AdminSkeleton,
+  CriticalActionDialog,
   StatusBadge,
 } from "@/components/admin";
 
@@ -736,8 +737,8 @@ export default function AdminAuditPage() {
         )}
       </Modal>
 
-      {/* Modal de Limpeza com Confirmação Dupla Obrigatória */}
-      <Modal
+      {/* Modal de Limpeza com Confirmação Dupla Padronizada */}
+      <CriticalActionDialog
         open={clearOpen}
         onClose={() => {
           if (clearMutation.isPending) return;
@@ -745,105 +746,52 @@ export default function AdminAuditPage() {
           setClearAgree(false);
           setClearConfirm("");
         }}
-        title="Limpar histórico de auditoria?"
+        title="Limpar histórico de auditoria"
         description="Esta ação removerá da visualização administrativa os eventos selecionados conforme a política de retenção. Registros de segurança que precisam ser preservados continuarão protegidos."
-        variant="danger"
         tone="danger"
-        icon={<Trash2 className="h-4 w-4" strokeWidth={1.75} />}
-        size="md"
-        preventClose={clearMutation.isPending}
-        footer={
-          <DialogFooter>
-            <button
-              type="button"
-              className="admin-btn-secondary h-9 px-3.5"
-              disabled={clearMutation.isPending}
-              onClick={() => {
-                setClearOpen(false);
-                setClearAgree(false);
-                setClearConfirm("");
-              }}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="btn-danger h-9 px-4"
-              disabled={clearMutation.isPending || !canSubmitClear}
-              onClick={() => clearMutation.mutate()}
-            >
-              {clearMutation.isPending ? "Limpando…" : "Limpar histórico"}
-            </button>
-          </DialogFooter>
+        summaryTitle="Impacto da limpeza"
+        summaryRows={[
+          {
+            label: "Remove",
+            value: "Histórico administrativo exibido no painel",
+            tone: "danger",
+          },
+          {
+            label: "Preserva",
+            value: "Registros protegidos de segurança e MFA",
+            tone: "success",
+          },
+          {
+            label: "Registra",
+            value: "Evento permanente informando quem realizou a limpeza",
+            tone: "success",
+          },
+        ]}
+        checkboxLabel="Entendo o impacto desta operação sobre o histórico de auditoria."
+        checkboxChecked={clearAgree}
+        onCheckboxChange={setClearAgree}
+        confirmExpectedText="LIMPAR AUDITORIA"
+        confirmInput={clearConfirm}
+        onConfirmInputChange={setClearConfirm}
+        cancelLabel="Cancelar"
+        onCancel={() => {
+          if (clearMutation.isPending) return;
+          setClearOpen(false);
+          setClearAgree(false);
+          setClearConfirm("");
+        }}
+        actionLabel="Limpar histórico"
+        actionLoadingLabel="Limpando…"
+        isLoading={clearMutation.isPending}
+        errorMessage={
+          clearMutation.isError
+            ? clearMutation.error instanceof Error
+              ? clearMutation.error.message
+              : "Não foi possível limpar o histórico de auditoria."
+            : null
         }
-      >
-        <div className="space-y-4 py-1 text-[12.5px]">
-          {/* Impacto da limpeza sem card externo grande */}
-          <div className="space-y-2.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
-              Impacto da limpeza
-            </span>
-            <div className="space-y-2 text-[12px]">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
-                <span className="text-rose-400 font-medium shrink-0">Remove</span>
-                <span className="text-gray-300 sm:text-right">Histórico administrativo exibido no painel</span>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
-                <span className="text-emerald-400 font-medium shrink-0">Preserva</span>
-                <span className="text-gray-300 sm:text-right">Registros protegidos de segurança e MFA</span>
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
-                <span className="text-emerald-400 font-medium shrink-0">Registra</span>
-                <span className="text-gray-300 sm:text-right">Um evento permanente informando quem realizou a limpeza</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Divisor sutil */}
-          <div className="border-t border-white/[0.06]" />
-
-          {/* Checkbox simples e integrado (sem card) */}
-          <label className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-gray-200 leading-snug">
-            <Checkbox
-              id="audit-clear-agree"
-              checked={clearAgree}
-              onCheckedChange={setClearAgree}
-              disabled={clearMutation.isPending}
-              className="mt-0.5 shrink-0"
-              aria-label="Entendo o impacto desta operação sobre o histórico de auditoria"
-            />
-            <span>Entendo o impacto desta operação sobre o histórico de auditoria.</span>
-          </label>
-
-          {/* Confirmação Textual "LIMPAR AUDITORIA" (sem card) */}
-          <div className="space-y-1.5 pt-1">
-            <label htmlFor="audit-clear-input" className="block text-[12px] font-medium text-gray-300">
-              Para confirmar, digite <code className="rounded bg-rose-500/15 px-1.5 py-0.5 font-mono font-bold text-rose-300 select-all border border-rose-500/25">LIMPAR AUDITORIA</code>
-            </label>
-            <div className="relative">
-              <input
-                id="audit-clear-input"
-                className={cn(
-                  "input h-9 w-full text-[13px] bg-[#08090d] border-white/10 transition-colors pr-8 uppercase",
-                  isExactConfirm
-                    ? "border-emerald-500/40 focus:border-emerald-500/60"
-                    : "focus:border-rose-500/50"
-                )}
-                value={clearConfirm}
-                onChange={(e) => setClearConfirm(e.target.value)}
-                placeholder="LIMPAR AUDITORIA"
-                autoComplete="off"
-                disabled={clearMutation.isPending}
-              />
-              {isExactConfirm && (
-                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-400 animate-in fade-in zoom-in duration-150">
-                  <CheckCircle2 className="h-4 w-4 stroke-[2]" />
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </Modal>
+        onAction={() => clearMutation.mutate()}
+      />
     </div>
   );
 }
