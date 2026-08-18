@@ -3,6 +3,14 @@ import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
 import { githubClient, type GitHubCommitInfo } from "./github-client";
 import { easyPanelClient, type EasyPanelConnectionStatus } from "./easypanel-client";
+import {
+  DeploymentStateMachine,
+  normalizeDeploymentStatus,
+  toDatabaseStatus,
+  type CanonicalDeploymentStatus,
+} from "./deployment-state-machine";
+import { DeploymentHealthService, type ServiceHealthState } from "./deployment-health";
+import { redactString } from "../platform-log-redaction";
 
 export type DeploymentStatus =
   | "PENDING"
@@ -368,7 +376,29 @@ export class DeploymentOrchestrator {
       );
     }
 
-    // 1. Lock de Concorrência: Verifica se já existe um deploy ativo nos últimos 15 min
+    // 1. Idempotência: Se o mesmo usuário reenviou o mesmo commit nos últimos 3s (ex: double-click), retorna o deployment existente
+    if (input.commitSha) {
+      const recentSameCommit = await prisma.deployment.findFirst({
+        where: {
+          commitSha: input.commitSha,
+          startedById: actor.sub,
+          isRollback: Boolean(input.isRollback),
+          createdAt: { gte: new Date(Date.now() - 3000) },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (recentSameCommit) {
+        return {
+          deploymentId: recentSameCommit.id,
+          status: recentSameCommit.status as DeploymentStatus,
+          commitShortSha: recentSameCommit.commitShortSha,
+          commitMessage: recentSameCommit.commitMessage,
+          branch: recentSameCommit.branch,
+        };
+      }
+    }
+
+    // 2. Lock de Concorrência: Verifica se já existe um deploy ativo nos últimos 15 min
     const active = await prisma.deployment.findFirst({
       where: {
         status: { in: ACTIVE_STATUSES },
@@ -492,7 +522,7 @@ export class DeploymentOrchestrator {
     };
 
     const flushLogs = async () => {
-      await safeUpdate({ logs: logBuffer });
+      await safeUpdate({ logs: redactString(logBuffer) });
     };
 
     try {
@@ -513,7 +543,7 @@ export class DeploymentOrchestrator {
           healthStatus: "HEALTHY",
           finishedAt,
           durationSeconds: 2,
-          logs: logBuffer,
+          logs: redactString(logBuffer),
         });
 
         const testDep = await prisma.deployment.findUnique({ where: { id: deploymentId } }).catch(() => null);
@@ -556,7 +586,7 @@ export class DeploymentOrchestrator {
             healthStatus: "FAILED",
             errorSummary: "Falha durante a compilação",
             finishedAt: new Date(),
-            logs: logBuffer,
+            logs: redactString(logBuffer),
           });
           return;
         }
@@ -576,12 +606,16 @@ export class DeploymentOrchestrator {
       await flushLogs();
 
       // Executa health check com retries (até 30 tentativas de 10s = 300s)
-      const healthResult = await this.pollHealthCheck((attempt, max, apiSt, webSt) => {
-        log(
-          "VERIFYING",
-          `Health check (${attempt}/${max}): API ${apiSt ? `status ${apiSt}` : "verificando..."}, Web ${webSt ? `status ${webSt}` : "verificando..."}`
-        );
-        void flushLogs();
+      const healthResult = await DeploymentHealthService.pollReadiness({
+        maxAttempts: 30,
+        intervalMs: 10000,
+        onProgress: (attempt, max, apiSt, webSt) => {
+          log(
+            "VERIFYING",
+            `Health check (${attempt}/${max}): API ${apiSt ? `status ${apiSt}` : "verificando..."}, Web ${webSt ? `status ${webSt}` : "verificando..."}`
+          );
+          void flushLogs();
+        },
       });
 
       const finishedAt = new Date();

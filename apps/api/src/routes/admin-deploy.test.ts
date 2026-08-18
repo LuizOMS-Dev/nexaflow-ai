@@ -872,4 +872,93 @@ describe("Módulo de Deploy Admin (/admin/deploy)", () => {
       where: { id: stableTarget.id },
     });
   });
-}, 30_000);
+
+  it("28. State Machine Server-Side: valida transições canônicas e rejeita transições ilegais", async () => {
+    const { DeploymentStateMachine, normalizeDeploymentStatus } = await import("../services/deploy/deployment-state-machine");
+
+    // Normalizações
+    expect(normalizeDeploymentStatus("VALIDATING")).toBe("VERIFYING");
+    expect(normalizeDeploymentStatus("COMPLETED")).toBe("SUCCESS");
+    expect(normalizeDeploymentStatus("BUILDING")).toBe("BUILDING");
+
+    // Transições legais
+    expect(DeploymentStateMachine.isValidTransition("PENDING", "PREPARING")).toBe(true);
+    expect(DeploymentStateMachine.isValidTransition("PREPARING", "TRIGGERING")).toBe(true);
+    expect(DeploymentStateMachine.isValidTransition("TRIGGERING", "BUILDING")).toBe(true);
+    expect(DeploymentStateMachine.isValidTransition("BUILDING", "DEPLOYING")).toBe(true);
+    expect(DeploymentStateMachine.isValidTransition("DEPLOYING", "VERIFYING")).toBe(true);
+    expect(DeploymentStateMachine.isValidTransition("VERIFYING", "SUCCESS")).toBe(true);
+    expect(DeploymentStateMachine.isValidTransition("BUILDING", "FAILED")).toBe(true);
+
+    // Transições ilegais
+    expect(DeploymentStateMachine.isValidTransition("BUILDING", "SUCCESS")).toBe(false);
+    expect(DeploymentStateMachine.isValidTransition("FAILED", "DEPLOYING")).toBe(false);
+    expect(DeploymentStateMachine.isValidTransition("SUCCESS", "BUILDING")).toBe(false);
+    expect(DeploymentStateMachine.isValidTransition("SUCCESS", "PREPARING")).toBe(false);
+
+    expect(() => DeploymentStateMachine.assertTransition("BUILDING", "SUCCESS")).toThrowError();
+  });
+
+  it("29. Proteção Anti-SSRF: rejeita IPs de metadata de nuvem, protocolos ilegais e credenciais na URL", async () => {
+    const { EasyPanelClient } = await import("../services/deploy/easypanel-client");
+
+    // 1. IP de metadata da AWS / GCP / Cloud
+    expect(() => EasyPanelClient.validateUrl("http://169.254.169.254/latest/meta-data")).toThrowError(/bloqueado|SSRF/i);
+    expect(() => EasyPanelClient.validateUrl("http://metadata.google.internal/computeMetadata/v1")).toThrowError(/bloqueado|SSRF/i);
+
+    // 2. Protocolos não permitidos
+    expect(() => EasyPanelClient.validateUrl("javascript:alert(1)")).toThrowError(/Protocolo não permitido/i);
+    expect(() => EasyPanelClient.validateUrl("file:///etc/passwd")).toThrowError(/Protocolo não permitido/i);
+    expect(() => EasyPanelClient.validateUrl("ftp://easypanel.internal")).toThrowError(/Protocolo não permitido/i);
+
+    // 3. Credenciais na URL
+    expect(() => EasyPanelClient.validateUrl("https://admin:secret123@easypanel.internal")).toThrowError(/Credenciais embutidas/i);
+
+    // 4. URL válida e normalizada
+    const valid = EasyPanelClient.validateUrl("https://easypanel.my-server.com:3000/api//");
+    expect(valid).toBe("https://easypanel.my-server.com:3000/api");
+  });
+
+  it("30. Idempotência de Deploy: reenvio rápido do mesmo commit (< 5s) retorna deployment existente sem duplicar", async () => {
+    const commitSha = "8888888888888888888888888888888888888888";
+
+    // 1. Primeiro envio
+    const res1 = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/start",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: { commitSha, branch: "main" },
+    });
+    expect(res1.statusCode).toBe(202);
+    const body1 = res1.json();
+
+    // 2. Segundo envio imediato com o mesmo commit (simulando duplo-clique)
+    const res2 = await app.inject({
+      method: "POST",
+      url: "/admin/deploy/start",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: { commitSha, branch: "main" },
+    });
+    expect(res2.statusCode).toBe(202);
+    const body2 = res2.json();
+
+    // Deve retornar o mesmo deploymentId sem criar um segundo registro
+    expect(body2.deploymentId).toBe(body1.deploymentId);
+
+    // Limpeza
+    await prisma.deployment.deleteMany({
+      where: { id: body1.deploymentId },
+    });
+  });
+
+  it("31. Deployment Health Service: valida URLs e estrutura de integridade granular", async () => {
+    const { DeploymentHealthService } = await import("../services/deploy/deployment-health");
+
+    const apiUrl = DeploymentHealthService.resolveHealthUrl("API");
+    const webUrl = DeploymentHealthService.resolveHealthUrl("WEB");
+
+    expect(apiUrl).toContain("/health");
+    expect(webUrl).toContain("/login");
+  });
+});
+

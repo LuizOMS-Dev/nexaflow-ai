@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { encryptSecret, decryptSecret } from "../security/crypto";
+import { AppError } from "../../lib/errors";
 
 export type EasyPanelState =
   | "CONNECTED"
@@ -31,11 +32,72 @@ export type TestConnectionResult = {
   };
 };
 
+const BLOCKED_HOSTS = new Set([
+  "169.254.169.254",
+  "169.254.170.2",
+  "metadata.google.internal",
+  "100.100.100.200",
+]);
+
 export class EasyPanelClient {
   private customBaseUrl?: string;
   private customToken?: string;
   private customProject?: string;
   private customService?: string;
+
+  /**
+   * Validação e normalização rigorosa de URL contra SSRF
+   */
+  static validateUrl(urlStr: string): string {
+    if (!urlStr || !urlStr.trim()) {
+      throw new AppError("URL do EasyPanel não pode ser vazia.", 400, "INVALID_URL");
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(urlStr.trim());
+    } catch {
+      throw new AppError("Formato de URL do EasyPanel inválido.", 400, "INVALID_URL");
+    }
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new AppError(
+        "Protocolo não permitido. O EasyPanel deve utilizar HTTPS ou HTTP.",
+        400,
+        "DISALLOWED_PROTOCOL"
+      );
+    }
+
+    if (parsed.username || parsed.password) {
+      throw new AppError(
+        "Credenciais embutidas na URL não são permitidas por motivos de segurança.",
+        400,
+        "CREDENTIALS_IN_URL"
+      );
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    if (BLOCKED_HOSTS.has(host)) {
+      throw new AppError("Endereço de destino bloqueado (SSRF protection).", 400, "SSRF_DETECTED");
+    }
+
+    // Em produção estrita, exige HTTPS a menos que esteja em rede local de teste
+    if (
+      process.env.NODE_ENV === "production" &&
+      parsed.protocol === "http:" &&
+      !process.env.ALLOW_HTTP_EASYPANEL &&
+      host !== "localhost" &&
+      host !== "127.0.0.1"
+    ) {
+      throw new AppError(
+        "Em ambiente de produção, a URL do EasyPanel deve utilizar HTTPS obrigatoriamente.",
+        400,
+        "HTTPS_REQUIRED"
+      );
+    }
+
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
+  }
 
   constructor(opts?: {
     baseUrl?: string;
@@ -220,7 +282,16 @@ export class EasyPanelClient {
     projectName: string;
     serviceName: string;
   }): Promise<TestConnectionResult> {
-    const cleanUrl = input.url.trim().replace(/\/+$/, "");
+    let cleanUrl: string;
+    try {
+      cleanUrl = EasyPanelClient.validateUrl(input.url);
+    } catch (e: any) {
+      return {
+        success: false,
+        state: "NOT_CONFIGURED",
+        message: e?.message || "URL do EasyPanel inválida.",
+      };
+    }
     let token = (input.token || "").trim();
 
     if (!token) {
@@ -320,7 +391,7 @@ export class EasyPanelClient {
     projectName: string;
     serviceName: string;
   }) {
-    const cleanUrl = input.url.trim().replace(/\/+$/, "");
+    const cleanUrl = EasyPanelClient.validateUrl(input.url);
     let token = (input.token || "").trim();
 
     if (!token) {
