@@ -33,7 +33,9 @@ import { formatDate, cn } from "@/lib/utils";
 import {
   AdminEmptyState,
   AdminErrorState,
+  AdminFilterBar,
   AdminPageHeader,
+  AdminSearchInput,
   AdminSection,
   AdminSkeleton,
   MetricCard,
@@ -867,16 +869,14 @@ export default function AdminDiagnosticsPage() {
 
           {/* BARRA DE PESQUISA (NA ABA ATIVIDADE) */}
           {tab === "activity" ? (
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-ink-muted dark:text-gray-500 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Filtrar por evento, ação ou entidade…"
+            <AdminFilterBar className="mb-0">
+              <AdminSearchInput
                 value={searchQuery}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                className="admin-input pl-9 h-9 text-[12.5px] w-full"
+                onChange={setSearchQuery}
+                placeholder="Filtrar por evento, ação ou entidade…"
+                className="max-w-md"
               />
-            </div>
+            </AdminFilterBar>
           ) : null}
 
           {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO */}
