@@ -68,42 +68,23 @@ export async function listCompanies(q: ListCompaniesQuery) {
     ];
   }
 
-  const [allMatched, allTenantsGlobal, allSubs] = await Promise.all([
+  const liteSelect = {
+    id: true,
+    name: true,
+    slug: true,
+    status: true,
+    settings: true,
+    planId: true,
+    plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } },
+  } as const;
+
+  const [matchedLite, globalLite, allSubs] = await Promise.all([
     prisma.tenant.findMany({
       where,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        status: true,
-        logoUrl: true,
-        primaryColor: true,
-        createdAt: true,
-        settings: true,
-        planId: true,
-        companyProfile: true,
-        plan: { select: { id: true, name: true, slug: true, priceMonthly: true, priceOnRequest: true } },
-        _count: { select: { members: true, contacts: true, conversations: true } },
-        members: {
-          where: { role: "ADMIN", isActive: true },
-          take: 1,
-          select: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-      },
+      select: liteSelect,
       orderBy: { createdAt: "desc" },
     }),
-    prisma.tenant.findMany({
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        status: true,
-        settings: true,
-        planId: true,
-      },
-    }),
+    prisma.tenant.findMany({ select: liteSelect }),
     prisma.subscription.findMany({
       include: {
         plan: { select: { id: true, name: true, priceMonthly: true, priceOnRequest: true } },
@@ -112,24 +93,8 @@ export async function listCompanies(q: ListCompaniesQuery) {
   ]);
 
   const subMap = new Map(allSubs.map((s) => [s.tenantId, s as SubscriptionRow]));
-
-  const realMatched = allMatched.filter((t) => !isTestFixtureTenant(t));
-  const realGlobal = allTenantsGlobal.filter((t) => !isTestFixtureTenant(t));
-
-  let enriched = realMatched.map((t) => {
-    const billing = enrichTenantBilling(t, subMap.get(t.id));
-    const primaryAdmin = t.members[0]?.user || null;
-    const { members: _m, settings: _s, ...rest } = t;
-    return { ...rest, ...billing, primaryAdmin };
-  });
-
-  if (q.financial && q.financial !== "ALL") {
-    if (q.financial === "NEEDS_ATTENTION") {
-      enriched = enriched.filter((t) => t.needsAttention);
-    } else {
-      enriched = enriched.filter((t) => t.financialStatus === q.financial);
-    }
-  }
+  const realMatched = matchedLite.filter((t) => !isTestFixtureTenant(t));
+  const realGlobal = globalLite.filter((t) => !isTestFixtureTenant(t));
 
   const summaryBillingGlobal = realGlobal.map((t) => enrichTenantBilling(t, subMap.get(t.id)));
   const suspendedCount = realGlobal.filter((t) => t.status === "SUSPENDED").length;
@@ -152,10 +117,62 @@ export async function listCompanies(q: ListCompaniesQuery) {
     needsAttention: summaryBillingGlobal.filter((b) => b.needsAttention).length,
   };
 
-  const total = enriched.length;
+  let pageIds = realMatched.map((t) => t.id);
+  if (q.financial && q.financial !== "ALL") {
+    const billingById = new Map(
+      realMatched.map((t) => [t.id, enrichTenantBilling(t, subMap.get(t.id))])
+    );
+    pageIds = pageIds.filter((id) => {
+      const b = billingById.get(id);
+      if (!b) return false;
+      return q.financial === "NEEDS_ATTENTION" ? b.needsAttention : b.financialStatus === q.financial;
+    });
+  }
+
+  const total = pageIds.length;
   const start = (q.page - 1) * q.limit;
+  const idsForPage = pageIds.slice(start, start + q.limit);
+
+  const pageRows =
+    idsForPage.length === 0
+      ? []
+      : await prisma.tenant.findMany({
+          where: { id: { in: idsForPage } },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            status: true,
+            logoUrl: true,
+            primaryColor: true,
+            createdAt: true,
+            settings: true,
+            planId: true,
+            companyProfile: true,
+            plan: {
+              select: { id: true, name: true, slug: true, priceMonthly: true, priceOnRequest: true },
+            },
+            _count: { select: { members: true, contacts: true, conversations: true } },
+            members: {
+              where: { role: "ADMIN", isActive: true },
+              take: 1,
+              select: { user: { select: { id: true, name: true, email: true } } },
+            },
+          },
+        });
+
+  const order = new Map(idsForPage.map((id, i) => [id, i]));
+  const items = pageRows
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+    .map((t) => {
+      const billing = enrichTenantBilling(t, subMap.get(t.id));
+      const primaryAdmin = t.members[0]?.user || null;
+      const { members: _m, settings: _s, ...rest } = t;
+      return { ...rest, ...billing, primaryAdmin };
+    });
+
   return {
-    items: enriched.slice(start, start + q.limit),
+    items,
     total,
     page: q.page,
     limit: q.limit,

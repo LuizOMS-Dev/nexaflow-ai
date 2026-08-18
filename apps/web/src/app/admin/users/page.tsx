@@ -4,15 +4,21 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Ban,
   Building2,
+  KeyRound,
   RefreshCw,
   Shield,
+  ShieldOff,
+  UserX,
   Users,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import { cn, formatDate } from "@/lib/utils";
-import { useToast } from "@/components/ui";
+import { Modal, useToast } from "@/components/ui";
+import { ActionMenu, Popover } from "@/components/ui-menu";
+import { CriticalActionDialog } from "@/components/admin/critical-action-dialog";
 import {
   AdminErrorState,
   AdminFilterBar,
@@ -129,6 +135,12 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const [pending, setPending] = useState<{
+    type: "suspend" | "block" | "reactivate" | "revoke" | "reset-mfa";
+    user: AdminUser;
+  } | null>(null);
+  const [confirmCheck, setConfirmCheck] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -184,12 +196,53 @@ export default function AdminUsersPage() {
         json: { status: p.status },
       }),
     onSuccess: () => {
+      setPending(null);
+      setConfirmCheck(false);
+      setConfirmText("");
       void qc.invalidateQueries({ queryKey: ["admin-users"] });
-      toast({ kind: "success", title: "Status do usuário atualizado" });
+      void qc.invalidateQueries({ queryKey: ["admin-users-stats"] });
+      toast({ kind: "success", title: "Status da conta atualizado" });
     },
     onError: (e: Error) =>
       toast({ kind: "error", title: "Não foi possível atualizar", description: e.message }),
   });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) =>
+      api(`/admin/users/${id}/revoke-sessions`, { method: "POST" }),
+    onSuccess: () => {
+      setPending(null);
+      toast({ kind: "success", title: "Sessões encerradas" });
+    },
+    onError: (e: Error) =>
+      toast({ kind: "error", title: "Não foi possível encerrar sessões", description: e.message }),
+  });
+
+  const resetMfaMutation = useMutation({
+    mutationFn: (id: string) =>
+      api(`/admin/users/${id}/reset-mfa`, { method: "POST" }),
+    onSuccess: () => {
+      setPending(null);
+      setConfirmCheck(false);
+      setConfirmText("");
+      void qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({ kind: "success", title: "MFA redefinido" });
+    },
+    onError: (e: Error) =>
+      toast({ kind: "error", title: "Não foi possível redefinir o MFA", description: e.message }),
+  });
+
+  function runPending() {
+    if (!pending) return;
+    if (pending.type === "suspend") statusMutation.mutate({ id: pending.user.id, status: "SUSPENDED" });
+    if (pending.type === "block") statusMutation.mutate({ id: pending.user.id, status: "DISABLED" });
+    if (pending.type === "reactivate") statusMutation.mutate({ id: pending.user.id, status: "ACTIVE" });
+    if (pending.type === "revoke") revokeMutation.mutate(pending.user.id);
+    if (pending.type === "reset-mfa") resetMfaMutation.mutate(pending.user.id);
+  }
+
+  const pendingBusy =
+    statusMutation.isPending || revokeMutation.isPending || resetMfaMutation.isPending;
 
   const listedUsers = data?.items || [];
   const stats = statsQuery.data;
@@ -434,6 +487,9 @@ export default function AdminUsersPage() {
                     <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">
                       Status
                     </th>
+                    <th className="hidden px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500 xl:table-cell">
+                      MFA
+                    </th>
                     <th className="hidden px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500 lg:table-cell">
                       Último acesso
                     </th>
@@ -469,23 +525,46 @@ export default function AdminUsersPage() {
                             </p>
                           ) : null}
                         </td>
-                        <td className="max-w-[200px] px-4 py-3">
-                          <div className="space-y-0.5">
-                            {memberships.map((m) => (
-                              <p
-                                key={m.id}
-                                className="truncate text-gray-300"
-                                title={m.tenant.name}
-                              >
-                                {m.tenant.name}
-                              </p>
-                            ))}
-                            {memberships.length > 1 ? (
-                              <p className="text-[10px] text-gray-600">
-                                {memberships.length} empresas
-                              </p>
-                            ) : null}
-                          </div>
+                        <td className="max-w-[220px] px-4 py-3">
+                          {memberships.length === 0 ? (
+                            <span className="text-gray-600">Sem vínculo</span>
+                          ) : memberships.length === 1 ? (
+                            <p className="truncate text-gray-300" title={memberships[0].tenant.name}>
+                              {memberships[0].tenant.name}
+                            </p>
+                          ) : (
+                            <Popover
+                              align="left"
+                              minWidth={220}
+                              trigger={
+                                <button
+                                  type="button"
+                                  className="truncate text-left text-gray-200 hover:text-white"
+                                >
+                                  {memberships[0].tenant.name}
+                                  <span className="ml-1 text-[11px] text-violet-300">
+                                    +{memberships.length - 1} empresa
+                                    {memberships.length - 1 === 1 ? "" : "s"}
+                                  </span>
+                                </button>
+                              }
+                            >
+                              <div className="space-y-1 p-1">
+                                {memberships.map((m) => (
+                                  <Link
+                                    key={m.id}
+                                    href={`/admin/tenants/${m.tenant.id}?tab=users`}
+                                    className="block rounded-lg px-2 py-1.5 text-[12.5px] text-gray-200 hover:bg-white/[0.05]"
+                                  >
+                                    <span className="block truncate font-medium">{m.tenant.name}</span>
+                                    <span className="text-[11px] text-gray-500">
+                                      {tenantRoleLabel[m.role] || m.role}
+                                    </span>
+                                  </Link>
+                                ))}
+                              </div>
+                            </Popover>
+                          )}
                         </td>
                         <td className="hidden px-4 py-3 md:table-cell">
                           <div className="flex flex-wrap gap-1">
@@ -501,6 +580,11 @@ export default function AdminUsersPage() {
                             {st.label}
                           </StatusBadge>
                         </td>
+                        <td className="hidden px-4 py-3 xl:table-cell">
+                          <StatusBadge tone={u.twoFactorEnabled ? "success" : "neutral"} dot>
+                            {u.twoFactorEnabled ? "Ativo" : "Não"}
+                          </StatusBadge>
+                        </td>
                         <td className="hidden whitespace-nowrap px-4 py-3 text-gray-400 lg:table-cell">
                           {formatLastAccess(u.lastLoginAt)}
                         </td>
@@ -508,51 +592,55 @@ export default function AdminUsersPage() {
                           {formatCreated(u.createdAt)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            {u.status === "ACTIVE" || (!u.status && active) ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="admin-btn-ghost h-8 px-2.5 text-[12px] text-amber-200/90 hover:text-amber-100"
-                                  disabled={statusMutation.isPending}
-                                  onClick={() =>
-                                    statusMutation.mutate({ id: u.id, status: "SUSPENDED" })
-                                  }
-                                >
-                                  Suspender
-                                </button>
-                                <button
-                                  type="button"
-                                  className="admin-btn-ghost h-8 px-2.5 text-[12px] text-red-300/90 hover:text-red-200"
-                                  disabled={statusMutation.isPending}
-                                  onClick={() =>
-                                    statusMutation.mutate({ id: u.id, status: "DISABLED" })
-                                  }
-                                >
-                                  Bloquear
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                type="button"
-                                className="admin-btn-ghost h-8 px-2.5 text-[12px] text-emerald-300/90 hover:text-emerald-200"
-                                disabled={statusMutation.isPending}
-                                onClick={() =>
-                                  statusMutation.mutate({ id: u.id, status: "ACTIVE" })
-                                }
-                              >
-                                Reativar
-                              </button>
-                            )}
-                            {memberships[0] ? (
-                              <Link
-                                href={`/admin/tenants/${memberships[0].tenant.id}?tab=users`}
-                                className="admin-btn-ghost h-8 px-2.5 text-[12px] text-violet-300/90 hover:text-violet-200"
-                              >
-                                Empresa
-                              </Link>
-                            ) : null}
-                          </div>
+                          <ActionMenu
+                            aria-label={`Ações para ${u.name}`}
+                            items={[
+                              ...(memberships[0]
+                                ? [
+                                    {
+                                      label: "Ver empresa",
+                                      icon: Building2,
+                                      onClick: () => {
+                                        window.location.href = `/admin/tenants/${memberships[0].tenant.id}?tab=users`;
+                                      },
+                                    },
+                                  ]
+                                : []),
+                              ...(u.status === "ACTIVE" || (!u.status && active)
+                                ? [
+                                    {
+                                      label: "Suspender conta",
+                                      icon: UserX,
+                                      onClick: () => setPending({ type: "suspend", user: u }),
+                                    },
+                                    {
+                                      label: "Bloquear login",
+                                      icon: Ban,
+                                      danger: true,
+                                      onClick: () => setPending({ type: "block", user: u }),
+                                    },
+                                  ]
+                                : [
+                                    {
+                                      label: "Reativar conta",
+                                      icon: RefreshCw,
+                                      onClick: () => setPending({ type: "reactivate", user: u }),
+                                    },
+                                  ]),
+                              {
+                                label: "Encerrar sessões",
+                                icon: ShieldOff,
+                                separatorBefore: true,
+                                onClick: () => setPending({ type: "revoke", user: u }),
+                              },
+                              {
+                                label: "Redefinir MFA",
+                                icon: KeyRound,
+                                disabled: !u.twoFactorEnabled,
+                                onClick: () => setPending({ type: "reset-mfa", user: u }),
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -649,12 +737,39 @@ export default function AdminUsersPage() {
                           {formatCreated(u.createdAt)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <Link
-                            href="/app/account/security"
-                            className="admin-btn-ghost h-8 px-2.5 text-[12px] text-violet-300/90 hover:text-violet-200"
-                          >
-                            Segurança
-                          </Link>
+                          <ActionMenu
+                            aria-label={`Segurança de ${u.name}`}
+                            items={[
+                              {
+                                label: "Encerrar sessões",
+                                icon: ShieldOff,
+                                onClick: () => setPending({ type: "revoke", user: u }),
+                              },
+                              {
+                                label: "Redefinir MFA",
+                                icon: KeyRound,
+                                disabled: !u.twoFactorEnabled,
+                                onClick: () => setPending({ type: "reset-mfa", user: u }),
+                              },
+                              ...(u.status === "ACTIVE" || u.isActive !== false
+                                ? [
+                                    {
+                                      label: "Suspender conta",
+                                      icon: UserX,
+                                      separatorBefore: true,
+                                      onClick: () => setPending({ type: "suspend", user: u }),
+                                    },
+                                  ]
+                                : [
+                                    {
+                                      label: "Reativar conta",
+                                      icon: RefreshCw,
+                                      separatorBefore: true,
+                                      onClick: () => setPending({ type: "reactivate", user: u }),
+                                    },
+                                  ]),
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -665,6 +780,88 @@ export default function AdminUsersPage() {
           )}
         </AdminSection>
       )}
+
+      <Modal
+        open={Boolean(pending) && pending?.type !== "block" && pending?.type !== "reset-mfa"}
+        onClose={() => !pendingBusy && setPending(null)}
+        title={
+          pending?.type === "suspend"
+            ? "Suspender conta"
+            : pending?.type === "reactivate"
+              ? "Reativar conta"
+              : "Encerrar sessões"
+        }
+        description={
+          pending?.type === "suspend"
+            ? `${pending.user.name} não conseguirá entrar enquanto a conta estiver suspensa. Os vínculos com empresas são preservados.`
+            : pending?.type === "reactivate"
+              ? `A conta de ${pending?.user.name} voltará a poder entrar no sistema.`
+              : `Todas as sessões ativas de ${pending?.user.name} serão encerradas imediatamente.`
+        }
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="admin-btn-secondary h-9 px-4 text-[13px]"
+              disabled={pendingBusy}
+              onClick={() => setPending(null)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-9 px-4 text-[13px]"
+              disabled={pendingBusy}
+              onClick={runPending}
+            >
+              {pendingBusy ? "Processando…" : "Confirmar"}
+            </button>
+          </div>
+        }
+      >
+        <p className="text-[13px] text-ink-secondary dark:text-gray-300">
+          {pending?.user.email}
+        </p>
+      </Modal>
+
+      <CriticalActionDialog
+        open={pending?.type === "block" || pending?.type === "reset-mfa"}
+        onClose={() => {
+          if (pendingBusy) return;
+          setPending(null);
+          setConfirmCheck(false);
+          setConfirmText("");
+        }}
+        title={pending?.type === "reset-mfa" ? "Redefinir MFA" : "Bloquear login"}
+        description={
+          pending?.type === "reset-mfa"
+            ? `O segundo fator de ${pending.user.name} será removido. A pessoa precisará configurar o MFA de novo.`
+            : `O login de ${pending?.user.name || "este usuário"} será bloqueado por política de segurança. A conta e os vínculos com empresas não serão excluídos.`
+        }
+        tone="danger"
+        summaryRows={[
+          { label: "Usuário", value: pending?.user.name || "—" },
+          { label: "E-mail", value: pending?.user.email || "—" },
+          {
+            label: "Ação",
+            value: pending?.type === "reset-mfa" ? "Redefinir MFA" : "Bloquear login",
+            tone: "danger",
+          },
+        ]}
+        checkboxLabel={
+          pending?.type === "reset-mfa"
+            ? "Entendo que o MFA atual será invalidado."
+            : "Entendo que esta pessoa não conseguirá entrar até ser desbloqueada."
+        }
+        checkboxChecked={confirmCheck}
+        onCheckboxChange={setConfirmCheck}
+        confirmExpectedText={pending?.type === "reset-mfa" ? "REDEFINIR MFA" : "BLOQUEAR"}
+        confirmInput={confirmText}
+        onConfirmInputChange={setConfirmText}
+        actionLabel={pending?.type === "reset-mfa" ? "Redefinir MFA" : "Bloquear login"}
+        onAction={runPending}
+        isLoading={pendingBusy}
+      />
 
       {totalPages > 1 ? (
         <div className="flex items-center justify-end gap-2">

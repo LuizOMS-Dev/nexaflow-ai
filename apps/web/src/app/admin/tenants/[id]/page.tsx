@@ -10,6 +10,8 @@ import {
   Wallet,
   ExternalLink,
   Trash2,
+  UserMinus,
+  UserX,
   Workflow,
 } from "lucide-react";
 import { api, isStepUpRequiredError, isSuperadminMfaRequiredError } from "@/lib/api";
@@ -42,6 +44,7 @@ import {
   statusToTone,
   type AdminTone,
 } from "@/components/admin";
+import { ActionMenu } from "@/components/ui-menu";
 
 type Plan = {
   id: string;
@@ -288,6 +291,11 @@ export default function AdminTenantPage() {
   const [tab, setTab] = useState<TabId>(
     TABS.some((t) => t.id === tabParam) ? tabParam : "overview"
   );
+  const [memberToRemove, setMemberToRemove] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
 
   useEffect(() => {
     if (TABS.some((t) => t.id === tabParam)) setTab(tabParam);
@@ -522,6 +530,7 @@ export default function AdminTenantPage() {
     mutationFn: (membershipId: string) =>
       api(`/admin/tenants/${id}/members/${membershipId}`, { method: "DELETE" }),
     onSuccess: () => {
+      setMemberToRemove(null);
       qc.invalidateQueries({ queryKey: ["admin-tenant", id] });
       toast({
         kind: "success",
@@ -1010,33 +1019,31 @@ export default function AdminTenantPage() {
                       }))}
                       aria-label={`Papel de ${m.user.name}`}
                     />
-                    <button
-                      type="button"
-                      className="admin-btn-secondary h-8 px-3 text-[12px]"
-                      onClick={() =>
-                        updateMember.mutate({
-                          membershipId: m.id,
-                          isActive: !m.isActive,
-                        })
-                      }
-                    >
-                      {m.isActive ? "Suspender acesso" : "Reativar acesso"}
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn-ghost h-8 px-2.5 text-[12px] text-red-300 hover:text-red-200"
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Remover ${m.user.name} de ${t.name}? A conta global será preservada.`
-                          )
-                        ) {
-                          removeMember.mutate(m.id);
-                        }
-                      }}
-                    >
-                      Remover
-                    </button>
+                    <ActionMenu
+                      aria-label={`Ações de ${m.user.name} nesta empresa`}
+                      items={[
+                        {
+                          label: m.isActive ? "Suspender acesso à empresa" : "Reativar acesso à empresa",
+                          icon: UserX,
+                          onClick: () =>
+                            updateMember.mutate({
+                              membershipId: m.id,
+                              isActive: !m.isActive,
+                            }),
+                        },
+                        {
+                          label: "Remover da empresa",
+                          icon: UserMinus,
+                          danger: true,
+                          onClick: () =>
+                            setMemberToRemove({
+                              id: m.id,
+                              name: m.user.name,
+                              email: m.user.email,
+                            }),
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
               ))}
@@ -2093,6 +2100,41 @@ export default function AdminTenantPage() {
             />
           </FormField>
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(memberToRemove)}
+        onClose={() => !removeMember.isPending && setMemberToRemove(null)}
+        title="Remover da empresa"
+        description="Esta ação remove o acesso a esta empresa, mas não exclui a conta do usuário."
+        footer={
+          <DialogFooter>
+            <button
+              type="button"
+              className="admin-btn-secondary"
+              disabled={removeMember.isPending}
+              onClick={() => setMemberToRemove(null)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-danger"
+              disabled={removeMember.isPending || !memberToRemove}
+              onClick={() => memberToRemove && removeMember.mutate(memberToRemove.id)}
+            >
+              {removeMember.isPending ? "Removendo…" : "Remover acesso"}
+            </button>
+          </DialogFooter>
+        }
+      >
+        {memberToRemove ? (
+          <p className="text-[13px] text-ink-secondary dark:text-gray-300">
+            {memberToRemove.name} ({memberToRemove.email}) perderá o vínculo com{" "}
+            <strong className="text-ink dark:text-white">{t.name}</strong>. A identidade
+            global permanece intacta e pode ser reassociada depois.
+          </p>
+        ) : null}
       </Modal>
     </div>
   );
