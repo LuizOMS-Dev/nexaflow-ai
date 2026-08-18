@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 import { humanizeAuditAction, formatAuditIp, auditSeverity } from "@/lib/audit-labels";
 import {
   Checkbox,
@@ -771,54 +771,58 @@ export default function AdminAuditPage() {
           </DialogFooter>
         }
       >
-        <div className="space-y-4">
-          {/* Resumo Semântico de Impacto */}
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3.5 space-y-2.5 text-[12.5px]">
-            <div className="flex items-start gap-2 text-rose-300/90">
-              <span className="font-semibold shrink-0 text-[11.5px] uppercase tracking-wider text-rose-400">
-                Será removido:
-              </span>
-              <span>Histórico administrativo exibido no painel de auditoria</span>
-            </div>
-            <div className="flex items-start gap-2 text-emerald-300/90">
-              <span className="font-semibold shrink-0 text-[11.5px] uppercase tracking-wider text-emerald-400">
-                Permanecem protegidos:
-              </span>
-              <span>Registros de segurança, 2FA/MFA e trilhas imutáveis</span>
-            </div>
-            <div className="flex items-start gap-2 text-emerald-300/90">
-              <span className="font-semibold shrink-0 text-[11.5px] uppercase tracking-wider text-emerald-400">
-                Será registrado:
-              </span>
-              <span>Novo evento de auditoria documentando o autor e a quantidade limpa</span>
+        <div className="space-y-4 py-1 text-[12.5px]">
+          {/* Impacto da limpeza sem card externo grande */}
+          <div className="space-y-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+              Impacto da limpeza
+            </span>
+            <div className="space-y-2 text-[12px]">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                <span className="text-rose-400 font-medium shrink-0">Remove</span>
+                <span className="text-gray-300 sm:text-right">Histórico administrativo exibido no painel</span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                <span className="text-emerald-400 font-medium shrink-0">Preserva</span>
+                <span className="text-gray-300 sm:text-right">Registros protegidos de segurança e MFA</span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                <span className="text-emerald-400 font-medium shrink-0">Registra</span>
+                <span className="text-gray-300 sm:text-right">Um evento permanente informando quem realizou a limpeza</span>
+              </div>
             </div>
           </div>
 
-          {/* Fator 1: Checkbox do Design System */}
-          <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+          {/* Divisor sutil */}
+          <div className="border-t border-white/[0.06]" />
+
+          {/* Checkbox simples e integrado (sem card) */}
+          <label className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-gray-200 leading-snug">
             <Checkbox
               id="audit-clear-agree"
               checked={clearAgree}
               onCheckedChange={setClearAgree}
               disabled={clearMutation.isPending}
+              className="mt-0.5 shrink-0"
               aria-label="Entendo o impacto desta operação sobre o histórico de auditoria"
             />
-            <label
-              htmlFor="audit-clear-agree"
-              className="cursor-pointer select-none text-[12.5px] leading-snug text-gray-300"
-            >
-              Entendo o impacto desta operação sobre o histórico de auditoria.
-            </label>
-          </div>
+            <span>Entendo o impacto desta operação sobre o histórico de auditoria.</span>
+          </label>
 
-          {/* Fator 2: Confirmação Textual "LIMPAR AUDITORIA" */}
-          <div className="space-y-1.5">
-            <label className="block text-[12.5px] font-medium text-gray-300">
-              Para confirmar, digite <span className="font-mono font-semibold text-rose-300">LIMPAR AUDITORIA</span>
+          {/* Confirmação Textual "LIMPAR AUDITORIA" (sem card) */}
+          <div className="space-y-1.5 pt-1">
+            <label htmlFor="audit-clear-input" className="block text-[12px] font-medium text-gray-300">
+              Para confirmar, digite <code className="rounded bg-rose-500/15 px-1.5 py-0.5 font-mono font-bold text-rose-300 select-all border border-rose-500/25">LIMPAR AUDITORIA</code>
             </label>
             <div className="relative">
               <input
-                className="input w-full pr-9 uppercase"
+                id="audit-clear-input"
+                className={cn(
+                  "input h-9 w-full text-[13px] bg-[#08090d] border-white/10 transition-colors pr-8 uppercase",
+                  isExactConfirm
+                    ? "border-emerald-500/40 focus:border-emerald-500/60"
+                    : "focus:border-rose-500/50"
+                )}
                 value={clearConfirm}
                 onChange={(e) => setClearConfirm(e.target.value)}
                 placeholder="LIMPAR AUDITORIA"
@@ -827,7 +831,7 @@ export default function AdminAuditPage() {
               />
               {isExactConfirm && (
                 <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-emerald-400 animate-in fade-in zoom-in duration-150">
-                  <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+                  <CheckCircle2 className="h-4 w-4 stroke-[2]" />
                 </div>
               )}
             </div>

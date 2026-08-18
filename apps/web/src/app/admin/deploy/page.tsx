@@ -2442,9 +2442,9 @@ export default function AdminDeployPage() {
         }
       >
         {rollbackTarget ? (
-          <div className="space-y-3.5 py-1 text-[12.5px]">
-            {/* Resumo com estilo idêntico ao modal de limpeza */}
-            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
+          <div className="space-y-4 py-1 text-[12.5px]">
+            {/* Bloco superior compacto */}
+            <div className="space-y-2 text-[12px]">
               <div className="flex items-center justify-between text-gray-300">
                 <span className="text-gray-400 font-normal">Ambiente</span>
                 <span className="font-semibold text-emerald-400">Produção</span>
@@ -2459,23 +2459,27 @@ export default function AdminDeployPage() {
               </div>
             </div>
 
-            {/* Confirmação: Separar visualmente o checkbox da confirmação textual */}
-            {/* 1. Card do Checkbox */}
-            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5">
-              <label className="flex items-start gap-3 cursor-pointer text-gray-200 text-[12.5px] select-none leading-relaxed">
-                <Checkbox
-                  checked={rollbackCheckbox}
-                  onCheckedChange={setRollbackCheckbox}
-                  className="mt-0.5"
-                />
-                <span className="font-medium text-gray-200">
-                  Entendo que a versão atualmente em produção será substituída.
-                </span>
-              </label>
+            {/* Linha de atenção compacta */}
+            <div className="flex items-center gap-2 text-[12px] text-amber-300/90 pt-0.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+              <span>A versão atualmente em produção será substituída pela versão selecionada.</span>
             </div>
 
-            {/* 2. Card da Confirmação Textual */}
-            <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+            {/* Divisor sutil */}
+            <div className="border-t border-white/[0.06]" />
+
+            {/* Checkbox simples e integrado (sem card) */}
+            <label className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-gray-200 leading-snug">
+              <Checkbox
+                checked={rollbackCheckbox}
+                onCheckedChange={setRollbackCheckbox}
+                className="mt-0.5 shrink-0"
+              />
+              <span>Entendo e desejo continuar com esta reversão.</span>
+            </label>
+
+            {/* Confirmação Textual (sem card) */}
+            <div className="space-y-1.5 pt-1">
               <label htmlFor="rollback-sha-input" className="block text-[12px] font-medium text-gray-300">
                 Para confirmar, digite <code className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono font-bold text-amber-300 select-all border border-amber-500/25">{rollbackTarget.commitShortSha}</code>
               </label>
@@ -3342,40 +3346,43 @@ export default function AdminDeployPage() {
           </DialogFooter>
         }
       >
-        <div className="space-y-3.5 py-1 text-[12.5px]">
-          {/* Resumo com cores semânticas discretas */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2 text-[12px]">
-            <div className="flex items-center justify-between text-gray-300">
-              <span className="text-gray-400 font-normal">Será removido</span>
-              <span className="font-semibold text-rose-300">Histórico administrativo exibido no painel</span>
-            </div>
-            <div className="flex items-center justify-between text-gray-300">
-              <span className="text-gray-400 font-normal">Permanecem inalterados</span>
-              <span className="text-emerald-400 font-medium">Produção atual, GitHub e EasyPanel</span>
-            </div>
-            <div className="flex items-center justify-between text-gray-300">
-              <span className="text-gray-400 font-normal">Serão preservados</span>
-              <span className="text-emerald-400 font-medium">Backups, referências de restauração e logs técnicos</span>
+        <div className="space-y-4 py-1 text-[12.5px]">
+          {/* O que acontece sem card externo grande */}
+          <div className="space-y-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+              O que acontece
+            </span>
+            <div className="space-y-2 text-[12px]">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                <span className="text-rose-400 font-medium shrink-0">Será removido</span>
+                <span className="text-gray-300 sm:text-right">Histórico administrativo exibido no painel</span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                <span className="text-emerald-400 font-medium shrink-0">Permanece intacto</span>
+                <span className="text-gray-300 sm:text-right">Produção atual, GitHub e EasyPanel</span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 sm:gap-2">
+                <span className="text-emerald-400 font-medium shrink-0">Será preservado</span>
+                <span className="text-gray-300 sm:text-right">Backups, restaurações e logs técnicos</span>
+              </div>
             </div>
           </div>
 
-          {/* Confirmação: Separar visualmente o checkbox da confirmação textual */}
-          {/* 1. Card do Checkbox */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5">
-            <label className="flex items-start gap-3 cursor-pointer text-gray-200 text-[12.5px] select-none leading-relaxed">
-              <Checkbox
-                checked={clearDeployCheckbox}
-                onCheckedChange={setClearDeployCheckbox}
-                className="mt-0.5"
-              />
-              <span className="font-medium text-gray-200">
-                Entendo que o histórico administrativo exibido no painel será removido.
-              </span>
-            </label>
-          </div>
+          {/* Divisor sutil */}
+          <div className="border-t border-white/[0.06]" />
 
-          {/* 2. Card da Confirmação Textual */}
-          <div className="rounded-xl border border-white/[0.08] bg-[#0c0d12] p-3.5 space-y-2">
+          {/* Checkbox simples e integrado (sem card) */}
+          <label className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-gray-200 leading-snug">
+            <Checkbox
+              checked={clearDeployCheckbox}
+              onCheckedChange={setClearDeployCheckbox}
+              className="mt-0.5 shrink-0"
+            />
+            <span>Entendo que o histórico administrativo exibido no painel será removido.</span>
+          </label>
+
+          {/* Confirmação Textual (sem card) */}
+          <div className="space-y-1.5 pt-1">
             <label htmlFor="clear-history-confirm-input" className="block text-[12px] font-medium text-gray-300">
               Para confirmar, digite <code className="rounded bg-rose-500/15 px-1.5 py-0.5 font-mono font-bold text-rose-300 select-all border border-rose-500/25">LIMPAR HISTÓRICO</code>
             </label>
