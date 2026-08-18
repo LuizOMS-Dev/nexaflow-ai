@@ -26,6 +26,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
           .enum(["ALL", "ACTIVE", "INVITED", "SUSPENDED", "DISABLED", "PENDING_VERIFICATION"])
           .optional(),
         role: z.enum(["ALL", "ADMIN", "SUPERVISOR", "AGENT", "SALES", "READONLY"]).optional(),
+        tenantId: z.string().cuid().optional(),
         mfa: z.enum(["all", "enabled", "disabled"]).optional(),
         page: z.coerce.number().int().min(1).default(1),
         limit: z.coerce.number().int().min(1).max(500).default(30),

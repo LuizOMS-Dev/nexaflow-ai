@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   RefreshCw,
   Shield,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
@@ -100,22 +99,82 @@ function resolveUserStatus(u: AdminUser): { label: string; code: string } {
   return { label: userStatusLabel[code] || "Ativo", code };
 }
 
+type UsersListResponse = {
+  items: AdminUser[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
+type UsersKpis = {
+  totalUsers: number;
+  activeUsers: number;
+  superadmins: number;
+  usersWithMfa: number;
+  activeMemberships: number;
+  tenantsWithUsers: number;
+};
+
+type TenantOption = { id: string; name: string };
+
 export default function AdminUsersPage() {
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
   const { toast } = useToast();
   const [tab, setTab] = useState<TabId>("companies");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tenantFilter, setTenantFilter] = useState("ALL");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ["admin-users"],
-    queryFn: () =>
-      api<{ items: AdminUser[] }>("/admin/users?page=1&limit=500"),
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const statsQuery = useQuery({
+    queryKey: ["admin-users-stats"],
+    queryFn: () => api<UsersKpis>("/admin/users/stats"),
     enabled: user?.platformRole === "SUPERADMIN",
     staleTime: 30_000,
+  });
+
+  const tenantsQuery = useQuery({
+    queryKey: ["admin-users-tenant-options"],
+    queryFn: () =>
+      api<{ items: TenantOption[] }>("/admin/tenants?page=1&limit=100"),
+    enabled: user?.platformRole === "SUPERADMIN",
+    staleTime: 60_000,
+  });
+
+  const { data, isLoading, error, refetch, isFetching } = useQuery({
+    queryKey: [
+      "admin-users",
+      tab,
+      debouncedSearch,
+      tenantFilter,
+      roleFilter,
+      statusFilter,
+      page,
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set("scope", tab === "platform" ? "platform" : "companies");
+      params.set("page", String(page));
+      params.set("limit", "30");
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (tab === "companies" && roleFilter !== "ALL") params.set("role", roleFilter);
+      if (tab === "companies" && tenantFilter !== "ALL") params.set("tenantId", tenantFilter);
+      return api<UsersListResponse>(`/admin/users?${params.toString()}`);
+    },
+    enabled: user?.platformRole === "SUPERADMIN",
   });
 
   const statusMutation = useMutation({
@@ -132,85 +191,25 @@ export default function AdminUsersPage() {
       toast({ kind: "error", title: "Não foi possível atualizar", description: e.message }),
   });
 
-  const allUsers = useMemo(() => {
-    return (data?.items || []).filter(
-      (u) =>
-        !u.email.endsWith("@test.local") &&
-        !u.email.endsWith("@test.nexaflow.local")
-    );
-  }, [data]);
-
-  const companyUsers = useMemo(
-    () => allUsers.filter(hasCompanyMembership),
-    [allUsers]
+  const listedUsers = data?.items || [];
+  const stats = statsQuery.data;
+  const tenantOptions = useMemo(
+    () =>
+      (tenantsQuery.data?.items || [])
+        .map((t) => ({ value: t.id, label: t.name }))
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
+    [tenantsQuery.data]
   );
-
-  const platformAdmins = useMemo(
-    () => allUsers.filter(isPlatformAdmin),
-    [allUsers]
-  );
-
-  const metrics = useMemo(() => {
-    const activeCompany = companyUsers.filter((u) => u.isActive !== false).length;
-    const mfaOn = platformAdmins.filter((u) => u.twoFactorEnabled).length;
-    return {
-      companyUsers: companyUsers.length,
-      platformAdmins: platformAdmins.length,
-      activeCompany,
-      mfaOn,
-    };
-  }, [companyUsers, platformAdmins]);
-
-  const tenantOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const u of companyUsers) {
-      for (const m of u.memberships || []) {
-        map.set(m.tenant.id, m.tenant.name);
-      }
-    }
-    return Array.from(map.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-  }, [companyUsers]);
-
-  const filteredCompanyUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return companyUsers.filter((u) => {
-      const memberships = u.memberships || [];
-      if (tenantFilter !== "ALL") {
-        if (!memberships.some((m) => m.tenant.id === tenantFilter)) return false;
-      }
-      if (roleFilter !== "ALL") {
-        if (!memberships.some((m) => m.role === roleFilter)) return false;
-      }
-      if (statusFilter === "ACTIVE" && u.isActive === false) return false;
-      if (statusFilter === "INACTIVE" && u.isActive !== false) return false;
-
-      if (!q) return true;
-      const hay = [
-        u.name,
-        u.email,
-        ...memberships.map((m) => m.tenant.name),
-        ...memberships.map((m) => tenantRoleLabel[m.role] || m.role),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [companyUsers, search, tenantFilter, roleFilter, statusFilter]);
-
-  const filteredPlatformAdmins = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return platformAdmins.filter((u) => {
-      if (statusFilter === "ACTIVE" && u.isActive === false) return false;
-      if (statusFilter === "INACTIVE" && u.isActive !== false) return false;
-      if (!q) return true;
-      const hay = [u.name, u.email, platformRoleLabel[u.platformRole || ""] || ""]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [platformAdmins, search, statusFilter]);
+  const filteredCompanyUsers = tab === "companies" ? listedUsers : [];
+  const filteredPlatformAdmins = tab === "platform" ? listedUsers : [];
+  const metrics = {
+    companyUsers: stats?.totalUsers ?? 0,
+    tenantsWithUsers: stats?.tenantsWithUsers ?? 0,
+    platformAdmins: stats?.superadmins ?? 0,
+    activeCompany: stats?.activeUsers ?? 0,
+    mfaOn: stats?.usersWithMfa ?? 0,
+    activeMemberships: stats?.activeMemberships ?? 0,
+  };
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
@@ -230,8 +229,8 @@ export default function AdminUsersPage() {
     );
   }
 
-  const listCount =
-    tab === "companies" ? filteredCompanyUsers.length : filteredPlatformAdmins.length;
+  const listCount = data?.total ?? listedUsers.length;
+  const totalPages = data?.totalPages || 1;
 
   return (
     <div className="space-y-6">
@@ -253,33 +252,29 @@ export default function AdminUsersPage() {
 
       <MetricGrid cols={3}>
         <MetricCard
-          label="Empresas"
+          label="Usuários únicos"
           value={metrics.companyUsers}
-          hint={`${metrics.activeCompany} ativos`}
-          icon={<Building2 className="h-4 w-4" />}
+          hint={`${metrics.activeCompany} ativos · ${metrics.activeMemberships} vínculos`}
+          icon={<Users className="h-4 w-4" />}
           tone="brand"
+          compact
+        />
+        <MetricCard
+          label="Empresas com usuários"
+          value={metrics.tenantsWithUsers}
+          icon={<Building2 className="h-4 w-4" />}
+          tone="neutral"
           compact
         />
         <MetricCard
           label="Superadmins"
           value={metrics.platformAdmins}
+          hint={`${metrics.mfaOn} com MFA`}
           icon={<Shield className="h-4 w-4" />}
-          tone="violet"
-          compact
-        />
-        <MetricCard
-          label="MFA"
-          value={metrics.mfaOn}
-          hint={
-            metrics.platformAdmins
-              ? `${metrics.mfaOn}/${metrics.platformAdmins} com 2FA`
-              : undefined
-          }
-          icon={<ShieldCheck className="h-4 w-4" />}
           tone={
             metrics.platformAdmins > 0 && metrics.mfaOn < metrics.platformAdmins
               ? "warning"
-              : "success"
+              : "violet"
           }
           compact
         />
@@ -299,6 +294,7 @@ export default function AdminUsersPage() {
             setTenantFilter("ALL");
             setRoleFilter("ALL");
             setStatusFilter("ALL");
+            setPage(1);
           }}
         >
           <Building2 className="mr-1.5 h-3.5 w-3.5 opacity-70" strokeWidth={1.75} />
@@ -311,7 +307,7 @@ export default function AdminUsersPage() {
                 : "bg-white/[0.05] text-gray-500"
             )}
           >
-            {companyUsers.length}
+            {stats?.totalUsers ?? listedUsers.length}
           </span>
         </button>
         <button
@@ -326,6 +322,7 @@ export default function AdminUsersPage() {
             setTenantFilter("ALL");
             setRoleFilter("ALL");
             setStatusFilter("ALL");
+            setPage(1);
           }}
         >
           <Shield className="mr-1.5 h-3.5 w-3.5 opacity-70" strokeWidth={1.75} />
@@ -338,7 +335,7 @@ export default function AdminUsersPage() {
                 : "bg-white/[0.05] text-gray-500"
             )}
           >
-            {platformAdmins.length}
+            {stats?.superadmins ?? 0}
           </span>
         </button>
       </div>
@@ -360,7 +357,10 @@ export default function AdminUsersPage() {
             <AdminSelectFilter
               label="Empresa"
               value={tenantFilter}
-              onChange={setTenantFilter}
+              onChange={(v) => {
+                setTenantFilter(v);
+                setPage(1);
+              }}
               options={[
                 { value: "ALL", label: "Todas as empresas" },
                 ...tenantOptions,
@@ -369,7 +369,10 @@ export default function AdminUsersPage() {
             <AdminSelectFilter
               label="Papel"
               value={roleFilter}
-              onChange={setRoleFilter}
+              onChange={(v) => {
+                setRoleFilter(v);
+                setPage(1);
+              }}
               options={[
                 { value: "ALL", label: "Todos os papéis" },
                 { value: "ADMIN", label: "Administrador" },
@@ -385,11 +388,15 @@ export default function AdminUsersPage() {
         <AdminSelectFilter
           label="Status"
           value={statusFilter}
-          onChange={setStatusFilter}
+          onChange={(v) => {
+            setStatusFilter(v);
+            setPage(1);
+          }}
           options={[
             { value: "ALL", label: "Todos os status" },
             { value: "ACTIVE", label: "Ativo" },
-            { value: "INACTIVE", label: "Inativo" },
+            { value: "SUSPENDED", label: "Suspenso" },
+            { value: "DISABLED", label: "Bloqueado" },
           ]}
         />
 
@@ -658,6 +665,30 @@ export default function AdminUsersPage() {
           )}
         </AdminSection>
       )}
+
+      {totalPages > 1 ? (
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            className="admin-btn-ghost h-8 px-2.5 text-[12px]"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Anterior
+          </button>
+          <span className="text-[12px] text-gray-500">
+            Página {page} de {totalPages}
+          </span>
+          <button
+            type="button"
+            className="admin-btn-ghost h-8 px-2.5 text-[12px]"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Próxima
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

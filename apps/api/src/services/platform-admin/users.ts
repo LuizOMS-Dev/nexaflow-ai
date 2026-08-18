@@ -9,6 +9,7 @@ export type ListUsersQuery = {
   scope?: "all" | "companies" | "platform";
   status?: string;
   role?: string;
+  tenantId?: string;
   mfa?: "all" | "enabled" | "disabled";
   page: number;
   limit: number;
@@ -19,22 +20,28 @@ export async function getUsersKpis() {
     NOT: testUserEmailFilter(),
   };
 
-  const [totalUsers, activeUsers, superadmins, usersWithMfa, activeMemberships] =
+  const [totalUsers, activeUsers, superadmins, usersWithMfa, activeMemberships, tenantsWithUsers] =
     await Promise.all([
-      // Usuários únicos
       prisma.user.count({ where: baseWhere }),
-      // Usuários ativos
       prisma.user.count({ where: { ...baseWhere, status: "ACTIVE" } }),
-      // Superadmins
       prisma.user.count({ where: { ...baseWhere, platformRole: "SUPERADMIN" } }),
-      // Com MFA
       prisma.user.count({ where: { ...baseWhere, twoFactorEnabled: true } }),
-      // Memberships ativas
       prisma.membership.count({
         where: {
           isActive: true,
           status: "ACTIVE",
           user: { NOT: testUserEmailFilter() },
+        },
+      }),
+      prisma.tenant.count({
+        where: {
+          members: {
+            some: {
+              isActive: true,
+              status: "ACTIVE",
+              user: { NOT: testUserEmailFilter() },
+            },
+          },
         },
       }),
     ]);
@@ -45,6 +52,7 @@ export async function getUsersKpis() {
     superadmins,
     usersWithMfa,
     activeMemberships,
+    tenantsWithUsers,
   };
 }
 
@@ -82,13 +90,15 @@ export async function listUsers(q: ListUsersQuery) {
     ];
   }
 
+  const membershipSome: Prisma.MembershipWhereInput = { isActive: true };
   if (q.role && q.role !== "ALL") {
-    where.memberships = {
-      some: {
-        role: q.role as Prisma.EnumMemberRoleFilter,
-        isActive: true,
-      },
-    };
+    membershipSome.role = q.role as Prisma.EnumMemberRoleFilter;
+  }
+  if (q.tenantId) {
+    membershipSome.tenantId = q.tenantId;
+  }
+  if ((q.role && q.role !== "ALL") || q.tenantId) {
+    where.memberships = { some: membershipSome };
   }
 
   const [total, items] = await Promise.all([
