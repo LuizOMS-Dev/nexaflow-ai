@@ -1,16 +1,15 @@
 /**
- * Factory reset: apaga TODAS as contas/empresas/dados e cria 1 superadmin limpo.
+ * Factory reset de produção: apaga empresas, usuários de tenant e dados de negócio.
+ * Mantém catálogo (planos, releases, custos de plataforma, knowledge da NIA).
  *
  * Uso:
- *   DATABASE_URL=... npx tsx apps/api/src/scripts/factory-reset.ts
+ *   CONFIRM_FACTORY_RESET=DELETE_ALL_DATA KEEP_EXISTING_SUPERADMINS=1 \
+ *     npx tsx apps/api/src/scripts/factory-reset.ts
  *
- * Env obrigatórias:
- *   CONFIRM_FACTORY_RESET=DELETE_ALL_DATA
- *   SEED_SUPERADMIN_EMAIL
- *   SEED_SUPERADMIN_PASSWORD (mín. 16 caracteres e 3 classes)
- * Env opcionais:
- *   SEED_SUPERADMIN_NAME (default: Super Admin)
- *   KEEP_PLANS=1 (mantém planos; default mantém)
+ * Ou recria 1 superadmin:
+ *   CONFIRM_FACTORY_RESET=DELETE_ALL_DATA \
+ *   SEED_SUPERADMIN_EMAIL=... SEED_SUPERADMIN_PASSWORD=... \
+ *     npx tsx apps/api/src/scripts/factory-reset.ts
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -31,81 +30,111 @@ async function hashPassword(password: string) {
   }
 }
 
-async function safeDeleteMany(label: string, fn: () => Promise<unknown>) {
+async function safe(label: string, fn: () => Promise<unknown>) {
   try {
     await fn();
-    console.log(`  ✓ ${label}`);
+    console.log(`  ok  ${label}`);
   } catch (e) {
-    console.log(`  · ${label} (skip: ${e instanceof Error ? e.message.slice(0, 80) : e})`);
+    console.log(`  skip ${label}: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
   }
 }
 
 async function main() {
+  const keepAdmins = process.env.KEEP_EXISTING_SUPERADMINS === "1";
   const email = (process.env.SEED_SUPERADMIN_EMAIL || "").toLowerCase().trim();
   const password = process.env.SEED_SUPERADMIN_PASSWORD || "";
   const name = process.env.SEED_SUPERADMIN_NAME || "Super Admin";
-  const passwordClasses = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((rule) =>
-    rule.test(password)
-  ).length;
 
   if (process.env.CONFIRM_FACTORY_RESET !== "DELETE_ALL_DATA") {
-    throw new Error(
-      "Reset abortado: defina CONFIRM_FACTORY_RESET=DELETE_ALL_DATA para confirmar a exclusão."
+    throw new Error("Abortado: defina CONFIRM_FACTORY_RESET=DELETE_ALL_DATA.");
+  }
+  if (!keepAdmins) {
+    const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Abortado: SEED_SUPERADMIN_EMAIL inválido.");
+    }
+    if (password.length < 16 || classes < 3) {
+      throw new Error("Abortado: SEED_SUPERADMIN_PASSWORD fraca (16+ e 3 classes).");
+    }
+  }
+
+  const before = {
+    users: await prisma.user.count(),
+    tenants: await prisma.tenant.count(),
+    superadmins: await prisma.user.count({ where: { platformRole: "SUPERADMIN" } }),
+  };
+  console.log("Limpando NexaFlow (empresas + usuários de tenant)...");
+  console.log(`  antes: users=${before.users} tenants=${before.tenants} superadmins=${before.superadmins}`);
+
+  await safe("messages", () => prisma.message.deleteMany({}));
+  await safe("notes", () => prisma.note.deleteMany({}));
+  await safe("tasks", () => prisma.task.deleteMany({}));
+  await safe("opportunityHistory", () => prisma.opportunityHistory.deleteMany({}));
+  await safe("opportunities", () => prisma.opportunity.deleteMany({}));
+  await safe("conversations", () => prisma.conversation.deleteMany({}));
+  await safe("contactTags", () => prisma.contactTag.deleteMany({}));
+  await safe("contactMemory", () => prisma.contactMemory.deleteMany({}));
+  await safe("contactScoreHistory", () => prisma.contactScoreHistory.deleteMany({}));
+  await safe("recommendationDecisions", () => prisma.recommendationDecision.deleteMany({}));
+  await safe("contacts", () => prisma.contact.deleteMany({}));
+  await safe("channels", () => prisma.channel.deleteMany({}));
+  await safe("automationRuns", () => prisma.automationRun.deleteMany({}));
+  await safe("automations", () => prisma.automation.deleteMany({}));
+  await safe("campaigns", () => prisma.campaign.deleteMany({}));
+  await safe("knowledgeChunks", () => prisma.knowledgeChunk.deleteMany({}));
+  await safe("agentKnowledge", () => prisma.agentKnowledge.deleteMany({}));
+  await safe("knowledgeDocs", () => prisma.knowledgeDoc.deleteMany({}));
+  await safe("knowledgeGaps", () => prisma.knowledgeGap.deleteMany({}));
+  await safe("learningSuggestions", () => prisma.learningSuggestion.deleteMany({}));
+  await safe("agentFeedbacks", () => prisma.agentFeedback.deleteMany({}));
+  await safe("agentTestRuns", () => prisma.agentTestRun.deleteMany({}));
+  await safe("agentTestCases", () => prisma.agentTestCase.deleteMany({}));
+  await safe("agentToolExecutions", () => prisma.agentToolExecution.deleteMany({}));
+  await safe("agentVersions", () => prisma.agentVersion.deleteMany({}));
+  await safe("aiAgents", () => prisma.aiAgent.deleteMany({}));
+  await safe("tenantAiConfig", () => prisma.tenantAiConfig.deleteMany({}));
+  await safe("webhookDeliveries", () => prisma.webhookDelivery.deleteMany({}));
+  await safe("webhookEndpoints", () => prisma.webhookEndpoint.deleteMany({}));
+  await safe("apiUsageLogs", () => prisma.apiUsageLog.deleteMany({}));
+  await safe("apiKeys", () => prisma.apiKey.deleteMany({}));
+  await safe("aiUsageLogs", () => prisma.aiUsageLog.deleteMany({}));
+  await safe("quickReplies", () => prisma.quickReply.deleteMany({}));
+  await safe("tags", () => prisma.tag.deleteMany({}));
+  await safe("customFields", () => prisma.customField.deleteMany({}));
+  await safe("pipelineStages", () => prisma.pipelineStage.deleteMany({}));
+  await safe("pipelines", () => prisma.pipeline.deleteMany({}));
+  await safe("notifications", () => prisma.notification.deleteMany({}));
+  await safe("auditLogs", () => prisma.auditLog.deleteMany({}));
+  await safe("securityEvents", () => prisma.securityEvent.deleteMany({}));
+  await safe("userInvites", () => prisma.userInvite.deleteMany({}));
+  await safe("refreshTokens", () => prisma.refreshToken.deleteMany({}));
+  await safe("authSessions", () => prisma.authSession.deleteMany({}));
+  await safe("mfaChallenges", () => prisma.mfaChallenge.deleteMany({}));
+  await safe("loginAttempts", () => prisma.loginAttempt.deleteMany({}));
+  await safe("passwordResetTokens", () => prisma.passwordResetToken.deleteMany({}));
+  await safe("helpAssistantMessages", () => prisma.helpAssistantMessage.deleteMany({}));
+  await safe("helpAssistantThreads", () => prisma.helpAssistantThread.deleteMany({}));
+  await safe("helpKnowledgeGaps", () => prisma.helpKnowledgeGap.deleteMany({}));
+  await safe("userReleaseSeen", () => prisma.userReleaseSeen.deleteMany({}));
+  await safe("deployments", () => prisma.deployment.deleteMany({}));
+  await safe("salesLeads", () => prisma.salesLead.deleteMany({}));
+  await safe("payments", () => prisma.payment.deleteMany({}));
+  await safe("tenantCharges", () => prisma.tenantCharge.deleteMany({}));
+  await safe("tenantCosts", () => prisma.tenantCost.deleteMany({}));
+  await safe("subscriptions", () => prisma.subscription.deleteMany({}));
+  await safe("companyProfiles", () => prisma.companyProfile.deleteMany({}));
+  await safe("memberships", () => prisma.membership.deleteMany({}));
+
+  if (keepAdmins) {
+    await safe("tenant users", () =>
+      prisma.user.deleteMany({ where: { NOT: { platformRole: "SUPERADMIN" } } })
     );
-  }
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new Error("Reset abortado: defina SEED_SUPERADMIN_EMAIL com um e-mail válido.");
-  }
-  if (password.length < 16 || passwordClasses < 3) {
-    throw new Error(
-      "Reset abortado: SEED_SUPERADMIN_PASSWORD deve ter ao menos 16 caracteres e 3 classes de caracteres."
-    );
+  } else {
+    await safe("users", () => prisma.user.deleteMany({}));
   }
 
-  console.log("🧹 Factory reset NexaFlow — limpando tudo...");
-  console.log(`   DATABASE_URL=${(process.env.DATABASE_URL || "").replace(/:[^:@/]+@/, ":***@")}`);
+  await safe("tenants", () => prisma.tenant.deleteMany({}));
 
-  // Ordem: dependentes → raiz
-  await safeDeleteMany("messages", () => prisma.message.deleteMany({}));
-  await safeDeleteMany("notes", () => prisma.note.deleteMany({}));
-  await safeDeleteMany("tasks", () => prisma.task.deleteMany({}));
-  await safeDeleteMany("opportunityHistory", () => prisma.opportunityHistory.deleteMany({}));
-  await safeDeleteMany("opportunities", () => prisma.opportunity.deleteMany({}));
-  await safeDeleteMany("conversations", () => prisma.conversation.deleteMany({}));
-  await safeDeleteMany("contactTags", () => prisma.contactTag.deleteMany({}));
-  await safeDeleteMany("contactMemory", () => prisma.contactMemory.deleteMany({}));
-  await safeDeleteMany("contactScoreHistory", () => prisma.contactScoreHistory.deleteMany({}));
-  await safeDeleteMany("recommendationDecisions", () => prisma.recommendationDecision.deleteMany({}));
-  await safeDeleteMany("contacts", () => prisma.contact.deleteMany({}));
-  await safeDeleteMany("channels", () => prisma.channel.deleteMany({}));
-  await safeDeleteMany("automationRuns", () => prisma.automationRun.deleteMany({}));
-  await safeDeleteMany("automations", () => prisma.automation.deleteMany({}));
-  await safeDeleteMany("campaigns", () => prisma.campaign.deleteMany({}));
-  await safeDeleteMany("knowledgeChunks", () => prisma.knowledgeChunk.deleteMany({}));
-  await safeDeleteMany("knowledgeDocs", () => prisma.knowledgeDoc.deleteMany({}));
-  await safeDeleteMany("webhookDeliveries", () => prisma.webhookDelivery.deleteMany({}));
-  await safeDeleteMany("webhookEndpoints", () => prisma.webhookEndpoint.deleteMany({}));
-  await safeDeleteMany("aiAgents", () => prisma.aiAgent.deleteMany({}));
-  await safeDeleteMany("quickReplies", () => prisma.quickReply.deleteMany({}));
-  await safeDeleteMany("tags", () => prisma.tag.deleteMany({}));
-  await safeDeleteMany("customFields", () => prisma.customField.deleteMany({}));
-  await safeDeleteMany("pipelineStages", () => prisma.pipelineStage.deleteMany({}));
-  await safeDeleteMany("pipelines", () => prisma.pipeline.deleteMany({}));
-  await safeDeleteMany("notifications", () => prisma.notification.deleteMany({}));
-  await safeDeleteMany("auditLogs", () => prisma.auditLog.deleteMany({}));
-  await safeDeleteMany("securityEvents", () => prisma.securityEvent.deleteMany({}));
-  await safeDeleteMany("userInvites", () => prisma.userInvite.deleteMany({}));
-  await safeDeleteMany("refreshTokens", () => prisma.refreshToken.deleteMany({}));
-  await safeDeleteMany("authSessions", () => prisma.authSession.deleteMany({}));
-  await safeDeleteMany("mfaChallenges", () => prisma.mfaChallenge.deleteMany({}));
-  await safeDeleteMany("loginAttempts", () => prisma.loginAttempt.deleteMany({}));
-  await safeDeleteMany("passwordResetTokens", () => prisma.passwordResetToken.deleteMany({}));
-  await safeDeleteMany("subscriptions", () => prisma.subscription.deleteMany({}));
-  await safeDeleteMany("memberships", () => prisma.membership.deleteMany({}));
-  await safeDeleteMany("users", () => prisma.user.deleteMany({}));
-  await safeDeleteMany("tenants", () => prisma.tenant.deleteMany({}));
-
-  // Planos: catálogo oficial único (mesmos preços do seed / packages/db official-plans)
   const { OFFICIAL_PLANS } = await import("@nexaflow/db");
   const { asInputJson } = await import("../lib/json");
   for (const plan of OFFICIAL_PLANS) {
@@ -147,8 +176,6 @@ async function main() {
       },
     });
   }
-  const free = await prisma.plan.findUnique({ where: { slug: "free" } });
-  if (!free) throw new Error("factory-reset: plano free ausente após sync");
 
   await prisma.platformSetting.upsert({
     where: { key: "branding" },
@@ -169,29 +196,32 @@ async function main() {
     },
   });
 
-  const passwordHash = await hashPassword(password);
-  const superadmin = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      name,
-      platformRole: "SUPERADMIN",
-    },
-  });
+  if (!keepAdmins) {
+    const passwordHash = await hashPassword(password);
+    await prisma.user.create({
+      data: { email, passwordHash, name, platformRole: "SUPERADMIN" },
+    });
+  }
 
-  // Sem empresa/tenant: superadmin puro da plataforma
-  const userCount = await prisma.user.count();
-  const tenantCount = await prisma.tenant.count();
+  const after = {
+    users: await prisma.user.count(),
+    tenants: await prisma.tenant.count(),
+    contacts: await prisma.contact.count(),
+    superadmins: await prisma.user.findMany({
+      where: { platformRole: "SUPERADMIN" },
+      select: { email: true, name: true },
+    }),
+  };
+  if (after.tenants !== 0) throw new Error(`Reset incompleto: ainda há ${after.tenants} empresas.`);
+  if (keepAdmins && after.superadmins.length === 0) {
+    throw new Error("Reset incompleto: nenhum SUPERADMIN restou. Crie um via seed.");
+  }
 
   console.log("");
-  console.log("✅ Reset concluído");
-  console.log(`   Users: ${userCount} | Tenants: ${tenantCount}`);
-  console.log(`   Superadmin: ${superadmin.email}`);
-  console.log(`   Nome: ${superadmin.name}`);
-  console.log(`   Plano free id: ${free.id}`);
-  console.log("");
-  console.log("   Login em http://localhost:3000/login → /admin");
-  console.log("   (Nenhuma empresa criada — plataforma limpa)");
+  console.log("Reset concluído.");
+  console.log(`  users=${after.users} tenants=${after.tenants} contacts=${after.contacts}`);
+  console.log(`  superadmins: ${after.superadmins.map((u) => u.email).join(", ") || "(nenhum)"}`);
+  console.log("  Planos oficiais sincronizados. Nenhuma empresa no sistema.");
 }
 
 main()
