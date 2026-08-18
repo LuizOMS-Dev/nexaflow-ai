@@ -27,6 +27,7 @@ export async function adminMembershipsRoutes(app: FastifyInstance) {
       .object({
         userId: z.string().optional(),
         email: z.string().email().optional(),
+        name: z.string().trim().min(2).max(120).optional(),
         role: z.enum(["ADMIN", "SUPERVISOR", "AGENT", "SALES", "READONLY"]).optional(),
       })
       .parse(request.body);

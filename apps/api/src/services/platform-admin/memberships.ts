@@ -1,7 +1,8 @@
-import type { MemberRole, MembershipStatus, Prisma } from "@prisma/client";
+import type { MemberRole, MembershipStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
+import { provisionCompanyUser } from "./users";
 
 export async function listTenantMembers(tenantId: string) {
   assertFound(await prisma.tenant.findUnique({ where: { id: tenantId } }));
@@ -48,27 +49,28 @@ export async function addTenantMember(
   body: {
     userId?: string;
     email?: string;
+    name?: string;
     role?: MemberRole;
   },
   actor: { sub: string; ip?: string }
 ) {
   assertFound(await prisma.tenant.findUnique({ where: { id: tenantId } }));
 
-  let targetUserId = body.userId;
-  if (!targetUserId && body.email) {
-    const u = await prisma.user.findUnique({
-      where: { email: body.email.toLowerCase().trim() },
-    });
-    if (!u) {
-      throw new AppError(
-        "Usuário não encontrado com o e-mail informado. O usuário precisa possuir conta na plataforma antes de ser adicionado.",
-        404,
-        "USER_NOT_FOUND"
-      );
-    }
-    targetUserId = u.id;
+  if (!body.userId && body.email) {
+    const email = body.email.toLowerCase().trim();
+    const existing = await prisma.user.findUnique({ where: { email } });
+    const name =
+      (body.name || "").trim() ||
+      existing?.name ||
+      email.split("@")[0]?.replace(/[._-]+/g, " ").trim() ||
+      "Membro";
+    return provisionCompanyUser(
+      { name, email, tenantId, role: body.role },
+      actor
+    );
   }
 
+  let targetUserId = body.userId;
   if (!targetUserId) {
     throw new AppError("Informe o ID ou e-mail do usuário a ser adicionado.", 400, "MISSING_USER");
   }

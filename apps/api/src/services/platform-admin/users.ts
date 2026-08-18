@@ -1,8 +1,17 @@
-import type { Prisma } from "@prisma/client";
+import { randomBytes } from "crypto";
+import type { MemberRole, Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
+import { hashOpaqueToken, hashPassword } from "../security/password";
+import { appPublicUrl, sendMail } from "../security/mail";
 import { testUserEmailFilter } from "./fixtures";
+
+const MEMBER_ROLES: MemberRole[] = ["ADMIN", "SUPERVISOR", "AGENT", "SALES", "READONLY"];
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
 
 export type ListUsersQuery = {
   search?: string;
@@ -20,7 +29,17 @@ export async function getUsersKpis() {
     NOT: testUserEmailFilter(),
   };
 
-  const [totalUsers, activeUsers, superadmins, usersWithMfa, activeMemberships, tenantsWithUsers] =
+  const [
+    totalUsers,
+    activeUsers,
+    superadmins,
+    usersWithMfa,
+    activeMemberships,
+    tenantsWithUsers,
+    platformActive,
+    platformWithMfa,
+    platformActiveSessions,
+  ] =
     await Promise.all([
       prisma.user.count({ where: baseWhere }),
       prisma.user.count({ where: { ...baseWhere, status: "ACTIVE" } }),
@@ -44,6 +63,19 @@ export async function getUsersKpis() {
           },
         },
       }),
+      prisma.user.count({
+        where: { ...baseWhere, platformRole: "SUPERADMIN", status: "ACTIVE" },
+      }),
+      prisma.user.count({
+        where: { ...baseWhere, platformRole: "SUPERADMIN", twoFactorEnabled: true },
+      }),
+      prisma.authSession.count({
+        where: {
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+          user: { platformRole: "SUPERADMIN", NOT: testUserEmailFilter() },
+        },
+      }),
     ]);
 
   return {
@@ -53,6 +85,9 @@ export async function getUsersKpis() {
     usersWithMfa,
     activeMemberships,
     tenantsWithUsers,
+    platformActive,
+    platformWithMfa,
+    platformActiveSessions,
   };
 }
 
@@ -175,6 +210,12 @@ export async function getUserDetail(id: string) {
         lastLoginAt: true,
         createdAt: true,
         updatedAt: true,
+        _count: {
+          select: {
+            authSessions: true,
+            refreshTokens: true,
+          },
+        },
         memberships: {
           select: {
             id: true,
@@ -198,7 +239,225 @@ export async function getUserDetail(id: string) {
     })
   );
 
-  return user;
+  const activeSessions = await prisma.authSession.count({
+    where: { userId: id, revokedAt: null, expiresAt: { gt: new Date() } },
+  });
+
+  return { ...user, activeSessions };
+}
+
+async function sendFirstAccessMail(email: string, userId: string, kind: "company" | "platform") {
+  const raw = randomBytes(32).toString("base64url");
+  await prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash: hashOpaqueToken(raw),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+  const link = `${appPublicUrl()}/login?reset=${encodeURIComponent(raw)}`;
+  const subject =
+    kind === "platform"
+      ? "Acesso de administrador — NexaFlow"
+      : "Defina sua senha — NexaFlow";
+  const text =
+    kind === "platform"
+      ? `Olá,\n\nSua conta de administrador da plataforma NexaFlow foi criada.\nDefina sua senha neste link (válido por 7 dias):\n${link}\n`
+      : `Olá,\n\nVocê foi adicionado a uma empresa no NexaFlow.\nDefina sua senha neste link (válido por 7 dias):\n${link}\n`;
+  await sendMail({ to: email, subject, text, tags: ["admin-user-provision"] });
+}
+
+export async function provisionCompanyUser(
+  input: {
+    name: string;
+    email: string;
+    tenantId: string;
+    role?: MemberRole;
+  },
+  actor: { sub: string; ip?: string }
+) {
+  const email = normalizeEmail(input.email);
+  const name = input.name.trim();
+  const role: MemberRole = input.role && MEMBER_ROLES.includes(input.role) ? input.role : "AGENT";
+  if (name.length < 2) {
+    throw new AppError("Informe o nome completo.", 400, "INVALID_NAME");
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new AppError("E-mail inválido.", 400, "INVALID_EMAIL");
+  }
+
+  const tenant = assertFound(await prisma.tenant.findUnique({ where: { id: input.tenantId } }));
+
+  const result = await prisma.$transaction(async (tx) => {
+    let user = await tx.user.findUnique({ where: { email } });
+    let createdUser = false;
+
+    if (!user) {
+      try {
+        user = await tx.user.create({
+          data: {
+            email,
+            name,
+            passwordHash: await hashPassword(randomBytes(32).toString("base64url") + "Aa1!"),
+            status: "ACTIVE",
+            isActive: true,
+          },
+        });
+        createdUser = true;
+      } catch (err: unknown) {
+        const code = typeof err === "object" && err && "code" in err ? String((err as { code?: string }).code) : "";
+        if (code !== "P2002") throw err;
+        user = await tx.user.findUnique({ where: { email } });
+        if (!user) throw err;
+      }
+      if (createdUser) {
+        await tx.auditLog.create({
+          data: {
+            userId: actor.sub,
+            tenantId: tenant.id,
+            action: "user.created",
+            entity: "user",
+            entityId: user.id,
+            metadata: { email, targetUserId: user.id },
+            ip: actor.ip || null,
+          },
+        });
+      }
+    }
+
+    const existing = await tx.membership.findUnique({
+      where: { tenantId_userId: { tenantId: tenant.id, userId: user.id } },
+    });
+    if (existing) {
+      throw new AppError("Este usuário já faz parte desta empresa.", 409, "MEMBERSHIP_ALREADY_EXISTS");
+    }
+
+    const membership = await tx.membership.create({
+      data: {
+        tenantId: tenant.id,
+        userId: user.id,
+        role,
+        status: "ACTIVE",
+        isActive: true,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actor.sub,
+        tenantId: tenant.id,
+        action: "membership.created",
+        entity: "membership",
+        entityId: membership.id,
+        metadata: { targetUserId: user.id, role, reusedUser: !createdUser },
+        ip: actor.ip || null,
+      },
+    });
+
+    return {
+      user: { id: user.id, email: user.email, name: user.name, status: user.status },
+      membership: { id: membership.id, tenantId: membership.tenantId, role: membership.role },
+      createdUser,
+      reusedUser: !createdUser,
+    };
+  });
+
+  if (result.createdUser) {
+    await sendFirstAccessMail(email, result.user.id, "company").catch(() => null);
+  }
+
+  return result;
+}
+
+export async function provisionPlatformAdmin(
+  input: { name: string; email: string },
+  actor: { sub: string; ip?: string }
+) {
+  const email = normalizeEmail(input.email);
+  const name = input.name.trim();
+  if (name.length < 2) {
+    throw new AppError("Informe o nome completo.", 400, "INVALID_NAME");
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new AppError("E-mail inválido.", 400, "INVALID_EMAIL");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    let user = await tx.user.findUnique({ where: { email } });
+    let createdUser = false;
+    let promoted = false;
+
+    if (!user) {
+      user = await tx.user.create({
+        data: {
+          email,
+          name,
+          passwordHash: await hashPassword(randomBytes(32).toString("base64url") + "Aa1!"),
+          status: "ACTIVE",
+          isActive: true,
+          platformRole: "SUPERADMIN",
+        },
+      });
+      createdUser = true;
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: "user.created",
+          entity: "user",
+          entityId: user.id,
+          metadata: { email, targetUserId: user.id, platformRole: "SUPERADMIN" },
+          ip: actor.ip || null,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: "user.superadmin_granted",
+          entity: "user",
+          entityId: user.id,
+          metadata: { targetUserId: user.id, previousRole: null, nextRole: "SUPERADMIN" },
+          ip: actor.ip || null,
+        },
+      });
+    } else if (user.platformRole === "SUPERADMIN") {
+      throw new AppError("Este usuário já é administrador da plataforma.", 409, "ALREADY_SUPERADMIN");
+    } else {
+      const previous = user.platformRole;
+      user = await tx.user.update({
+        where: { id: user.id },
+        data: { platformRole: "SUPERADMIN" },
+      });
+      promoted = true;
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: "user.superadmin_granted",
+          entity: "user",
+          entityId: user.id,
+          metadata: { targetUserId: user.id, previousRole: previous, nextRole: "SUPERADMIN" },
+          ip: actor.ip || null,
+        },
+      });
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        platformRole: user.platformRole,
+        status: user.status,
+      },
+      createdUser,
+      promoted,
+    };
+  });
+
+  if (result.createdUser) {
+    await sendFirstAccessMail(email, result.user.id, "platform").catch(() => null);
+  }
+
+  return result;
 }
 
 export async function updateUserStatus(

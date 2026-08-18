@@ -45,6 +45,7 @@ import {
   type AdminTone,
 } from "@/components/admin";
 import { ActionMenu } from "@/components/ui-menu";
+import { AddMemberDialog } from "@/features/platform-admin/add-member-dialog";
 
 type Plan = {
   id: string;
@@ -296,6 +297,7 @@ export default function AdminTenantPage() {
     name: string;
     email: string;
   } | null>(null);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
 
   useEffect(() => {
     if (TABS.some((t) => t.id === tabParam)) setTab(tabParam);
@@ -975,6 +977,15 @@ export default function AdminTenantPage() {
           title="Equipe da empresa"
           description="Remover da empresa não exclui a conta do usuário."
           flush={t.members.length > 0}
+          action={
+            <button
+              type="button"
+              className="admin-btn-primary h-8 px-2.5 text-[12px]"
+              onClick={() => setAddMemberOpen(true)}
+            >
+              Adicionar membro
+            </button>
+          }
         >
           {t.members.length === 0 ? (
             <AdminEmptyState title="Nenhum usuário vinculado" />
@@ -2101,6 +2112,13 @@ export default function AdminTenantPage() {
           </FormField>
         </div>
       </Modal>
+
+      <AddMemberDialog
+        open={addMemberOpen}
+        onClose={() => setAddMemberOpen(false)}
+        tenantId={id}
+        tenantName={t.name}
+      />
 
       <Modal
         open={Boolean(memberToRemove)}

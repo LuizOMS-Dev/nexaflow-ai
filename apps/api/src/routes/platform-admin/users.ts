@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { requireRecentAuthentication } from "../../services/security/step-up";
 import {
   listUsers,
   getUsersKpis,
@@ -8,6 +9,8 @@ import {
   revokeUserSessions,
   resetUserMfa,
   updateUserPlatformRole,
+  provisionCompanyUser,
+  provisionPlatformAdmin,
 } from "../../services/platform-admin/users";
 
 export async function adminUsersRoutes(app: FastifyInstance) {
@@ -35,6 +38,41 @@ export async function adminUsersRoutes(app: FastifyInstance) {
 
     return listUsers(query);
   });
+
+  app.post(
+    "/admin/users",
+    {
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request) => {
+      const body = z
+        .discriminatedUnion("kind", [
+          z.object({
+            kind: z.literal("company"),
+            name: z.string().trim().min(2).max(120),
+            email: z.string().email(),
+            tenantId: z.string().cuid(),
+            role: z.enum(["ADMIN", "SUPERVISOR", "AGENT", "SALES", "READONLY"]).optional(),
+          }),
+          z.object({
+            kind: z.literal("platform"),
+            name: z.string().trim().min(2).max(120),
+            email: z.string().email(),
+          }),
+        ])
+        .parse(request.body);
+
+      const actor = { sub: request.user.sub, ip: request.ip };
+      if (body.kind === "company") {
+        return provisionCompanyUser(
+          { name: body.name, email: body.email, tenantId: body.tenantId, role: body.role },
+          actor
+        );
+      }
+      await requireRecentAuthentication(request.user, { action: "grant_superadmin" });
+      return provisionPlatformAdmin({ name: body.name, email: body.email }, actor);
+    }
+  );
 
   app.get("/admin/users/:id", async (request) => {
     const { id } = request.params as { id: string };

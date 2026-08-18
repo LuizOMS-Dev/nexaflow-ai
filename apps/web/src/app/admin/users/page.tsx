@@ -7,6 +7,7 @@ import {
   Ban,
   Building2,
   KeyRound,
+  Plus,
   RefreshCw,
   Shield,
   ShieldOff,
@@ -19,6 +20,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { Modal, useToast } from "@/components/ui";
 import { ActionMenu, Popover } from "@/components/ui-menu";
 import { CriticalActionDialog } from "@/components/admin/critical-action-dialog";
+import { NewUserDialog } from "@/features/platform-admin/new-user-dialog";
 import {
   AdminErrorState,
   AdminFilterBar,
@@ -120,9 +122,106 @@ type UsersKpis = {
   usersWithMfa: number;
   activeMemberships: number;
   tenantsWithUsers: number;
+  platformActive?: number;
+  platformWithMfa?: number;
+  platformActiveSessions?: number;
 };
 
 type TenantOption = { id: string; name: string };
+
+function UserDetailDialog({
+  userId,
+  onClose,
+  onAction,
+}: {
+  userId: string | null;
+  onClose: () => void;
+  onAction: (
+    type: "suspend" | "block" | "reactivate" | "revoke" | "reset-mfa",
+    user: AdminUser
+  ) => void;
+}) {
+  const q = useQuery({
+    queryKey: ["admin-user", userId],
+    queryFn: () => api<AdminUser & { activeSessions?: number }>("/admin/users/" + userId),
+    enabled: Boolean(userId),
+  });
+  const u = q.data;
+  return (
+    <Modal
+      open={Boolean(userId)}
+      onClose={onClose}
+      title="Detalhe do usuário"
+      description="Identidade global, segurança e vínculos com empresas."
+      size="lg"
+    >
+      {q.isLoading || !u ? (
+        <p className="text-[13px] text-gray-500">Carregando…</p>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">Identidade</p>
+            <p className="mt-1 text-[14px] font-medium text-white">{u.name}</p>
+            <p className="text-[12.5px] text-gray-400">{u.email}</p>
+            <p className="mt-1 text-[12px] text-gray-500">
+              Status global: {resolveUserStatus(u).label}
+              {u.platformRole === "SUPERADMIN" ? " · Superadministrador" : ""}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">Segurança</p>
+            <p className="mt-1 text-[12.5px] text-gray-300">
+              MFA {u.twoFactorEnabled ? "ativo" : "não configurado"} · sessões ativas{" "}
+              {u.activeSessions ?? "—"} · último acesso {formatLastAccess(u.lastLoginAt)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" className="admin-btn-secondary h-8 px-2.5 text-[12px]" onClick={() => onAction("revoke", u)}>
+                Encerrar sessões
+              </button>
+              <button
+                type="button"
+                className="admin-btn-secondary h-8 px-2.5 text-[12px]"
+                disabled={!u.twoFactorEnabled}
+                onClick={() => onAction("reset-mfa", u)}
+              >
+                Redefinir MFA
+              </button>
+              {u.status === "ACTIVE" ? (
+                <button type="button" className="admin-btn-secondary h-8 px-2.5 text-[12px]" onClick={() => onAction("suspend", u)}>
+                  Suspender conta globalmente
+                </button>
+              ) : (
+                <button type="button" className="admin-btn-secondary h-8 px-2.5 text-[12px]" onClick={() => onAction("reactivate", u)}>
+                  Reativar conta
+                </button>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-500">Empresas vinculadas</p>
+            {(u.memberships || []).length === 0 ? (
+              <p className="mt-1 text-[12.5px] text-gray-500">Nenhum vínculo com empresa.</p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {(u.memberships || []).map((m) => (
+                  <li key={m.id} className="flex items-center justify-between gap-2 text-[12.5px]">
+                    <span className="truncate text-gray-200">
+                      {m.tenant.name} · {tenantRoleLabel[m.role] || m.role} ·{" "}
+                      {m.isActive ? "acesso ativo" : "suspenso nesta empresa"}
+                    </span>
+                    <Link href={`/admin/tenants/${m.tenant.id}?tab=users`} className="shrink-0 text-violet-300">
+                      Gerenciar
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 export default function AdminUsersPage() {
   const user = useAuth((s) => s.user);
@@ -135,6 +234,8 @@ export default function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [detailUserId, setDetailUserId] = useState<string | null>(null);
   const [pending, setPending] = useState<{
     type: "suspend" | "block" | "reactivate" | "revoke" | "reset-mfa";
     user: AdminUser;
@@ -290,47 +391,44 @@ export default function AdminUsersPage() {
       <AdminPageHeader
         title="Usuários"
         actions={
-          <button
-            type="button"
-            className="admin-btn-secondary h-8 px-2.5 text-[12px]"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            aria-label="Atualizar lista"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            Atualizar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="admin-btn-secondary h-8 px-2.5 text-[12px]"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              aria-label="Atualizar lista"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+              Atualizar
+            </button>
+            <button
+              type="button"
+              className="admin-btn-primary h-8 px-2.5 text-[12px]"
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2} /> Novo usuário
+            </button>
+          </div>
         }
       />
 
-      <MetricGrid cols={3}>
-        <MetricCard
-          label="Usuários únicos"
-          value={metrics.companyUsers}
-          hint={`${metrics.activeCompany} ativos · ${metrics.activeMemberships} vínculos`}
-          icon={<Users className="h-4 w-4" />}
-          tone="brand"
-          compact
-        />
-        <MetricCard
-          label="Empresas com usuários"
-          value={metrics.tenantsWithUsers}
-          icon={<Building2 className="h-4 w-4" />}
-          tone="neutral"
-          compact
-        />
-        <MetricCard
-          label="Superadmins"
-          value={metrics.platformAdmins}
-          hint={`${metrics.mfaOn} com MFA`}
-          icon={<Shield className="h-4 w-4" />}
-          tone={
-            metrics.platformAdmins > 0 && metrics.mfaOn < metrics.platformAdmins
-              ? "warning"
-              : "violet"
-          }
-          compact
-        />
+      <MetricGrid cols={4}>
+        {tab === "companies" ? (
+          <>
+            <MetricCard label="Usuários únicos" value={metrics.companyUsers} icon={<Users className="h-4 w-4" />} tone="brand" compact />
+            <MetricCard label="Usuários ativos" value={metrics.activeCompany} compact />
+            <MetricCard label="Com MFA" value={metrics.mfaOn} compact />
+            <MetricCard label="Memberships ativas" value={metrics.activeMemberships} compact />
+          </>
+        ) : (
+          <>
+            <MetricCard label="Superadmins" value={metrics.platformAdmins} icon={<Shield className="h-4 w-4" />} tone="violet" compact />
+            <MetricCard label="Ativos" value={stats?.platformActive ?? 0} compact />
+            <MetricCard label="Com MFA" value={stats?.platformWithMfa ?? 0} compact />
+            <MetricCard label="Sessões ativas" value={stats?.platformActiveSessions ?? 0} compact />
+          </>
+        )}
       </MetricGrid>
 
       {/* Tabs: membership (tenant) × platformRole (global) */}
@@ -595,6 +693,10 @@ export default function AdminUsersPage() {
                           <ActionMenu
                             aria-label={`Ações para ${u.name}`}
                             items={[
+                              {
+                                label: "Ver detalhes",
+                                onClick: () => setDetailUserId(u.id),
+                              },
                               ...(memberships[0]
                                 ? [
                                     {
@@ -741,6 +843,10 @@ export default function AdminUsersPage() {
                             aria-label={`Segurança de ${u.name}`}
                             items={[
                               {
+                                label: "Ver detalhes",
+                                onClick: () => setDetailUserId(u.id),
+                              },
+                              {
                                 label: "Encerrar sessões",
                                 icon: ShieldOff,
                                 onClick: () => setPending({ type: "revoke", user: u }),
@@ -780,6 +886,14 @@ export default function AdminUsersPage() {
           )}
         </AdminSection>
       )}
+
+      <NewUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+
+      <UserDetailDialog
+        userId={detailUserId}
+        onClose={() => setDetailUserId(null)}
+        onAction={(type, u) => setPending({ type, user: u })}
+      />
 
       <Modal
         open={Boolean(pending) && pending?.type !== "block" && pending?.type !== "reset-mfa"}

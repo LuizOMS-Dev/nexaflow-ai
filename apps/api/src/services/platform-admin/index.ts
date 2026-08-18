@@ -16,6 +16,8 @@ export {
   revokeUserSessions,
   resetUserMfa,
   updateUserPlatformRole,
+  provisionCompanyUser,
+  provisionPlatformAdmin,
   type ListUsersQuery,
 } from "./users";
 export {
