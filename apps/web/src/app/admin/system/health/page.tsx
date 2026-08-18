@@ -6,11 +6,16 @@ import {
   Activity,
   AlertTriangle,
   Database,
+  Layers,
+  Mail,
+  MessageSquare,
+  RefreshCw,
   Server,
+  Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   AdminErrorState,
   AdminPageHeader,
@@ -23,22 +28,34 @@ import {
   type AdminTone,
 } from "@/components/admin";
 
-type Dep = {
+type ServiceItem = {
   id: string;
   name: string;
-  tier: string;
-  status: string;
-  impact: string;
-  detail?: string;
-  /** Present when API probes latency (optional) */
+  criticality?: "CRITICAL" | "OPTIONAL" | string;
+  tier?: "CRITICAL" | "OPTIONAL" | string;
+  status: "operational" | "degraded" | "down" | "not_configured" | string;
+  impact?: string;
+  message?: string | null;
+  detail?: string | null;
   latencyMs?: number | null;
+  checkedAt?: string;
 };
 
-type Health = {
-  overall: string;
-  generatedAt: string;
-  env: string;
-  dependencies: Dep[];
+type HealthResponse = {
+  overall: "operational" | "degraded" | "down" | string;
+  checkedAt?: string;
+  generatedAt?: string;
+  env?: string;
+  summary?: {
+    operational: number;
+    degraded: number;
+    down: number;
+    notConfigured: number;
+    criticalDown: number;
+    total: number;
+  };
+  services?: ServiceItem[];
+  dependencies?: ServiceItem[];
 };
 
 const statusLabel: Record<string, string> = {
@@ -57,39 +74,96 @@ function overallTone(overall?: string): AdminTone {
   return statusToTone(overall);
 }
 
-function depIcon(id: string) {
-  if (id === "postgres" || id === "db") return <Database className="h-4 w-4" />;
-  if (id === "api") return <Server className="h-4 w-4" />;
-  return <Activity className="h-4 w-4" />;
+function getServiceIcon(id: string) {
+  switch (id.toLowerCase()) {
+    case "postgres":
+    case "db":
+    case "database":
+      return <Database className="h-4 w-4" strokeWidth={1.75} />;
+    case "api":
+    case "server":
+      return <Server className="h-4 w-4" strokeWidth={1.75} />;
+    case "redis":
+    case "cache":
+      return <Layers className="h-4 w-4" strokeWidth={1.75} />;
+    case "whatsapp":
+    case "waha":
+    case "evolution":
+      return <MessageSquare className="h-4 w-4" strokeWidth={1.75} />;
+    case "ai":
+    case "groq":
+    case "openai":
+      return <Sparkles className="h-4 w-4" strokeWidth={1.75} />;
+    case "mail":
+    case "email":
+    case "resend":
+    case "smtp":
+      return <Mail className="h-4 w-4" strokeWidth={1.75} />;
+    default:
+      return <Activity className="h-4 w-4" strokeWidth={1.75} />;
+  }
+}
+
+function formatCheckedDate(dateStr?: string): string {
+  if (!dateStr) return "—";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "—";
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "medium",
+    }).format(d);
+  } catch {
+    return "—";
+  }
 }
 
 export default function AdminHealthPage() {
   const user = useAuth((s) => s.user);
+
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["admin-platform-health"],
-    queryFn: () => api<Health>("/admin/platform-health"),
+    queryFn: () => api<HealthResponse>("/admin/platform-health"),
     enabled: user?.platformRole === "SUPERADMIN",
     staleTime: 15_000,
+    refetchInterval: 25_000,
+    refetchIntervalInBackground: false,
   });
 
-  const deps = data?.dependencies || [];
+  const services = useMemo(() => {
+    if (!data) return [];
+    return data.services || data.dependencies || [];
+  }, [data]);
 
   const counts = useMemo(() => {
+    if (data?.summary) {
+      return data.summary;
+    }
     let operational = 0;
     let degraded = 0;
     let down = 0;
     let notConfigured = 0;
     let criticalDown = 0;
-    for (const d of deps) {
-      if (d.status === "operational") operational += 1;
-      else if (d.status === "degraded") degraded += 1;
-      else if (d.status === "down") {
+
+    for (const s of services) {
+      const isCritical = s.criticality === "CRITICAL" || s.tier === "CRITICAL";
+      if (s.status === "operational") operational += 1;
+      else if (s.status === "degraded") degraded += 1;
+      else if (s.status === "down") {
         down += 1;
-        if (d.tier === "CRITICAL") criticalDown += 1;
-      } else if (d.status === "not_configured") notConfigured += 1;
+        if (isCritical) criticalDown += 1;
+      } else if (s.status === "not_configured") notConfigured += 1;
     }
-    return { operational, degraded, down, notConfigured, criticalDown, total: deps.length };
-  }, [deps]);
+
+    return {
+      operational,
+      degraded,
+      down,
+      notConfigured,
+      criticalDown,
+      total: services.length,
+    };
+  }, [data, services]);
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
@@ -100,14 +174,17 @@ export default function AdminHealthPage() {
           <AdminSkeleton className="h-8 w-52" />
           <AdminSkeleton className="h-3 w-80" />
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <AdminSkeleton className="h-[92px] rounded-xl" />
-          <AdminSkeleton className="h-[92px] rounded-xl" />
-          <AdminSkeleton className="h-[92px] rounded-xl" />
+        <div className="grid gap-3 sm:grid-cols-4">
+          <AdminSkeleton className="h-[84px] rounded-xl" />
+          <AdminSkeleton className="h-[84px] rounded-xl" />
+          <AdminSkeleton className="h-[84px] rounded-xl" />
+          <AdminSkeleton className="h-[84px] rounded-xl" />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
-          <AdminSkeleton className="h-28 rounded-xl" />
-          <AdminSkeleton className="h-28 rounded-xl" />
+          <AdminSkeleton className="h-32 rounded-xl" />
+          <AdminSkeleton className="h-32 rounded-xl" />
+          <AdminSkeleton className="h-32 rounded-xl" />
+          <AdminSkeleton className="h-32 rounded-xl" />
         </div>
       </div>
     );
@@ -117,6 +194,7 @@ export default function AdminHealthPage() {
     return (
       <AdminErrorState
         title="Não foi possível carregar a saúde da plataforma"
+        description="Ocorreu um erro ao consultar os serviços de infraestrutura."
         onRetry={() => void refetch()}
       />
     );
@@ -124,49 +202,61 @@ export default function AdminHealthPage() {
 
   const overall = data.overall;
   const tone = overallTone(overall);
+  const checkedAtStr = data.checkedAt || data.generatedAt;
+  const envLabel =
+    data.env === "production"
+      ? "Produção"
+      : data.env === "development"
+      ? "Desenvolvimento"
+      : data.env || "Produção";
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Saúde da plataforma"
-        description={
-          data.generatedAt
-            ? `${data.env || "—"} · ${formatDate(data.generatedAt)}`
-            : "Dependências críticas e opcionais (API)."
-        }
+        description={`${envLabel} · Última verificação: ${formatCheckedDate(checkedAtStr)}`}
         badge={{ label: overallLabel(overall), tone }}
         actions={
           <button
             type="button"
-            className="admin-btn-secondary"
+            className="admin-btn-secondary h-9 px-3.5 text-[13px] inline-flex items-center gap-2"
             onClick={() => void refetch()}
             disabled={isFetching}
           >
-            {isFetching ? "Atualizando…" : "Atualizar"}
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            {isFetching ? "Verificando…" : "Atualizar"}
           </button>
         }
       />
 
-      {/* Alert only when not fully operational — avoid triple overall status */}
+      {/* Alerta contextual condicional para falhas e degradações */}
       {counts.criticalDown > 0 ? (
-        <div className="flex items-start gap-3 rounded-lg border border-red-400/25 bg-red-500/10 px-3.5 py-3 text-[13px] text-red-100">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-          <p>
-            <span className="font-semibold">
+        <div className="flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+          <div>
+            <p className="font-semibold text-rose-100">
               {counts.criticalDown} dependência(s) crítica(s) indisponível(is).
-            </span>{" "}
-            O status geral não pode ser operacional enquanto isso persistir.
-          </p>
+            </p>
+            <p className="mt-0.5 text-[12px] text-rose-300/90">
+              O status geral da plataforma permanecerá indisponível até que as dependências críticas sejam restauradas.
+            </p>
+          </div>
         </div>
       ) : overall === "degraded" ? (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3.5 py-3 text-[13px] text-amber-100">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-          <p>
-            Plataforma em estado <strong>degradado</strong>. Veja os serviços abaixo.
-          </p>
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <div>
+            <p className="font-semibold text-amber-100">
+              Plataforma em estado de operação degradada.
+            </p>
+            <p className="mt-0.5 text-[12px] text-amber-300/90">
+              Algumas dependências estão operando com latência elevada ou limitação parcial.
+            </p>
+          </div>
         </div>
       ) : null}
 
+      {/* Grid de KPIs Padronizado */}
       <MetricGrid cols={4}>
         <MetricCard
           label="Operacionais"
@@ -194,61 +284,90 @@ export default function AdminHealthPage() {
         />
       </MetricGrid>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {deps.map((d) => {
-          const depTone = statusToTone(d.status);
+      {/* Grid dos Serviços em 2 Colunas */}
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        {services.map((s) => {
+          const serviceTone = statusToTone(s.status);
+          const isCritical = s.criticality === "CRITICAL" || s.tier === "CRITICAL";
+          const messageText = s.message || s.detail;
+
           return (
             <div
-              key={d.id}
-              className="admin-metric relative overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.025] p-4 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]"
+              key={s.id}
+              className={cn(
+                "admin-metric relative flex flex-col justify-between overflow-hidden rounded-2xl border p-4 sm:p-4.5 transition-all shadow-sm",
+                "border-line-subtle bg-white text-ink",
+                "dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-100"
+              )}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div
-                    className={
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 " +
-                      (depTone === "success"
-                        ? "bg-emerald-500/15 text-emerald-300 ring-emerald-400/20"
-                        : depTone === "warning"
-                          ? "bg-amber-500/15 text-amber-200 ring-amber-400/20"
-                          : depTone === "danger"
-                            ? "bg-red-500/15 text-red-300 ring-red-400/20"
-                            : "bg-white/[0.05] text-gray-300 ring-white/[0.06]")
-                    }
-                  >
-                    {depIcon(d.id)}
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-colors",
+                        serviceTone === "success"
+                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 ring-emerald-500/20"
+                          : serviceTone === "warning"
+                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-300 ring-amber-500/20"
+                          : serviceTone === "danger"
+                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-300 ring-rose-500/20"
+                          : "bg-black/[0.04] text-gray-600 dark:bg-white/[0.05] dark:text-gray-300 ring-black/[0.06] dark:ring-white/[0.08]"
+                      )}
+                    >
+                      {getServiceIcon(s.id)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[13.5px] font-semibold text-ink dark:text-white truncate">
+                        {s.name}
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] text-ink-muted dark:text-gray-400">
+                        {isCritical ? "Crítico" : "Opcional"}
+                        {s.impact ? ` · ${s.impact}` : ""}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[13.5px] font-semibold text-white">{d.name}</p>
-                    <p className="mt-0.5 text-[11.5px] text-gray-500">
-                      {d.tier === "CRITICAL" ? "Crítico" : "Opcional"} · {d.impact}
-                    </p>
-                  </div>
+
+                  <StatusBadge tone={serviceTone} dot>
+                    {statusLabel[s.status] || s.status}
+                  </StatusBadge>
                 </div>
-                <StatusBadge tone={depTone} dot>
-                  {statusLabel[d.status] || d.status}
-                </StatusBadge>
+
+                {/* Mensagem Contextual e Descritiva */}
+                {messageText ? (
+                  <p
+                    className={cn(
+                      "mt-3 text-[12px] leading-relaxed",
+                      s.status === "degraded"
+                        ? "text-amber-700 dark:text-amber-300/90"
+                        : s.status === "down"
+                        ? "text-rose-700 dark:text-rose-300/90"
+                        : "text-ink-secondary dark:text-gray-400"
+                    )}
+                  >
+                    {messageText}
+                  </p>
+                ) : null}
               </div>
-              {d.latencyMs != null && Number.isFinite(d.latencyMs) ? (
-                <p className="mt-3 text-[12px] tabular-nums text-gray-400">
-                  Latência:{" "}
-                  <span className="font-medium text-gray-300">{d.latencyMs} ms</span>
-                </p>
-              ) : null}
-              {d.detail ? (
-                <p className="mt-2 text-[12px] leading-relaxed text-amber-200/90">
-                  {d.detail}
-                </p>
+
+              {/* Latência quando presente */}
+              {s.latencyMs != null && Number.isFinite(s.latencyMs) ? (
+                <div className="mt-3.5 border-t border-line-soft dark:border-white/[0.05] pt-2 flex items-center justify-between text-[11.5px] tabular-nums text-ink-muted dark:text-gray-500">
+                  <span>Latência de resposta</span>
+                  <span className="font-mono font-medium text-ink-secondary dark:text-gray-300">
+                    {s.latencyMs} ms
+                  </span>
+                </div>
               ) : null}
             </div>
           );
         })}
       </div>
 
-      {deps.length === 0 ? (
+      {services.length === 0 ? (
         <AdminSection>
-          <p className="text-center text-[13px] text-gray-500">
-            Nenhuma dependência reportada pela API.
+          <p className="text-center text-[13px] text-ink-muted dark:text-gray-500 py-6">
+            Nenhum serviço reportado pela API.
           </p>
         </AdminSection>
       ) : null}
