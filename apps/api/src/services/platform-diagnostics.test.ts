@@ -1,12 +1,44 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runSystemDiagnostics } from "./platform-diagnostics";
+import {
+  runSystemDiagnostics,
+  formatAuditAction,
+  formatSecurityEvent,
+  getDiagnosticsOverview,
+} from "./platform-diagnostics";
 
-describe("Platform Diagnostics Service (runSystemDiagnostics)", () => {
+describe("Platform Diagnostics Service & Formatter Engine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("executa varredura de diagnóstico com 7 verificações estruturadas", async () => {
+  it("1. mapeia ações de auditoria para títulos humanos em PT-BR", () => {
+    expect(formatAuditAction("deployment.started")).toBe("Implantação iniciada");
+    expect(formatAuditAction("auth.login")).toBe("Login administrativo realizado");
+    expect(formatAuditAction("admin.plan.create")).toBe("Plano comercial criado");
+    expect(formatAuditAction("admin.cost.create")).toBe("Custo operacional registrado");
+    expect(formatAuditAction("admin.lead.convert")).toBe("Lead comercial convertido em empresa");
+    expect(formatAuditAction("custom.event.name")).toBe("Custom › Event › Name");
+  });
+
+  it("2. mapeia eventos de segurança com severidades precisas", () => {
+    const login = formatSecurityEvent("LOGIN_SUCCESS");
+    expect(login.label).toBe("Login realizado com sucesso");
+    expect(login.severity).toBe("INFO");
+
+    const reuse = formatSecurityEvent("REFRESH_REUSE");
+    expect(reuse.label).toBe("Reutilização indevida de refresh token");
+    expect(reuse.severity).toBe("DANGER");
+
+    const mfaFail = formatSecurityEvent("MFA_VERIFY_FAIL");
+    expect(mfaFail.label).toBe("Falha na validação do código MFA");
+    expect(mfaFail.severity).toBe("WARNING");
+
+    const impersonation = formatSecurityEvent("IMPERSONATION_START");
+    expect(impersonation.label).toBe("Acesso administrativo como empresa iniciado");
+    expect(impersonation.severity).toBe("WARNING");
+  });
+
+  it("3. executa varredura de diagnóstico com 7 verificações estruturadas", async () => {
     const diag = await runSystemDiagnostics();
 
     expect(diag).toHaveProperty("overallStatus");
@@ -38,7 +70,7 @@ describe("Platform Diagnostics Service (runSystemDiagnostics)", () => {
     ).toBe(7);
   });
 
-  it("garante segurança estrita e zero vazamento de secrets nos detalhes", async () => {
+  it("4. garante segurança estrita e zero vazamento de secrets nos detalhes", async () => {
     const diag = await runSystemDiagnostics();
     const stringified = JSON.stringify(diag);
 
@@ -53,7 +85,7 @@ describe("Platform Diagnostics Service (runSystemDiagnostics)", () => {
     expect(stringified).not.toContain("Bearer ");
   });
 
-  it("valida integridade de status e normalização de erros", async () => {
+  it("5. valida integridade de status e normalização de erros", async () => {
     const diag = await runSystemDiagnostics();
 
     for (const check of diag.checks) {
@@ -66,5 +98,19 @@ describe("Platform Diagnostics Service (runSystemDiagnostics)", () => {
       expect(typeof check.summary).toBe("string");
       expect(check.summary.length).toBeGreaterThan(0);
     }
+  });
+
+  it("6. gera telemetria de 24h a partir de dados reais", async () => {
+    const overview = await getDiagnosticsOverview();
+    expect(overview).toHaveProperty("period", "24h");
+    expect(overview).toHaveProperty("generatedAt");
+    expect(overview).toHaveProperty("metrics");
+    expect(typeof overview.metrics.activityEvents).toBe("number");
+    expect(typeof overview.metrics.webhookFailures).toBe("number");
+    expect(typeof overview.metrics.webhookPending).toBe("number");
+    expect(typeof overview.metrics.whatsappChannels).toBe("number");
+    expect(typeof overview.metrics.aiExecutions).toBe("number");
+    expect(typeof overview.metrics.securityEvents).toBe("number");
+    expect(typeof overview.metrics.apiCalls).toBe("number");
   });
 });

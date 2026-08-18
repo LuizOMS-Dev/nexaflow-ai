@@ -10,12 +10,14 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
+  Info,
   Layers,
   Mail,
   MessageSquare,
   Play,
   Radio,
   RefreshCw,
+  Search,
   Server,
   Shield,
   Sparkles,
@@ -101,6 +103,21 @@ type Overview = {
     apiCalls: number;
   };
   generatedAt: string;
+};
+
+type WhatsAppDiag = {
+  gateway: {
+    provider: string;
+    mode: string;
+    configured: boolean;
+  };
+  summary: {
+    totalChannels: number;
+    connected: number;
+    reconnecting: number;
+    disconnected: number;
+  };
+  items: Array<Record<string, unknown>>;
 };
 
 type AiDiag = {
@@ -209,6 +226,12 @@ function severityTone(sev: string): AdminTone {
   return statusToTone(s);
 }
 
+function formatLatency(ms?: number | null): string {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  if (ms <= 1) return "<1 ms";
+  return `${ms} ms`;
+}
+
 function str(v: unknown, fallback = "—"): string {
   if (v == null || v === "") return fallback;
   return String(v);
@@ -219,6 +242,7 @@ export default function AdminDiagnosticsPage() {
   const [tab, setTab] = useState<Tab>("diagnostics");
   const [expandedCheckId, setExpandedCheckId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // 1. Query da Varredura Completa de Diagnóstico
   const diagnosticsQuery = useQuery({
@@ -228,7 +252,7 @@ export default function AdminDiagnosticsPage() {
     staleTime: 60_000,
   });
 
-  // Mutação para re-executar sob demanda
+  // Mutação para re-executar varredura sob demanda
   const runMutation = useMutation({
     mutationFn: () => api<SystemDiagnosticsDTO>("/admin/diagnostics/run", { method: "POST" }),
     onSuccess: () => {
@@ -246,14 +270,15 @@ export default function AdminDiagnosticsPage() {
 
   // 3. Query de Listagem de Logs por Aba
   const listQuery = useQuery({
-    queryKey: ["admin-diag-tab", tab],
+    queryKey: ["admin-diag-tab", tab, searchQuery],
     queryFn: () => {
+      const qParam = searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : "";
       if (tab === "activity")
-        return api<{ items: Array<Record<string, unknown>> }>("/admin/diagnostics/activity?take=40");
+        return api<{ items: Array<Record<string, unknown>> }>(`/admin/diagnostics/activity?take=40${qParam}`);
       if (tab === "webhooks")
         return api<{ items: Array<Record<string, unknown>> }>("/admin/diagnostics/webhooks?take=40");
       if (tab === "whatsapp")
-        return api<{ items: Array<Record<string, unknown>> }>("/admin/diagnostics/whatsapp");
+        return api<WhatsAppDiag>("/admin/diagnostics/whatsapp");
       if (tab === "ai")
         return api<AiDiag>("/admin/diagnostics/ai/usage?take=40");
       if (tab === "api")
@@ -277,11 +302,12 @@ export default function AdminDiagnosticsPage() {
   const isRunning = diagnosticsQuery.isFetching || runMutation.isPending;
 
   const m = overview.data?.metrics;
-  const listItems = listQuery.data?.items || [];
-  const aiData =
-    tab === "ai" && listQuery.data && "summary" in listQuery.data
-      ? (listQuery.data as AiDiag)
-      : null;
+  const listItems =
+    listQuery.data && "items" in listQuery.data
+      ? (listQuery.data as { items: Array<Record<string, unknown>> }).items
+      : [];
+  const waData = tab === "whatsapp" && listQuery.data && "gateway" in listQuery.data ? (listQuery.data as WhatsAppDiag) : null;
+  const aiData = tab === "ai" && listQuery.data && "summary" in listQuery.data ? (listQuery.data as AiDiag) : null;
 
   return (
     <div className="space-y-6">
@@ -330,7 +356,7 @@ export default function AdminDiagnosticsPage() {
             ) : (
               <button
                 type="button"
-                className="admin-btn-secondary h-9 px-3 text-[13px]"
+                className="admin-btn-secondary h-9 px-3 text-[13px] inline-flex items-center gap-1.5"
                 disabled={overview.isFetching || listQuery.isFetching}
                 onClick={() => {
                   if (tab === "overview") void overview.refetch();
@@ -343,7 +369,7 @@ export default function AdminDiagnosticsPage() {
                     (overview.isFetching || listQuery.isFetching) && "animate-spin"
                   )}
                 />
-                {overview.isFetching || listQuery.isFetching ? "Atualizando…" : "Atualizar"}
+                <span>{overview.isFetching || listQuery.isFetching ? "Atualizando…" : "Atualizar"}</span>
               </button>
             )}
           </div>
@@ -430,7 +456,7 @@ export default function AdminDiagnosticsPage() {
               <span>
                 Varredura finalizada em{" "}
                 <span className="font-mono font-medium text-ink-secondary dark:text-gray-300">
-                  {diagData.durationMs} ms
+                  {formatLatency(diagData.durationMs)}
                 </span>
               </span>
               <span>
@@ -510,12 +536,12 @@ export default function AdminDiagnosticsPage() {
                       {/* Rodapé com Latência & Botão para Expandir Detalhes */}
                       <div className="mt-3.5 pt-3 border-t border-line-soft dark:border-white/[0.05] flex items-center justify-between text-[11.5px] text-ink-muted dark:text-gray-400">
                         <div>
-                          {c.latencyMs != null && Number.isFinite(c.latencyMs) ? (
+                          {c.latencyMs != null ? (
                             <span className="tabular-nums font-mono">
-                              Latência: <strong className="text-ink-secondary dark:text-gray-300">{c.latencyMs} ms</strong>
+                              Latência: <strong className="text-ink-secondary dark:text-gray-300">{formatLatency(c.latencyMs)}</strong>
                             </span>
                           ) : (
-                            <span>Verificação em memória</span>
+                            <span>Verificação interna</span>
                           )}
                         </div>
 
@@ -566,59 +592,68 @@ export default function AdminDiagnosticsPage() {
             onRetry={() => void overview.refetch()}
           />
         ) : (
-          <MetricGrid cols={3}>
-            <MetricCard
-              label="Atividade (24h)"
-              value={m?.activityEvents ?? "—"}
-              icon={<Activity className="h-4 w-4" />}
-              tone="brand"
-              compact
-            />
-            <MetricCard
-              label="Webhooks"
-              value={
-                m
-                  ? `${m.webhookFailures ?? 0} falha · ${m.webhookPending ?? 0} pend.`
-                  : "—"
-              }
-              icon={<Webhook className="h-4 w-4" />}
-              tone={
-                (m?.webhookFailures ?? 0) > 0
-                  ? "danger"
-                  : (m?.webhookPending ?? 0) > 0
-                  ? "warning"
-                  : "success"
-              }
-              compact
-            />
-            <MetricCard
-              label="WhatsApp"
-              value={m?.whatsappChannels ?? "—"}
-              icon={<Radio className="h-4 w-4" />}
-              tone="info"
-              compact
-            />
-            <MetricCard
-              label="IA"
-              value={m?.aiExecutions ?? "—"}
-              icon={<Bot className="h-4 w-4" />}
-              tone="violet"
-              compact
-            />
-            <MetricCard
-              label="Segurança"
-              value={m?.securityEvents ?? "—"}
-              icon={<Shield className="h-4 w-4" />}
-              tone={(m?.securityEvents ?? 0) > 0 ? "warning" : "neutral"}
-              compact
-            />
-            <MetricCard
-              label="API"
-              value={m?.apiCalls ?? "—"}
-              icon={<Activity className="h-4 w-4" />}
-              compact
-            />
-          </MetricGrid>
+          <div className="space-y-6">
+            <MetricGrid cols={3}>
+              <MetricCard
+                label="Atividade (24h)"
+                value={m?.activityEvents ?? 0}
+                icon={<Activity className="h-4 w-4" />}
+                tone="brand"
+                compact
+              />
+              <MetricCard
+                label="Webhooks (Falhas / Pendentes)"
+                value={
+                  m
+                    ? `${m.webhookFailures ?? 0} falhas · ${m.webhookPending ?? 0} pend.`
+                    : "—"
+                }
+                icon={<Webhook className="h-4 w-4" />}
+                tone={
+                  (m?.webhookFailures ?? 0) > 0
+                    ? "danger"
+                    : (m?.webhookPending ?? 0) > 0
+                    ? "warning"
+                    : "success"
+                }
+                compact
+              />
+              <MetricCard
+                label="WhatsApp (Canais ativos)"
+                value={m?.whatsappChannels ?? 0}
+                icon={<Radio className="h-4 w-4" />}
+                tone="info"
+                compact
+              />
+              <MetricCard
+                label="IA (Execuções 24h)"
+                value={m?.aiExecutions ?? 0}
+                icon={<Bot className="h-4 w-4" />}
+                tone="violet"
+                compact
+              />
+              <MetricCard
+                label="Segurança (Eventos 24h)"
+                value={m?.securityEvents ?? 0}
+                icon={<Shield className="h-4 w-4" />}
+                tone={(m?.securityEvents ?? 0) > 0 ? "warning" : "neutral"}
+                compact
+              />
+              <MetricCard
+                label="API (Chamadas registradas)"
+                value={m?.apiCalls ?? 0}
+                icon={<Activity className="h-4 w-4" />}
+                compact
+              />
+            </MetricGrid>
+
+            <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-4 text-[12.5px] text-ink-muted dark:text-gray-400 flex items-start gap-2.5">
+              <Info className="h-4 w-4 text-brand-600 dark:text-violet-400 shrink-0 mt-0.5" />
+              <span>
+                As métricas acima agregam o volume de operações registradas nas últimas 24 horas a partir dos registros de auditoria, entregas de webhooks, canais e chamadas de API.
+              </span>
+            </div>
+          </div>
         )
       ) : listQuery.isLoading ? (
         <div className="space-y-3" aria-busy="true">
@@ -632,12 +667,49 @@ export default function AdminDiagnosticsPage() {
         />
       ) : (
         <div className="space-y-4">
+          {/* VISUALIZAÇÃO WHATSAPP */}
+          {waData ? (
+            <div className="space-y-4">
+              <MetricGrid cols={4}>
+                <MetricCard
+                  label="Total de canais"
+                  value={waData.summary.totalChannels}
+                  compact
+                />
+                <MetricCard
+                  label="Conectados"
+                  value={waData.summary.connected}
+                  tone="success"
+                  compact
+                />
+                <MetricCard
+                  label="Reconectando"
+                  value={waData.summary.reconnecting}
+                  tone="warning"
+                  compact
+                />
+                <MetricCard
+                  label="Desconectados"
+                  value={waData.summary.disconnected}
+                  tone={waData.summary.disconnected > 0 ? "neutral" : "success"}
+                  compact
+                />
+              </MetricGrid>
+
+              <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-4 text-[12.5px] text-ink-muted dark:text-gray-400">
+                <span className="font-semibold text-ink dark:text-gray-200">Gateway Global: </span>
+                <span>Provedor {waData.gateway.provider.toUpperCase()} ({waData.gateway.mode === "embedded" ? "Embutido" : "Externo"}) · Status de conexão isolado das sessões individuais de empresas.</span>
+              </div>
+            </div>
+          ) : null}
+
+          {/* VISUALIZAÇÃO IA & MODELOS */}
           {aiData ? (
             <div className="space-y-4">
               <MetricGrid cols={4}>
                 <MetricCard
                   label="Chamadas (24h)"
-                  value={aiData.summary?.calls ?? "—"}
+                  value={aiData.summary?.calls ?? 0}
                   tone="violet"
                   compact
                 />
@@ -646,34 +718,34 @@ export default function AdminDiagnosticsPage() {
                   value={
                     aiData.summary?.tokensTotal != null
                       ? aiData.summary.tokensTotal.toLocaleString("pt-BR")
-                      : "—"
+                      : "0"
                   }
                   compact
                 />
                 <MetricCard
                   label="Créditos (24h)"
-                  value={aiData.summary?.credits ?? "—"}
+                  value={aiData.summary?.credits ?? 0}
                   compact
                 />
                 <MetricCard
                   label="Falhas (1h)"
-                  value={aiData.summary?.failuresLast1h ?? "—"}
+                  value={aiData.summary?.failuresLast1h ?? 0}
                   tone={(aiData.summary?.failuresLast1h ?? 0) > 0 ? "danger" : "success"}
                   icon={<AlertTriangle className="h-4 w-4" />}
                   compact
                 />
               </MetricGrid>
 
-              {aiData.groqLive ? (
+              {aiData.groqLive?.configured ? (
                 <AdminSection
                   title="Groq ao vivo"
-                  description="Probe sem expor a chave de API"
+                  description="Probe de integridade sem expor a chave de API"
                   action={
                     <StatusBadge
                       tone={aiData.groqLive.ok ? "success" : "warning"}
                       dot
                     >
-                      {aiData.groqLive.ok ? "OK" : "Falha / ausente"}
+                      {aiData.groqLive.ok ? "OK" : "Aviso"}
                     </StatusBadge>
                   }
                 >
@@ -683,104 +755,54 @@ export default function AdminDiagnosticsPage() {
                   <p className="mt-1 text-[12px] text-ink-muted dark:text-gray-500">
                     Modelo: {aiData.groqLive.model || "—"}
                     {aiData.groqLive.latencyMs != null
-                      ? ` · ${aiData.groqLive.latencyMs} ms`
+                      ? ` · ${formatLatency(aiData.groqLive.latencyMs)}`
                       : ""}
                   </p>
-                  {aiData.groqLive.limits ? (
-                    <div className="admin-table-wrap mt-3 overflow-x-auto">
-                      <table className="admin-table w-full min-w-[480px] border-collapse text-left text-[12.5px]">
-                        <thead>
-                          <tr className="border-b border-line-soft dark:border-white/[0.06]">
-                            <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                              Limite
-                            </th>
-                            <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                              Valor
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(aiData.groqLive.limits).map(([k, v]) => (
-                            <tr
-                              key={k}
-                              className="border-b border-line-soft dark:border-white/[0.04] last:border-0"
-                            >
-                              <td className="px-3 py-1.5 font-mono text-[11px] text-ink-muted dark:text-gray-400">
-                                {k}
-                              </td>
-                              <td className="px-3 py-1.5 tabular-nums text-ink dark:text-gray-300">
-                                {v ?? "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </AdminSection>
-              ) : null}
-
-              {aiData.byModel?.length ? (
-                <AdminSection title="Por modelo (24h)" flush>
-                  <div className="admin-table-wrap overflow-x-auto">
-                    <table className="admin-table w-full min-w-[520px] border-collapse text-left text-[12.5px]">
-                      <thead>
-                        <tr className="border-b border-line-soft dark:border-white/[0.06]">
-                          <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                            Provider / modelo
-                          </th>
-                          <th className="px-4 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                            Calls
-                          </th>
-                          <th className="px-4 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                            In
-                          </th>
-                          <th className="px-4 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                            Out
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {aiData.byModel.map((row, i) => (
-                          <tr
-                            key={`${String(row.provider)}-${String(row.model)}-${i}`}
-                            className="border-b border-line-soft dark:border-white/[0.04] last:border-0"
-                          >
-                            <td className="px-4 py-2 font-medium text-ink dark:text-white/90">
-                              {str(row.provider)}/{str(row.model)}
-                            </td>
-                            <td className="px-4 py-2 text-right tabular-nums text-ink-muted dark:text-gray-400">
-                              {str(row.calls)}
-                            </td>
-                            <td className="px-4 py-2 text-right tabular-nums text-ink-muted dark:text-gray-400">
-                              {str(row.tokensIn)}
-                            </td>
-                            <td className="px-4 py-2 text-right tabular-nums text-ink-muted dark:text-gray-400">
-                              {str(row.tokensOut)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
                 </AdminSection>
               ) : null}
             </div>
           ) : null}
 
+          {/* BARRA DE PESQUISA (NA ABA ATIVIDADE) */}
+          {tab === "activity" ? (
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-ink-muted dark:text-gray-500" />
+              <input
+                type="text"
+                placeholder="Filtrar por evento ou entidade…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="admin-input pl-9 h-9 text-[12.5px] w-full"
+              />
+            </div>
+          ) : null}
+
+          {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO */}
           {!listItems.length ? (
-            <AdminSection>
+            <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-8 text-center">
               <AdminEmptyState
                 compact
-                title="Sem eventos neste período"
-                description="Nada a reportar nesta aba."
+                title="Sem eventos registrados neste período"
+                description="Nenhum evento recente disponível nesta categoria."
               />
-            </AdminSection>
+            </div>
           ) : (
-            <div className="grid gap-3 lg:grid-cols-[1fr_minmax(260px,340px)]">
+            <div className="grid gap-3 lg:grid-cols-[1fr_minmax(280px,360px)]">
               <AdminSection
-                title="Eventos"
-                description={`${listItems.length} registro(s)`}
+                title={
+                  tab === "activity"
+                    ? "Registros de Atividade"
+                    : tab === "security"
+                    ? "Eventos de Segurança"
+                    : tab === "webhooks"
+                    ? "Entregas de Webhook"
+                    : tab === "whatsapp"
+                    ? "Canais Conectados"
+                    : tab === "api"
+                    ? "Requisições de API"
+                    : "Eventos"
+                }
+                description={`${listItems.length} registro(s) listado(s)`}
                 flush
               >
                 <div className="admin-table-wrap overflow-x-auto">
@@ -791,10 +813,10 @@ export default function AdminDiagnosticsPage() {
                           Sev.
                         </th>
                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                          Mensagem
+                          Evento / Mensagem
                         </th>
                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                          Tenant
+                          Escopo / Origem
                         </th>
                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
                           Quando
@@ -805,9 +827,12 @@ export default function AdminDiagnosticsPage() {
                       {listItems.map((row, idx) => {
                         const id = str(row.id, `row-${idx}`);
                         const sev = str(row.severity, "INFO");
-                        const title = str(row.message || row.event || id);
+                        const title = str(row.eventLabel || row.message || row.event || id);
+                        const subCode = row.event && row.event !== title ? String(row.event) : null;
                         const ts = row.timestamp || row.updatedAt || row.createdAt;
                         const selected = safeDetail && str(safeDetail.id) === id;
+                        const scope = row.tenantName ? str(row.tenantName) : row.userName ? str(row.userName) : "Sistema Global";
+
                         return (
                           <tr
                             key={id}
@@ -822,12 +847,17 @@ export default function AdminDiagnosticsPage() {
                               <StatusBadge tone={severityTone(sev)}>{sev}</StatusBadge>
                             </td>
                             <td className="max-w-[280px] px-3 py-2 align-middle">
-                              <p className="line-clamp-2 font-medium text-ink dark:text-white/90">
+                              <p className="line-clamp-1 font-medium text-ink dark:text-white/90">
                                 {title}
                               </p>
+                              {subCode ? (
+                                <p className="font-mono text-[10.5px] text-ink-muted dark:text-gray-500 truncate">
+                                  {subCode}
+                                </p>
+                              ) : null}
                             </td>
                             <td className="px-3 py-2 align-middle text-ink-muted dark:text-gray-500">
-                              {row.tenantName ? str(row.tenantName) : "—"}
+                              {scope}
                             </td>
                             <td className="px-3 py-2 align-middle tabular-nums text-ink-muted dark:text-gray-500">
                               {ts ? formatDate(String(ts)) : "—"}
@@ -840,6 +870,7 @@ export default function AdminDiagnosticsPage() {
                 </div>
               </AdminSection>
 
+              {/* PAINEL LATERAL DE DETALHE SANITIZADO */}
               <aside className="admin-section h-fit overflow-hidden rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02]">
                 <div className="border-b border-line-soft dark:border-white/[0.06] px-4 py-3">
                   <h2 className="text-[13px] font-semibold text-ink dark:text-white/90">
@@ -852,8 +883,8 @@ export default function AdminDiagnosticsPage() {
                       {JSON.stringify(safeDetail, null, 2)}
                     </pre>
                   ) : (
-                    <p className="text-[12.5px] text-ink-muted dark:text-gray-500 py-4 text-center">
-                      Selecione um evento na tabela para inspecionar.
+                    <p className="text-[12.5px] text-ink-muted dark:text-gray-500 py-6 text-center">
+                      Selecione um registro na tabela para inspecionar os detalhes técnicos sanitizados.
                     </p>
                   )}
                 </div>

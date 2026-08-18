@@ -52,6 +52,75 @@ export async function getDiagnosticsOverview() {
   };
 }
 
+const AUDIT_ACTION_MAP: Record<string, string> = {
+  "deployment.started": "Implantação iniciada",
+  "deployment.success": "Implantação concluída com sucesso",
+  "deployment.failed": "Falha na implantação",
+  "deployment.rollback": "Reversão de implantação acionada",
+  "deployment.logs_cleared": "Histórico de implantações limpo",
+  "github_updates.cleared": "Histórico recente do GitHub limpo",
+  "auth.login": "Login administrativo realizado",
+  "auth.logout": "Logout efetuado",
+  "auth.mfa_enabled": "Autenticação de dois fatores ativada",
+  "auth.mfa_disabled": "Autenticação de dois fatores desativada",
+  "admin.plan.create": "Plano comercial criado",
+  "admin.plan.update": "Plano comercial atualizado",
+  "admin.plan.duplicate": "Plano comercial duplicado",
+  "admin.plan.archive": "Plano comercial arquivado",
+  "admin.cost.create": "Custo operacional registrado",
+  "admin.cost.update": "Custo operacional atualizado",
+  "admin.cost.delete": "Custo operacional removido",
+  "admin.subscription.update": "Assinatura de empresa atualizada",
+  "admin.release.create": "Versão do sistema publicada",
+  "admin.release.update": "Versão do sistema atualizada",
+  "admin.lead.convert": "Lead comercial convertido em empresa",
+  "admin.lead.status_change": "Status do lead comercial atualizado",
+  "admin.lead.update": "Dados do lead comercial atualizados",
+  "admin.audit.cleared": "Histórico de auditoria limpo",
+};
+
+export function formatAuditAction(action: string): string {
+  if (AUDIT_ACTION_MAP[action]) return AUDIT_ACTION_MAP[action];
+  if (action.includes(".")) {
+    return action
+      .split(".")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" › ");
+  }
+  return action;
+}
+
+const SECURITY_EVENT_MAP: Record<string, { label: string; severity: "INFO" | "WARNING" | "DANGER" }> = {
+  LOGIN_SUCCESS: { label: "Login realizado com sucesso", severity: "INFO" },
+  LOGIN_FAILURE: { label: "Falha na tentativa de login", severity: "WARNING" },
+  LOGOUT: { label: "Sessão encerrada", severity: "INFO" },
+  MFA_CHALLENGE_ISSUED: { label: "Desafio MFA emitido", severity: "INFO" },
+  MFA_VERIFY_SUCCESS: { label: "MFA validado com sucesso", severity: "INFO" },
+  MFA_VERIFY_FAIL: { label: "Falha na validação do código MFA", severity: "WARNING" },
+  MFA_DISABLED: { label: "Autenticação de dois fatores desativada", severity: "WARNING" },
+  REFRESH_REUSE: { label: "Reutilização indevida de refresh token", severity: "DANGER" },
+  TOKEN_REVOKED: { label: "Token de autenticação revogado", severity: "INFO" },
+  IMPERSONATION_START: { label: "Acesso administrativo como empresa iniciado", severity: "WARNING" },
+  IMPERSONATION_END: { label: "Acesso como empresa finalizado", severity: "INFO" },
+  PASSWORD_RESET_REQUEST: { label: "Solicitação de redefinição de senha", severity: "INFO" },
+  PASSWORD_RESET_SUCCESS: { label: "Senha redefinida com sucesso", severity: "INFO" },
+  ACCOUNT_LOCKED: { label: "Conta bloqueada preventivamente", severity: "DANGER" },
+  SUSPICIOUS_IP: { label: "Origem ou IP suspeito detectado", severity: "WARNING" },
+  RATE_LIMIT_EXCEEDED: { label: "Limite de requisições excedido", severity: "WARNING" },
+  CSRF_VIOLATION: { label: "Violação de segurança CSRF detectada", severity: "DANGER" },
+  UNAUTHORIZED_ADMIN_ACCESS: { label: "Tentativa de acesso administrativo não autorizado", severity: "DANGER" },
+};
+
+export function formatSecurityEvent(eventType: string): { label: string; severity: "INFO" | "WARNING" | "DANGER" } {
+  if (SECURITY_EVENT_MAP[eventType]) return SECURITY_EVENT_MAP[eventType];
+  const isDanger = /DANGER|CRITICAL|BREACH|ATTACK|INJECT|REUSE|VIOLATION|LOCKED/i.test(eventType);
+  const isWarn = /WARN|FAIL|BLOCK|SUSPICIOUS|LIMIT|UNAUTHORIZED/i.test(eventType);
+  return {
+    label: eventType.replace(/_/g, " "),
+    severity: isDanger ? "DANGER" : isWarn ? "WARNING" : "INFO",
+  };
+}
+
 export async function getDiagnosticActivity(params: {
   take?: number;
   cursor?: string;
@@ -88,7 +157,8 @@ export async function getDiagnosticActivity(params: {
       severity: "INFO" as const,
       module: "audit",
       event: l.action,
-      message: l.action,
+      eventLabel: formatAuditAction(l.action),
+      message: formatAuditAction(l.action),
       tenantId: l.tenantId,
       tenantName: l.tenant?.name ?? null,
       userId: l.userId,
@@ -129,7 +199,6 @@ export async function getDiagnosticWebhooks(params: { take?: number; tenantId?: 
       attempts: d.attempts,
       durationMs: d.durationMs,
       endpointName: d.endpoint?.name ?? null,
-      // nunca URL completa com secrets de query
       endpointHint: d.endpoint?.url
         ? redactString(d.endpoint.url.replace(/\?.*$/, ""), 80)
         : null,
@@ -138,6 +207,9 @@ export async function getDiagnosticWebhooks(params: { take?: number; tenantId?: 
 }
 
 export async function getDiagnosticWhatsApp() {
+  const { env, isWaGatewayReady } = await import("../lib/env");
+  const provider = env.waGatewayProvider || "baileys";
+
   const channels = await prisma.channel.findMany({
     where: { type: "WHATSAPP" },
     orderBy: { updatedAt: "desc" },
@@ -154,7 +226,6 @@ export async function getDiagnosticWhatsApp() {
     },
   });
 
-  // Status canônico por canal (sem vazar sessão/credenciais)
   const { mapRuntimeToCanonical, asConfigSafe } = await import("./whatsapp/connection-status").then(
     async () => {
       const cs = await import("./whatsapp/connection-status");
@@ -166,43 +237,65 @@ export async function getDiagnosticWhatsApp() {
     }
   );
 
+  let connectedCount = 0;
+  let reconnectingCount = 0;
+  let disconnectedCount = 0;
+
+  const items = channels.map((c) => {
+    const cfg = asConfigSafe(c.config);
+    const lastError =
+      cfg && typeof cfg === "object" && "lastError" in cfg
+        ? String((cfg as { lastError?: string }).lastError || "")
+        : null;
+    const runtimeState =
+      cfg && typeof cfg === "object" && "status" in cfg
+        ? String((cfg as { status?: string }).status || "")
+        : null;
+    const status = mapRuntimeToCanonical({
+      hasChannel: true,
+      runtimeState,
+      lastError,
+      liveOpen: false,
+    });
+
+    if (status === "CONNECTED") connectedCount++;
+    else if (status === "CONNECTING" || status === "RECONNECTING") reconnectingCount++;
+    else disconnectedCount++;
+
+    return {
+      id: c.id,
+      tenantId: c.tenantId,
+      tenantName: c.tenant?.name ?? null,
+      name: c.name,
+      instanceHint: c.externalId ? String(c.externalId).slice(0, 24) : null,
+      status,
+      isActive: c.isActive,
+      updatedAt: c.updatedAt,
+      lastError: lastError ? redactString(lastError, 160) : null,
+      severity:
+        status === "CONNECTED"
+          ? ("INFO" as const)
+          : status === "RECONNECTING" || status === "CONNECTING"
+            ? ("WARNING" as const)
+            : status === "NOT_CONFIGURED"
+              ? ("INFO" as const)
+              : ("ERROR" as const),
+    };
+  });
+
   return {
-    items: channels.map((c) => {
-      const cfg = asConfigSafe(c.config);
-      const lastError =
-        cfg && typeof cfg === "object" && "lastError" in cfg
-          ? String((cfg as { lastError?: string }).lastError || "")
-          : null;
-      const runtimeState =
-        cfg && typeof cfg === "object" && "status" in cfg
-          ? String((cfg as { status?: string }).status || "")
-          : null;
-      const status = mapRuntimeToCanonical({
-        hasChannel: true,
-        runtimeState,
-        lastError,
-        liveOpen: false,
-      });
-      return {
-        id: c.id,
-        tenantId: c.tenantId,
-        tenantName: c.tenant?.name ?? null,
-        name: c.name,
-        instanceHint: c.externalId ? String(c.externalId).slice(0, 24) : null,
-        status,
-        isActive: c.isActive,
-        updatedAt: c.updatedAt,
-        lastError: lastError ? redactString(lastError, 160) : null,
-        severity:
-          status === "CONNECTED"
-            ? ("INFO" as const)
-            : status === "RECONNECTING" || status === "CONNECTING"
-              ? ("WARNING" as const)
-              : status === "NOT_CONFIGURED"
-                ? ("INFO" as const)
-                : ("ERROR" as const),
-      };
-    }),
+    gateway: {
+      provider,
+      mode: provider === "baileys" || provider === "simulated" ? "embedded" : "external",
+      configured: isWaGatewayReady(),
+    },
+    summary: {
+      totalChannels: channels.length,
+      connected: connectedCount,
+      reconnecting: reconnectingCount,
+      disconnected: disconnectedCount,
+    },
+    items,
   };
 }
 
@@ -433,20 +526,23 @@ export async function getDiagnosticSecurity(params: { take?: number }) {
   });
 
   return {
-    items: items.map((e) => ({
-      id: e.id,
-      timestamp: e.createdAt,
-      severity:
-        /BLOCK|FAIL|ATTACK|INJECT/i.test(e.type) ? ("WARNING" as const) : ("INFO" as const),
-      module: "security",
-      event: e.type,
-      message: e.type,
-      tenantId: e.tenantId,
-      userId: e.userId,
-      userName: e.user?.name ?? null,
-      ip: e.ip,
-      metadata: redactMetadata(e.metadata),
-    })),
+    items: items.map((e) => {
+      const formatted = formatSecurityEvent(e.type);
+      return {
+        id: e.id,
+        timestamp: e.createdAt,
+        severity: formatted.severity,
+        module: "security",
+        event: e.type,
+        eventLabel: formatted.label,
+        message: formatted.label,
+        tenantId: e.tenantId,
+        userId: e.userId,
+        userName: e.user?.name ?? null,
+        ip: e.ip,
+        metadata: redactMetadata(e.metadata),
+      };
+    }),
   };
 }
 
@@ -511,7 +607,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
       const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
       const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
       const rssMb = Math.round(mem.rss / 1024 / 1024);
-      const latencyMs = Math.round(performance.now() - t0);
+      const latencyMs = Math.max(1, Math.round(performance.now() - t0));
       const uptimeSec = Math.floor(process.uptime());
 
       const isHighMem = heapUsedMb > 700;
@@ -543,7 +639,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
       const t0 = performance.now();
       try {
         await prisma.$queryRaw`SELECT 1`;
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
         const isSlow = latencyMs > 500;
 
         return {
@@ -566,7 +662,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           recommendation: isSlow ? "Verifique gargalos de rede ou concorrência no pool de conexões do banco." : null,
         };
       } catch (err) {
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
         return {
           id: "database_postgres",
           group: "database",
@@ -622,14 +718,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
               mode: "redis",
               connected: false,
             },
-            latencyMs: Math.round(performance.now() - t0),
+            latencyMs: Math.max(1, Math.round(performance.now() - t0)),
             checkedAt,
             recommendation: "Verifique a variável REDIS_URL e a conectividade com a porta do Redis.",
           };
         }
 
         const pong = await redis.ping();
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
         const isSlow = latencyMs > 250;
 
         return {
@@ -651,7 +747,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           recommendation: isSlow ? "Verifique latência de rede entre a aplicação e o Redis." : null,
         };
       } catch (err) {
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
         return {
           id: "cache_redis",
           group: "cache",
@@ -725,7 +821,8 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           headers: env.waGatewayApiKey ? { apikey: env.waGatewayApiKey } : {},
         }).finally(() => clearTimeout(timer));
 
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
+        const isAuthError = res.status === 401 || res.status === 403;
 
         return {
           id: "whatsapp_gateway",
@@ -735,18 +832,25 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           status: res.ok ? "OK" : "WARNING",
           summary: res.ok
             ? `Gateway ${provider.toUpperCase()} conectado e respondendo (${latencyMs}ms).`
+            : isAuthError
+            ? "O Gateway WhatsApp respondeu, mas recusou a autenticação configurada (HTTP 401)."
             : `Gateway ${provider.toUpperCase()} retornou status HTTP ${res.status}.`,
           details: {
             provider,
             statusCode: res.status,
             latencyMs,
+            authFailed: isAuthError,
           },
           latencyMs,
           checkedAt,
-          recommendation: !res.ok ? "Verifique os logs do servidor de WhatsApp Gateway." : null,
+          recommendation: isAuthError
+            ? "Verifique a variável WA_GATEWAY_API_KEY ou as permissões de API no servidor do gateway WhatsApp."
+            : !res.ok
+            ? "Verifique os logs do servidor de WhatsApp Gateway."
+            : null,
         };
       } catch {
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
         return {
           id: "whatsapp_gateway",
           group: "communications",
@@ -836,7 +940,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "E-mail & Entregas",
           title: "Serviço de E-mail",
           status: "NOT_CONFIGURED",
-          summary: "Modo local ativo: mensagens são registradas internamente sem envio externo.",
+          summary: "Modo local: Mensagens são registradas internamente, sem entrega externa.",
           details: {
             provider: "log",
             canSend: false,
@@ -884,19 +988,28 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
         const ghResult = ghTest.status === "fulfilled" ? ghTest.value : { state: "UNAVAILABLE", success: false };
         const epResult = epTest.status === "fulfilled" ? epTest.value : { state: "UNAVAILABLE", success: false };
 
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
 
-        const hasAnyFailure = ghResult.state === "AUTH_FAILED" || epResult.state === "AUTH_FAILED";
-        const allConfiguredAndOk = ghResult.state === "CONNECTED" && epResult.state === "CONNECTED";
+        const ghConnected = ghResult.state === "CONNECTED";
+        const epConnected = epResult.state === "CONNECTED";
         const isNotConfigured = ghResult.state === "NOT_CONFIGURED" && epResult.state === "NOT_CONFIGURED";
+        const hasAnyFailure = ghResult.state === "AUTH_FAILED" || epResult.state === "AUTH_FAILED";
 
         const status: DiagnosticCheckStatus = isNotConfigured
           ? "NOT_CONFIGURED"
           : hasAnyFailure
           ? "FAILURE"
-          : allConfiguredAndOk
+          : (ghConnected && epConnected)
           ? "OK"
           : "WARNING";
+
+        const summary = isNotConfigured
+          ? "Credenciais de deploy (GitHub / EasyPanel) não configuradas."
+          : (ghConnected && epConnected)
+          ? `Integrações de deploy conectadas com sucesso (${latencyMs}ms).`
+          : hasAnyFailure
+          ? "Falha de autenticação em uma ou mais integrações de deploy."
+          : "Integrações de deploy operando com configuração parcial ou avisos.";
 
         return {
           id: "deploy_integrations",
@@ -904,14 +1017,18 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "Deploy & DevOps",
           title: "Integrações GitHub & EasyPanel",
           status,
-          summary: isNotConfigured
-            ? "Credenciais de deploy (GitHub / EasyPanel) não configuradas."
-            : allConfiguredAndOk
-            ? `Integrações de deploy conectadas com sucesso (${latencyMs}ms).`
-            : "Integrações de deploy operando com avisos ou configuração parcial.",
+          summary,
           details: {
-            githubState: ghResult.state,
-            easypanelState: epResult.state,
+            github: {
+              state: ghResult.state,
+              connected: ghConnected,
+              label: ghConnected ? "Operacional" : ghResult.state === "AUTH_FAILED" ? "Falha de autenticação" : ghResult.state === "NOT_CONFIGURED" ? "Não configurado" : "Indisponível",
+            },
+            easypanel: {
+              state: epResult.state,
+              connected: epConnected,
+              label: epConnected ? "Operacional" : epResult.state === "AUTH_FAILED" ? "Falha de autenticação" : epResult.state === "NOT_CONFIGURED" ? "Não configurado" : "Indisponível",
+            },
             latencyMs,
           },
           latencyMs,
@@ -919,7 +1036,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           recommendation: hasAnyFailure ? "Verifique tokens de autenticação do GitHub e EasyPanel em /admin/deploy." : null,
         };
       } catch {
-        const latencyMs = Math.round(performance.now() - t0);
+        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
         return {
           id: "deploy_integrations",
           group: "integrations",
