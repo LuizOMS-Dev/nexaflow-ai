@@ -50,7 +50,7 @@ O volume do PostgreSQL pertence ao serviço separado `postgres-main`, não ao Co
 O entrypoint da API roda `prisma migrate deploy` em todo boot.  
 Não usa `db push`. Seed automático fica desligado (`RUN_SEED_ON_BOOT=0`).
 
-Banco existente: restaure o dump no serviço `postgres-main` **antes** de apontar tráfego, com a API parada; depois reinicie o Compose. O volume do serviço PostgreSQL sobrevive a rebuilds do NexaFlow.
+Banco de produção: serviço nativo `postgres-main`, limpo. O boot aplica `prisma migrate deploy`. O volume do PostgreSQL sobrevive a rebuilds do Compose.
 
 ## Variáveis
 

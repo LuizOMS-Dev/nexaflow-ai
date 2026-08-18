@@ -45,7 +45,11 @@ services:
       - waha_sessions:/app/.sessions
       - waha_media:/tmp/whatsapp-files
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/server/status"]
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
       interval: 20s
       timeout: 5s
       retries: 8
