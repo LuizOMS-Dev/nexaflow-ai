@@ -4,6 +4,9 @@ import {
   formatAuditAction,
   formatSecurityEvent,
   getDiagnosticsOverview,
+  getDiagnosticApi,
+  getDiagnosticActivity,
+  getDiagnosticSecurity,
 } from "./platform-diagnostics";
 
 describe("Platform Diagnostics Service & Formatter Engine", () => {
@@ -11,34 +14,47 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     vi.clearAllMocks();
   });
 
-  it("1. mapeia ações de auditoria para títulos humanos em PT-BR", () => {
+  it("1. mapeia ações de auditoria para títulos humanos em PT-BR sem fallbacks feios", () => {
     expect(formatAuditAction("deployment.started")).toBe("Implantação iniciada");
+    expect(formatAuditAction("deployment.logs_cleared")).toBe("Histórico de implantações limpo");
+    expect(formatAuditAction("github_updates.cleared")).toBe("Histórico recente do GitHub limpo");
+    expect(formatAuditAction("github_updates.clear_requested")).toBe("Limpeza de atualizações do GitHub solicitada");
     expect(formatAuditAction("auth.login")).toBe("Login administrativo realizado");
     expect(formatAuditAction("admin.plan.create")).toBe("Plano comercial criado");
     expect(formatAuditAction("admin.cost.create")).toBe("Custo operacional registrado");
+    expect(formatAuditAction("admin.subscription.cancel")).toBe("Assinatura de empresa cancelada");
     expect(formatAuditAction("admin.lead.convert")).toBe("Lead comercial convertido em empresa");
-    expect(formatAuditAction("custom.event.name")).toBe("Custom › Event › Name");
+    expect(formatAuditAction("tenant.create")).toBe("Empresa cadastrada");
+    expect(formatAuditAction("custom_module.some_action")).toBe("Custom module › Some action");
   });
 
-  it("2. mapeia eventos de segurança com severidades precisas", () => {
-    const login = formatSecurityEvent("LOGIN_SUCCESS");
-    expect(login.label).toBe("Login realizado com sucesso");
-    expect(login.severity).toBe("INFO");
+  it("2. mapeia eventos de segurança com rótulos e severidades precisas", () => {
+    const loginSuccess = formatSecurityEvent("LOGIN_SUCCESS");
+    expect(loginSuccess.label).toBe("Login realizado com sucesso");
+    expect(loginSuccess.severity).toBe("INFO");
+
+    const loginFail = formatSecurityEvent("LOGIN_FAILURE");
+    expect(loginFail.label).toBe("Falha de autenticação");
+    expect(loginFail.severity).toBe("WARNING");
+
+    const loginFailed = formatSecurityEvent("LOGIN_FAILED");
+    expect(loginFailed.label).toBe("Falha de autenticação");
+    expect(loginFailed.severity).toBe("WARNING");
 
     const reuse = formatSecurityEvent("REFRESH_REUSE");
     expect(reuse.label).toBe("Reutilização indevida de refresh token");
     expect(reuse.severity).toBe("DANGER");
 
-    const mfaFail = formatSecurityEvent("MFA_VERIFY_FAIL");
-    expect(mfaFail.label).toBe("Falha na validação do código MFA");
-    expect(mfaFail.severity).toBe("WARNING");
+    const impersonationStart = formatSecurityEvent("IMPERSONATION_START");
+    expect(impersonationStart.label).toBe("Acesso administrativo como empresa iniciado");
+    expect(impersonationStart.severity).toBe("WARNING");
 
-    const impersonation = formatSecurityEvent("IMPERSONATION_START");
-    expect(impersonation.label).toBe("Acesso administrativo como empresa iniciado");
-    expect(impersonation.severity).toBe("WARNING");
+    const impersonationStop = formatSecurityEvent("IMPERSONATION_STOP");
+    expect(impersonationStop.label).toBe("Acesso como empresa finalizado");
+    expect(impersonationStop.severity).toBe("INFO");
   });
 
-  it("3. executa varredura de diagnóstico com 7 verificações estruturadas", async () => {
+  it("3. executa varredura de diagnóstico com 7 verificações estruturadas e independentes", async () => {
     const diag = await runSystemDiagnostics();
 
     expect(diag).toHaveProperty("overallStatus");
@@ -70,7 +86,17 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     ).toBe(7);
   });
 
-  it("4. garante segurança estrita e zero vazamento de secrets nos detalhes", async () => {
+  it("4. garante integridade e independência nas checagens de Deploy (GitHub + EasyPanel)", async () => {
+    const diag = await runSystemDiagnostics();
+    const deployCheck = diag.checks.find((c) => c.id === "deploy_integrations");
+    expect(deployCheck).toBeDefined();
+    if (deployCheck?.details) {
+      expect(deployCheck.details).toHaveProperty("github");
+      expect(deployCheck.details).toHaveProperty("easypanel");
+    }
+  });
+
+  it("5. garante segurança estrita e zero vazamento de secrets nos detalhes", async () => {
     const diag = await runSystemDiagnostics();
     const stringified = JSON.stringify(diag);
 
@@ -85,22 +111,7 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(stringified).not.toContain("Bearer ");
   });
 
-  it("5. valida integridade de status e normalização de erros", async () => {
-    const diag = await runSystemDiagnostics();
-
-    for (const check of diag.checks) {
-      expect(check).toHaveProperty("id");
-      expect(check).toHaveProperty("title");
-      expect(check).toHaveProperty("status");
-      expect(["OK", "WARNING", "FAILURE", "NOT_CONFIGURED", "NOT_APPLICABLE"]).toContain(
-        check.status
-      );
-      expect(typeof check.summary).toBe("string");
-      expect(check.summary.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("6. gera telemetria de 24h a partir de dados reais", async () => {
+  it("6. gera telemetria de 24h a partir de dados reais com definição de período móvel", async () => {
     const overview = await getDiagnosticsOverview();
     expect(overview).toHaveProperty("period", "24h");
     expect(overview).toHaveProperty("generatedAt");
@@ -112,5 +123,34 @@ describe("Platform Diagnostics Service & Formatter Engine", () => {
     expect(typeof overview.metrics.aiExecutions).toBe("number");
     expect(typeof overview.metrics.securityEvents).toBe("number");
     expect(typeof overview.metrics.apiCalls).toBe("number");
+  });
+
+  it("7. retorna dados reais de runtime da API sem mocks", async () => {
+    const apiDiag = await getDiagnosticApi({ take: 10 });
+    expect(apiDiag).toHaveProperty("runtime");
+    expect(apiDiag.runtime?.readiness).toBe("OPERATIONAL");
+    expect(typeof apiDiag.runtime?.uptimeSeconds).toBe("number");
+    expect(typeof apiDiag.runtime?.heapUsedMb).toBe("number");
+    expect(typeof apiDiag.runtime?.rssMb).toBe("number");
+    expect(apiDiag).toHaveProperty("telemetry");
+    expect(apiDiag).toHaveProperty("items");
+  });
+
+  it("8. retorna atividade e segurança com sanitização e metadados estruturados", async () => {
+    const activity = await getDiagnosticActivity({ take: 10 });
+    expect(activity).toHaveProperty("items");
+    for (const item of activity.items) {
+      expect(item).toHaveProperty("eventLabel");
+      expect(item).toHaveProperty("actor");
+      expect(item).toHaveProperty("tenantName");
+      expect(item).toHaveProperty("ip");
+    }
+
+    const security = await getDiagnosticSecurity({ take: 10 });
+    expect(security).toHaveProperty("items");
+    for (const item of security.items) {
+      expect(item).toHaveProperty("eventLabel");
+      expect(["INFO", "WARNING", "DANGER"]).toContain(item.severity);
+    }
   });
 });

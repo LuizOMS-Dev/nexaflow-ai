@@ -53,38 +53,62 @@ export async function getDiagnosticsOverview() {
 }
 
 const AUDIT_ACTION_MAP: Record<string, string> = {
+  // Deploy
   "deployment.started": "Implantação iniciada",
   "deployment.success": "Implantação concluída com sucesso",
   "deployment.failed": "Falha na implantação",
   "deployment.rollback": "Reversão de implantação acionada",
   "deployment.logs_cleared": "Histórico de implantações limpo",
   "github_updates.cleared": "Histórico recente do GitHub limpo",
+  "github_updates.clear_requested": "Limpeza de atualizações do GitHub solicitada",
+  // Auth & MFA
   "auth.login": "Login administrativo realizado",
   "auth.logout": "Logout efetuado",
   "auth.mfa_enabled": "Autenticação de dois fatores ativada",
   "auth.mfa_disabled": "Autenticação de dois fatores desativada",
+  "auth.password_changed": "Senha alterada",
+  "auth.password_reset": "Senha redefinida",
+  // Admin Plans
   "admin.plan.create": "Plano comercial criado",
   "admin.plan.update": "Plano comercial atualizado",
   "admin.plan.duplicate": "Plano comercial duplicado",
   "admin.plan.archive": "Plano comercial arquivado",
+  // Admin Finance & Costs
   "admin.cost.create": "Custo operacional registrado",
   "admin.cost.update": "Custo operacional atualizado",
   "admin.cost.delete": "Custo operacional removido",
   "admin.subscription.update": "Assinatura de empresa atualizada",
+  "admin.subscription.cancel": "Assinatura de empresa cancelada",
+  // Admin Releases
   "admin.release.create": "Versão do sistema publicada",
   "admin.release.update": "Versão do sistema atualizada",
+  "admin.release.delete": "Versão do sistema removida",
+  // Admin Leads
   "admin.lead.convert": "Lead comercial convertido em empresa",
   "admin.lead.status_change": "Status do lead comercial atualizado",
   "admin.lead.update": "Dados do lead comercial atualizados",
+  "admin.lead.delete": "Lead comercial removido",
+  // Admin Audit
   "admin.audit.cleared": "Histórico de auditoria limpo",
+  // Tenant & Users
+  "tenant.create": "Empresa cadastrada",
+  "tenant.update": "Dados da empresa atualizados",
+  "tenant.suspend": "Empresa suspensa",
+  "tenant.reactivate": "Empresa reativada",
+  "tenant.block": "Empresa bloqueada",
+  "user.create": "Usuário cadastrado",
+  "user.update": "Usuário atualizado",
+  "user.delete": "Usuário removido",
+  "user.impersonate": "Acesso como empresa iniciado",
 };
 
 export function formatAuditAction(action: string): string {
   if (AUDIT_ACTION_MAP[action]) return AUDIT_ACTION_MAP[action];
-  if (action.includes(".")) {
+  if (action.includes(".") || action.includes("_")) {
     return action
+      .replace(/_/g, " ")
       .split(".")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .map((part) => part.trim().charAt(0).toUpperCase() + part.trim().slice(1))
       .join(" › ");
   }
   return action;
@@ -92,7 +116,8 @@ export function formatAuditAction(action: string): string {
 
 const SECURITY_EVENT_MAP: Record<string, { label: string; severity: "INFO" | "WARNING" | "DANGER" }> = {
   LOGIN_SUCCESS: { label: "Login realizado com sucesso", severity: "INFO" },
-  LOGIN_FAILURE: { label: "Falha na tentativa de login", severity: "WARNING" },
+  LOGIN_FAILURE: { label: "Falha de autenticação", severity: "WARNING" },
+  LOGIN_FAILED: { label: "Falha de autenticação", severity: "WARNING" },
   LOGOUT: { label: "Sessão encerrada", severity: "INFO" },
   MFA_CHALLENGE_ISSUED: { label: "Desafio MFA emitido", severity: "INFO" },
   MFA_VERIFY_SUCCESS: { label: "MFA validado com sucesso", severity: "INFO" },
@@ -101,6 +126,7 @@ const SECURITY_EVENT_MAP: Record<string, { label: string; severity: "INFO" | "WA
   REFRESH_REUSE: { label: "Reutilização indevida de refresh token", severity: "DANGER" },
   TOKEN_REVOKED: { label: "Token de autenticação revogado", severity: "INFO" },
   IMPERSONATION_START: { label: "Acesso administrativo como empresa iniciado", severity: "WARNING" },
+  IMPERSONATION_STOP: { label: "Acesso como empresa finalizado", severity: "INFO" },
   IMPERSONATION_END: { label: "Acesso como empresa finalizado", severity: "INFO" },
   PASSWORD_RESET_REQUEST: { label: "Solicitação de redefinição de senha", severity: "INFO" },
   PASSWORD_RESET_SUCCESS: { label: "Senha redefinida com sucesso", severity: "INFO" },
@@ -159,14 +185,15 @@ export async function getDiagnosticActivity(params: {
       event: l.action,
       eventLabel: formatAuditAction(l.action),
       message: formatAuditAction(l.action),
+      actor: l.user?.name || l.user?.email || "Sistema NexaFlow",
       tenantId: l.tenantId,
-      tenantName: l.tenant?.name ?? null,
+      tenantName: l.tenant?.name || "Global / Plataforma",
       userId: l.userId,
       userName: l.user?.name ?? null,
       entity: l.entity,
       entityId: l.entityId,
       metadata: redactMetadata(l.metadata),
-      ip: l.ip,
+      ip: l.ip || "—",
     })),
     nextCursor: items.length === take ? items[items.length - 1]?.id ?? null : null,
   };
@@ -487,16 +514,57 @@ export async function probeGroqLiveUsage(): Promise<{
 
 export async function getDiagnosticApi(params: { take?: number; tenantId?: string }) {
   const take = Math.min(params.take ?? 40, 100);
-  const items = await prisma.apiUsageLog.findMany({
-    where: params.tenantId ? { tenantId: params.tenantId } : undefined,
-    orderBy: { createdAt: "desc" },
-    take,
-    include: {
-      apiKey: { select: { id: true, keyPrefix: true, name: true } },
-    },
-  });
+  const since = dayAgo();
+
+  const [items, count24h, errors24h] = await Promise.all([
+    prisma.apiUsageLog.findMany({
+      where: params.tenantId ? { tenantId: params.tenantId } : undefined,
+      orderBy: { createdAt: "desc" },
+      take,
+      include: {
+        apiKey: { select: { id: true, keyPrefix: true, name: true } },
+      },
+    }),
+    prisma.apiUsageLog.count({
+      where: {
+        createdAt: { gte: since },
+        ...(params.tenantId ? { tenantId: params.tenantId } : {}),
+      },
+    }),
+    prisma.apiUsageLog.count({
+      where: {
+        createdAt: { gte: since },
+        statusCode: { gte: 400 },
+        ...(params.tenantId ? { tenantId: params.tenantId } : {}),
+      },
+    }),
+  ]);
+
+  const mem = process.memoryUsage();
+  const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
+  const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
+  const rssMb = Math.round(mem.rss / 1024 / 1024);
+  const uptimeSec = Math.floor(process.uptime());
+  const hours = Math.floor(uptimeSec / 3600);
+  const minutes = Math.floor((uptimeSec % 3600) / 60);
 
   return {
+    runtime: {
+      readiness: "OPERATIONAL" as const,
+      uptimeSeconds: uptimeSec,
+      uptimeFormatted: `${hours}h ${minutes}m ${uptimeSec % 60}s`,
+      heapUsedMb,
+      heapTotalMb,
+      rssMb,
+      nodeVersion: process.version,
+      platform: process.platform,
+    },
+    telemetry: {
+      totalCalls24h: count24h,
+      errors24h,
+      isInstrumented: count24h > 0,
+      note: count24h === 0 ? "Sem chamadas registradas na tabela de uso de API nas últimas 24h." : null,
+    },
     items: items.map((u) => ({
       id: u.id,
       timestamp: u.createdAt,
@@ -844,7 +912,7 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           latencyMs,
           checkedAt,
           recommendation: isAuthError
-            ? "Verifique a variável WA_GATEWAY_API_KEY ou as permissões de API no servidor do gateway WhatsApp."
+            ? "Verifique a chave de autenticação ou as permissões de acesso nas configurações do gateway WhatsApp."
             : !res.ok
             ? "Verifique os logs do servidor de WhatsApp Gateway."
             : null,
@@ -940,14 +1008,14 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
           groupLabel: "E-mail & Entregas",
           title: "Serviço de E-mail",
           status: "NOT_CONFIGURED",
-          summary: "Modo local: Mensagens são registradas internamente, sem entrega externa.",
+          summary: "Modo local ativo: Mensagens são registradas no log interno, sem entrega externa.",
           details: {
             provider: "log",
             canSend: false,
           },
           latencyMs: null,
           checkedAt,
-          recommendation: null,
+          recommendation: "Para habilitar envios reais por e-mail, configure um provedor externo como Resend ou SMTP.",
         };
       }
 

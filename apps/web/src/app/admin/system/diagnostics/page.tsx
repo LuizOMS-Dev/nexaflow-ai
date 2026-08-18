@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
+  Cpu,
   Database,
   Info,
   Layers,
@@ -93,7 +95,18 @@ type SystemDiagnosticsDTO = {
 };
 
 type Overview = {
+  period: string;
+  windowLabel?: string;
   metrics: {
+    activityEvents?: { value: number; hasData: boolean; label: string; description: string };
+    webhooks?: { failed: number; pending: number; totalIssues: number; hasData: boolean };
+    whatsapp?: { activeChannels: number; hasData: boolean };
+    ai?: { executions: number; hasData: boolean; isConfigured: boolean };
+    security?: { events: number; hasData: boolean };
+    api?: { calls: number; hasData: boolean; isInstrumented: boolean };
+    activityEventsCount?: number;
+  };
+  flatMetrics?: {
     activityEvents: number;
     webhookFailures: number;
     webhookPending: number;
@@ -139,6 +152,26 @@ type AiDiag = {
     message: string;
     latencyMs: number | null;
     limits: Record<string, string | null> | null;
+  };
+  items: Array<Record<string, unknown>>;
+};
+
+type ApiDiag = {
+  runtime?: {
+    readiness: string;
+    uptimeSeconds: number;
+    uptimeFormatted: string;
+    heapUsedMb: number;
+    heapTotalMb: number;
+    rssMb: number;
+    nodeVersion: string;
+    platform: string;
+  };
+  telemetry?: {
+    totalCalls24h: number;
+    errors24h: number;
+    isInstrumented: boolean;
+    note: string | null;
   };
   items: Array<Record<string, unknown>>;
 };
@@ -226,6 +259,13 @@ function severityTone(sev: string): AdminTone {
   return statusToTone(s);
 }
 
+function severityLabel(sev: string): string {
+  const s = (sev || "INFO").toUpperCase();
+  if (s === "CRITICAL" || s === "ERROR" || s === "DANGER") return "Crítico";
+  if (s === "WARNING" || s === "WARN") return "Atenção";
+  return "Informação";
+}
+
 function formatLatency(ms?: number | null): string {
   if (ms == null || !Number.isFinite(ms)) return "—";
   if (ms <= 1) return "<1 ms";
@@ -282,7 +322,7 @@ export default function AdminDiagnosticsPage() {
       if (tab === "ai")
         return api<AiDiag>("/admin/diagnostics/ai/usage?take=40");
       if (tab === "api")
-        return api<{ items: Array<Record<string, unknown>> }>("/admin/diagnostics/api?take=40");
+        return api<ApiDiag>("/admin/diagnostics/api?take=40");
       if (tab === "security")
         return api<{ items: Array<Record<string, unknown>> }>("/admin/diagnostics/security?take=40");
       return Promise.resolve({ items: [] as Array<Record<string, unknown>> });
@@ -301,13 +341,17 @@ export default function AdminDiagnosticsPage() {
   const diagData = diagnosticsQuery.data;
   const isRunning = diagnosticsQuery.isFetching || runMutation.isPending;
 
-  const m = overview.data?.metrics;
+  const flatM = overview.data?.flatMetrics;
   const listItems =
     listQuery.data && "items" in listQuery.data
       ? (listQuery.data as { items: Array<Record<string, unknown>> }).items
       : [];
   const waData = tab === "whatsapp" && listQuery.data && "gateway" in listQuery.data ? (listQuery.data as WhatsAppDiag) : null;
   const aiData = tab === "ai" && listQuery.data && "summary" in listQuery.data ? (listQuery.data as AiDiag) : null;
+  const apiData = tab === "api" && listQuery.data && "runtime" in listQuery.data ? (listQuery.data as ApiDiag) : null;
+
+  const waScanCheck = diagData?.checks.find((c) => c.id === "whatsapp_gateway");
+  const isWaAuthDegraded = waScanCheck?.status === "WARNING";
 
   return (
     <div className="space-y-6">
@@ -596,7 +640,7 @@ export default function AdminDiagnosticsPage() {
             <MetricGrid cols={3}>
               <MetricCard
                 label="Atividade (24h)"
-                value={m?.activityEvents ?? 0}
+                value={flatM?.activityEvents ?? 0}
                 icon={<Activity className="h-4 w-4" />}
                 tone="brand"
                 compact
@@ -604,15 +648,15 @@ export default function AdminDiagnosticsPage() {
               <MetricCard
                 label="Webhooks (Falhas / Pendentes)"
                 value={
-                  m
-                    ? `${m.webhookFailures ?? 0} falhas · ${m.webhookPending ?? 0} pend.`
+                  flatM
+                    ? `${flatM.webhookFailures ?? 0} falhas · ${flatM.webhookPending ?? 0} pend.`
                     : "—"
                 }
                 icon={<Webhook className="h-4 w-4" />}
                 tone={
-                  (m?.webhookFailures ?? 0) > 0
+                  (flatM?.webhookFailures ?? 0) > 0
                     ? "danger"
-                    : (m?.webhookPending ?? 0) > 0
+                    : (flatM?.webhookPending ?? 0) > 0
                     ? "warning"
                     : "success"
                 }
@@ -620,28 +664,32 @@ export default function AdminDiagnosticsPage() {
               />
               <MetricCard
                 label="WhatsApp (Canais ativos)"
-                value={m?.whatsappChannels ?? 0}
+                value={flatM?.whatsappChannels ?? 0}
                 icon={<Radio className="h-4 w-4" />}
                 tone="info"
                 compact
               />
               <MetricCard
                 label="IA (Execuções 24h)"
-                value={m?.aiExecutions ?? 0}
+                value={flatM?.aiExecutions ?? 0}
                 icon={<Bot className="h-4 w-4" />}
                 tone="violet"
                 compact
               />
               <MetricCard
                 label="Segurança (Eventos 24h)"
-                value={m?.securityEvents ?? 0}
+                value={flatM?.securityEvents ?? 0}
                 icon={<Shield className="h-4 w-4" />}
-                tone={(m?.securityEvents ?? 0) > 0 ? "warning" : "neutral"}
+                tone={(flatM?.securityEvents ?? 0) > 0 ? "warning" : "neutral"}
                 compact
               />
               <MetricCard
                 label="API (Chamadas registradas)"
-                value={m?.apiCalls ?? 0}
+                value={
+                  (flatM?.apiCalls ?? 0) > 0
+                    ? flatM?.apiCalls
+                    : "Não instrumentado"
+                }
                 icon={<Activity className="h-4 w-4" />}
                 compact
               />
@@ -650,7 +698,7 @@ export default function AdminDiagnosticsPage() {
             <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-4 text-[12.5px] text-ink-muted dark:text-gray-400 flex items-start gap-2.5">
               <Info className="h-4 w-4 text-brand-600 dark:text-violet-400 shrink-0 mt-0.5" />
               <span>
-                As métricas acima agregam o volume de operações registradas nas últimas 24 horas a partir dos registros de auditoria, entregas de webhooks, canais e chamadas de API.
+                Janela móvel das últimas 24 horas. As métricas agregam registros reais de auditoria, entregas de webhooks, canais e eventos de segurança.
               </span>
             </div>
           </div>
@@ -670,6 +718,16 @@ export default function AdminDiagnosticsPage() {
           {/* VISUALIZAÇÃO WHATSAPP */}
           {waData ? (
             <div className="space-y-4">
+              {isWaAuthDegraded ? (
+                <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-[13px] text-amber-900 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-amber-950 dark:text-amber-100">Gateway Global: Atenção </span>
+                    <span>— Autenticação recusada pelo servidor do gateway WhatsApp (HTTP 401).</span>
+                  </div>
+                </div>
+              ) : null}
+
               <MetricGrid cols={4}>
                 <MetricCard
                   label="Total de canais"
@@ -698,7 +756,7 @@ export default function AdminDiagnosticsPage() {
 
               <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-4 text-[12.5px] text-ink-muted dark:text-gray-400">
                 <span className="font-semibold text-ink dark:text-gray-200">Gateway Global: </span>
-                <span>Provedor {waData.gateway.provider.toUpperCase()} ({waData.gateway.mode === "embedded" ? "Embutido" : "Externo"}) · Status de conexão isolado das sessões individuais de empresas.</span>
+                <span>Provedor {waData.gateway.provider.toUpperCase()} ({waData.gateway.mode === "embedded" ? "Embutido" : "Externo"}) · As sessões dos canais de empresas operam de forma isolada da infraestrutura global.</span>
               </div>
             </div>
           ) : null}
@@ -706,72 +764,116 @@ export default function AdminDiagnosticsPage() {
           {/* VISUALIZAÇÃO IA & MODELOS */}
           {aiData ? (
             <div className="space-y-4">
+              {!aiData.groqLive?.configured ? (
+                <div className="flex items-start gap-3 rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-5 text-[13px] text-ink-muted dark:text-gray-400">
+                  <Bot className="h-5 w-5 text-brand-600 dark:text-violet-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-ink dark:text-white">Provider de IA não configurado</p>
+                    <p className="mt-1 text-[12.5px]">Métricas de telemetria estarão disponíveis após a configuração de um provedor de IA no ambiente.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <MetricGrid cols={4}>
+                    <MetricCard
+                      label="Chamadas (24h)"
+                      value={aiData.summary?.calls ?? 0}
+                      tone="violet"
+                      compact
+                    />
+                    <MetricCard
+                      label="Tokens total (24h)"
+                      value={
+                        aiData.summary?.tokensTotal != null
+                          ? aiData.summary.tokensTotal.toLocaleString("pt-BR")
+                          : "0"
+                      }
+                      compact
+                    />
+                    <MetricCard
+                      label="Créditos consumidos (24h)"
+                      value={aiData.summary?.credits ?? 0}
+                      compact
+                    />
+                    <MetricCard
+                      label="Falhas (24h)"
+                      value={aiData.summary?.failuresLast1h ?? 0}
+                      tone={(aiData.summary?.failuresLast1h ?? 0) > 0 ? "danger" : "success"}
+                      icon={<AlertTriangle className="h-4 w-4" />}
+                      compact
+                    />
+                  </MetricGrid>
+
+                  {aiData.groqLive ? (
+                    <AdminSection
+                      title="Groq ao vivo"
+                      description="Probe de integridade sem expor a chave de API"
+                      action={
+                        <StatusBadge
+                          tone={aiData.groqLive.ok ? "success" : "warning"}
+                          dot
+                        >
+                          {aiData.groqLive.ok ? "OK" : "Aviso"}
+                        </StatusBadge>
+                      }
+                    >
+                      <p className="text-[13px] font-medium text-ink dark:text-white/90">
+                        {aiData.groqLive.message}
+                      </p>
+                      <p className="mt-1 text-[12px] text-ink-muted dark:text-gray-500">
+                        Modelo: {aiData.groqLive.model || "—"}
+                        {aiData.groqLive.latencyMs != null
+                          ? ` · ${formatLatency(aiData.groqLive.latencyMs)}`
+                          : ""}
+                      </p>
+                    </AdminSection>
+                  ) : null}
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {/* VISUALIZAÇÃO API RUNTIME */}
+          {apiData?.runtime ? (
+            <div className="space-y-4">
               <MetricGrid cols={4}>
                 <MetricCard
-                  label="Chamadas (24h)"
-                  value={aiData.summary?.calls ?? 0}
-                  tone="violet"
+                  label="Prontidão da API"
+                  value="Operacional"
+                  tone="success"
+                  icon={<CheckCircle2 className="h-4 w-4" />}
                   compact
                 />
                 <MetricCard
-                  label="Tokens total (24h)"
-                  value={
-                    aiData.summary?.tokensTotal != null
-                      ? aiData.summary.tokensTotal.toLocaleString("pt-BR")
-                      : "0"
-                  }
+                  label="Uptime do Processo"
+                  value={apiData.runtime.uptimeFormatted}
+                  icon={<Clock className="h-4 w-4" />}
                   compact
                 />
                 <MetricCard
-                  label="Créditos (24h)"
-                  value={aiData.summary?.credits ?? 0}
+                  label="Memória Heap"
+                  value={`${apiData.runtime.heapUsedMb} MB / ${apiData.runtime.heapTotalMb} MB`}
+                  icon={<Cpu className="h-4 w-4" />}
                   compact
                 />
                 <MetricCard
-                  label="Falhas (1h)"
-                  value={aiData.summary?.failuresLast1h ?? 0}
-                  tone={(aiData.summary?.failuresLast1h ?? 0) > 0 ? "danger" : "success"}
-                  icon={<AlertTriangle className="h-4 w-4" />}
+                  label="Memória RSS"
+                  value={`${apiData.runtime.rssMb} MB`}
                   compact
                 />
               </MetricGrid>
-
-              {aiData.groqLive?.configured ? (
-                <AdminSection
-                  title="Groq ao vivo"
-                  description="Probe de integridade sem expor a chave de API"
-                  action={
-                    <StatusBadge
-                      tone={aiData.groqLive.ok ? "success" : "warning"}
-                      dot
-                    >
-                      {aiData.groqLive.ok ? "OK" : "Aviso"}
-                    </StatusBadge>
-                  }
-                >
-                  <p className="text-[13px] font-medium text-ink dark:text-white/90">
-                    {aiData.groqLive.message}
-                  </p>
-                  <p className="mt-1 text-[12px] text-ink-muted dark:text-gray-500">
-                    Modelo: {aiData.groqLive.model || "—"}
-                    {aiData.groqLive.latencyMs != null
-                      ? ` · ${formatLatency(aiData.groqLive.latencyMs)}`
-                      : ""}
-                  </p>
-                </AdminSection>
-              ) : null}
             </div>
           ) : null}
 
           {/* BARRA DE PESQUISA (NA ABA ATIVIDADE) */}
           {tab === "activity" ? (
             <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-ink-muted dark:text-gray-500" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-ink-muted dark:text-gray-500 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Filtrar por evento ou entidade…"
+                placeholder="Filtrar por evento, ação ou entidade…"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
                 className="admin-input pl-9 h-9 text-[12.5px] w-full"
               />
             </div>
@@ -779,11 +881,11 @@ export default function AdminDiagnosticsPage() {
 
           {/* TABELA DE REGISTROS / EVENTOS COM PAINEL LATERAL SANITIZADO */}
           {!listItems.length ? (
-            <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-8 text-center">
+            <div className="rounded-2xl border border-line-subtle bg-white dark:border-white/[0.07] dark:bg-white/[0.02] p-6 text-center">
               <AdminEmptyState
                 compact
-                title="Sem eventos registrados neste período"
-                description="Nenhum evento recente disponível nesta categoria."
+                title="Nenhum evento registrado nas últimas 24 horas"
+                description="Sem registros recentes nesta categoria."
               />
             </div>
           ) : (
@@ -813,10 +915,10 @@ export default function AdminDiagnosticsPage() {
                           Sev.
                         </th>
                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                          Evento / Mensagem
+                          {tab === "security" ? "Evento de Segurança" : "Ação / Evento"}
                         </th>
                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
-                          Escopo / Origem
+                          {tab === "activity" ? "Ator / Empresa" : "Escopo / Origem"}
                         </th>
                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-ink-muted dark:text-gray-500">
                           Quando
@@ -831,7 +933,8 @@ export default function AdminDiagnosticsPage() {
                         const subCode = row.event && row.event !== title ? String(row.event) : null;
                         const ts = row.timestamp || row.updatedAt || row.createdAt;
                         const selected = safeDetail && str(safeDetail.id) === id;
-                        const scope = row.tenantName ? str(row.tenantName) : row.userName ? str(row.userName) : "Sistema Global";
+                        const actor = str(row.actor || row.userName || "Sistema");
+                        const tenantScope = str(row.tenantName || "Global / Plataforma");
 
                         return (
                           <tr
@@ -844,7 +947,9 @@ export default function AdminDiagnosticsPage() {
                             )}
                           >
                             <td className="px-3 py-2 align-middle">
-                              <StatusBadge tone={severityTone(sev)}>{sev}</StatusBadge>
+                              <StatusBadge tone={severityTone(sev)}>
+                                {severityLabel(sev)}
+                              </StatusBadge>
                             </td>
                             <td className="max-w-[280px] px-3 py-2 align-middle">
                               <p className="line-clamp-1 font-medium text-ink dark:text-white/90">
@@ -857,7 +962,14 @@ export default function AdminDiagnosticsPage() {
                               ) : null}
                             </td>
                             <td className="px-3 py-2 align-middle text-ink-muted dark:text-gray-500">
-                              {scope}
+                              {tab === "activity" ? (
+                                <div className="text-[12px]">
+                                  <span className="font-medium text-ink dark:text-gray-300">{actor}</span>
+                                  <span className="block text-[11px] text-ink-muted dark:text-gray-500">{tenantScope}</span>
+                                </div>
+                              ) : (
+                                <span>{tenantScope}</span>
+                              )}
                             </td>
                             <td className="px-3 py-2 align-middle tabular-nums text-ink-muted dark:text-gray-500">
                               {ts ? formatDate(String(ts)) : "—"}
