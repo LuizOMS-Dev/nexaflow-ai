@@ -139,10 +139,13 @@ export default fp(async (app) => {
           await import("../lib/prisma")
         ).prisma.user.findUnique({
           where: { id: user.impBy },
-          select: { twoFactorEnabled: true, platformRole: true },
+          select: { twoFactorEnabled: true, platformRole: true, name: true, email: true },
         });
+        const { isSuperadminMfaExempt } = await import("../services/security/step-up");
+        const isExempt = isSuperadminMfaExempt({ name: real?.name, email: real?.email, id: user.impBy });
         if (
           real?.platformRole === "SUPERADMIN" &&
+          !isExempt &&
           !real.twoFactorEnabled &&
           (await import("../lib/env")).env.superadminMfaRequired
         ) {

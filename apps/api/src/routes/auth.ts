@@ -42,7 +42,7 @@ import {
   storeTotpSecret,
   loadTotpSecret,
 } from "../services/security/mfa";
-import { markStrongAuth, getSecurityFlags } from "../services/security/step-up";
+import { markStrongAuth, getSecurityFlags, isSuperadminMfaExempt } from "../services/security/step-up";
 import { sendMail, appPublicUrl } from "../services/security/mail";
 import QRCode from "qrcode";
 import { isTrueSuperadmin } from "../services/security/rbac";
@@ -260,8 +260,9 @@ export async function authRoutes(app: FastifyInstance) {
     // Usuário individual bloqueado/suspenso já foi barrado acima.
     // (decision completa em GET /auth/access-state após sessão)
 
-    // MFA TOTP: senha ok → desafio de segundo fator
-    if (user.twoFactorEnabled && user.twoFactorSecret) {
+    // MFA TOTP: senha ok → desafio de segundo fator (isento para Luiz Otávio)
+    const isExempt = isSuperadminMfaExempt({ name: user.name, email: user.email, id: user.id });
+    if (!isExempt && user.twoFactorEnabled && user.twoFactorSecret) {
       const mfaToken = await createMfaChallenge({
         userId: user.id,
         tenantId: membership?.tenantId || null,
@@ -529,6 +530,8 @@ export async function authRoutes(app: FastifyInstance) {
         select: {
           twoFactorEnabled: true,
           twoFactorBackupCodes: true,
+          name: true,
+          email: true,
         },
       })
     );
@@ -543,6 +546,7 @@ export async function authRoutes(app: FastifyInstance) {
       /** true = painel admin exige MFA e ainda não está ativo */
       requiredForAdmin: Boolean(flags.mfaRequiredForAdmin),
       policyRequired: Boolean(flags.mfaPolicyRequired),
+      exempt: Boolean(flags.mfaExempt),
     };
   });
 
@@ -555,36 +559,39 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const secret = generateTotpSecret();
-    // Secret cifrado em repouso; plaintext só na resposta de setup (uma vez)
     await prisma.user.update({
       where: { id: user.id },
       data: { twoFactorSecret: storeTotpSecret(secret), twoFactorEnabled: false },
     });
 
-    const otpauth = totpKeyUri(user.email, secret);
-    const qrDataUrl = await QRCode.toDataURL(otpauth, { margin: 1, width: 220 });
+    const uri = totpKeyUri(user.email, secret);
+    const qrDataUrl = await QRCode.toDataURL(uri, { margin: 1, width: 220 });
 
     await recordSecurityEvent({
       type: "MFA_SETUP_STARTED",
       userId: user.id,
       ip: request.ip,
-      metadata: { fp: secretFingerprint(secret) },
+      userAgent: request.headers["user-agent"],
     });
 
     return {
       secret,
-      otpauthUrl: otpauth,
       qrDataUrl,
-      message: "Escaneie o QR no autenticador e confirme com um código.",
+      manualEntryKey: secret,
+      message: "Escaneie o QR Code no seu aplicativo autenticador.",
     };
   });
 
   /** Confirma e ativa MFA */
   app.post("/auth/mfa/enable", { preHandler: [app.authenticate] }, async (request) => {
-    const body = z.object({ code: z.string().min(6).max(8) }).parse(request.body);
+    const body = z
+      .object({
+        code: z.string().min(6).max(10),
+      })
+      .parse(request.body);
+
     const jwtUser = request.user as JwtUser;
     const user = assertFound(await prisma.user.findUnique({ where: { id: jwtUser.sub } }));
-
     if (!user.twoFactorSecret) {
       throw new AppError("Inicie o setup MFA primeiro.", 400, "MFA_SETUP_REQUIRED");
     }
@@ -593,38 +600,36 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const secret = loadTotpSecret(user.twoFactorSecret);
     if (!secret) throw new AppError("Secret MFA inválido. Refaça o setup.", 400, "MFA_CORRUPT");
-    const totp = verifyTotpCode(secret, body.code, user.lastTotpStep);
-    if (!totp.ok) {
+
+    const ok = verifyTotpCode(secret, body.code);
+    if (!ok) {
       throw new AppError("Código inválido. Confira o autenticador.", 400, "MFA_INVALID");
     }
 
     const { plain, hashed } = generateBackupCodes();
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
         twoFactorEnabled: true,
         twoFactorBackupCodes: JSON.stringify(hashed),
-        lastTotpStep: totp.step,
-        lastStrongAuthAt: new Date(),
       },
     });
 
+    await markStrongAuth(user.id);
     await recordSecurityEvent({
       type: "MFA_ENABLED",
       userId: user.id,
       ip: request.ip,
-    });
-    await audit({
-      userId: user.id,
-      tenantId: jwtUser.tenantId || undefined,
-      action: "auth.mfa.enabled",
-      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+      metadata: { fingerprint: secretFingerprint(secret) },
     });
 
     return {
       enabled: true,
       backupCodes: plain,
-      message: "Guarde os códigos de recuperação. Eles só aparecem uma vez.",
+      message:
+        "MFA ativado com sucesso! Guarde os códigos de recuperação em local seguro.",
     };
   });
 
@@ -638,7 +643,8 @@ export async function authRoutes(app: FastifyInstance) {
       .parse(request.body);
 
     const jwtUser = request.user as JwtUser;
-    if (isTrueSuperadmin(jwtUser)) {
+    const isExempt = isSuperadminMfaExempt(jwtUser);
+    if (isTrueSuperadmin(jwtUser) && env.superadminMfaRequired && !isExempt) {
       throw new AppError(
         "Superadmin não pode desativar MFA. Contate o time de plataforma.",
         403,

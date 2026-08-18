@@ -141,12 +141,14 @@ export const env = {
   salesEmail: process.env.SALES_EMAIL || "",
   /**
    * Superadmin: MFA obrigatório para /admin.
-   * - Padrão: false (liberado sem MFA)
-   * - Override: SUPERADMIN_MFA_REQUIRED=1|true|0|false
+   * - production: true (padrão normal de segurança para produção)
+   * - development: false (padrão)
+   * Override: SUPERADMIN_MFA_REQUIRED=0|1|true|false
+   * Obs: A conta do superadmin "Luiz Otávio" possui isenção específica de teste no backend.
    */
   superadminMfaRequired: envBool(
     process.env.SUPERADMIN_MFA_REQUIRED,
-    false
+    nodeEnv === "production"
   ),
   /** Pausa o login público (tela de manutenção). */
   authLoginMaintenance: envBool(process.env.AUTH_LOGIN_MAINTENANCE, false),

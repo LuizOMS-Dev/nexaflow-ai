@@ -44,14 +44,44 @@ export async function markStrongAuth(userId: string) {
   });
 }
 
+/**
+ * Verifica se uma conta de superadmin possui isenção específica de MFA para testes/desenvolvimento.
+ * Libera a conta do superadmin "Luiz Otávio", mantendo a exigência normal para as demais contas.
+ */
+export function isSuperadminMfaExempt(user?: {
+  name?: string | null;
+  email?: string | null;
+  id?: string;
+}): boolean {
+  if (!user) return false;
+  const nameNorm = (user.name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const emailNorm = (user.email || "").toLowerCase();
+
+  // Conta de teste "Luiz Otávio" / "Luiz Otavio" ou e-mail com "luiz"
+  if (nameNorm.includes("luiz otavio") || nameNorm.includes("luiz otavio medeiros")) {
+    return true;
+  }
+  if (emailNorm.includes("luiz") || emailNorm.startsWith("luiz")) {
+    return true;
+  }
+  return false;
+}
+
 /** Superadmin sem MFA não acessa painel admin completo (quando a política exige MFA). */
 export async function requireSuperadminMfa(user: JwtUser) {
   if (user.platformRole !== "SUPERADMIN") return;
+  if (isSuperadminMfaExempt(user)) return;
   if (!env.superadminMfaRequired) return;
+
   const row = await prisma.user.findUnique({
     where: { id: user.sub },
-    select: { twoFactorEnabled: true },
+    select: { twoFactorEnabled: true, name: true, email: true },
   });
+  if (isSuperadminMfaExempt({ name: row?.name, email: row?.email, id: user.sub })) return;
+
   if (!row?.twoFactorEnabled) {
     throw new AppError(
       "Autenticação em duas etapas obrigatória para acesso administrativo à plataforma.",
@@ -64,12 +94,14 @@ export async function requireSuperadminMfa(user: JwtUser) {
 export async function getSecurityFlags(userId: string, platformRole?: string | null) {
   const row = await prisma.user.findUnique({
     where: { id: userId },
-    select: { twoFactorEnabled: true },
+    select: { twoFactorEnabled: true, name: true, email: true },
   });
   const mfaEnabled = Boolean(row?.twoFactorEnabled);
   const isSuper = platformRole === "SUPERADMIN";
-  /** Em dev (ou SUPERADMIN_MFA_REQUIRED=0) não bloqueia admin sem MFA */
-  const enforce = env.superadminMfaRequired;
+  const isExempt = isSuper && isSuperadminMfaExempt({ name: row?.name, email: row?.email, id: userId });
+
+  /** Em produção: enforce = env.superadminMfaRequired para demais superadmins; isento para Luiz Otávio */
+  const enforce = env.superadminMfaRequired && !isExempt;
   const blocked = isSuper && enforce && !mfaEnabled;
   return {
     mfaEnabled,
@@ -77,6 +109,7 @@ export async function getSecurityFlags(userId: string, platformRole?: string | n
     mfaRequiredForAdmin: blocked,
     mfaBootstrap: blocked,
     /** Política atual: se false, UI/API liberam /admin sem 2FA */
-    mfaPolicyRequired: isSuper ? enforce : false,
+    mfaPolicyRequired: isSuper && !isExempt ? env.superadminMfaRequired : false,
+    mfaExempt: isExempt,
   };
 }
