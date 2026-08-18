@@ -111,7 +111,10 @@ export async function getSalesLeadHistory(id: string) {
 
   const items = await prisma.auditLog.findMany({
     where: {
-      metadata: { path: ["leadId"], equals: id },
+      OR: [
+        { entityId: id },
+        { metadata: { path: ["leadId"], equals: id } },
+      ],
       action: { in: ["admin.lead.update_status", "admin.lead.convert"] },
     },
     orderBy: { createdAt: "desc" },
@@ -193,6 +196,7 @@ export async function updateSalesLeadStatus(
     tenantId: updated.convertedTenantId || undefined,
     action: "admin.lead.update_status",
     entity: "SalesLead",
+    entityId: id,
     metadata: {
       leadId: id,
       leadEmail: lead.email,
@@ -282,6 +286,7 @@ export async function convertSalesLeadToCompany(
     tenantId: company.id,
     action: "admin.lead.convert",
     entity: "SalesLead",
+    entityId: id,
     metadata: {
       leadId: id,
       leadEmail: lead.email,

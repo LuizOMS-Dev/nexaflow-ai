@@ -138,7 +138,7 @@ export class AuditService {
         orderBy: { createdAt: "desc" },
       });
 
-      if (recentIdentical) {
+      if (recentIdentical && JSON.stringify(recentIdentical.metadata || {}) === JSON.stringify(sanitizedMeta)) {
         return recentIdentical;
       }
 
