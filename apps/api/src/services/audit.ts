@@ -57,12 +57,12 @@ export class AuditService {
     if (/^(deployment\.|deploy\.)/.test(a)) return "DEPLOY";
     if (/^(github\.|github_updates\.)/.test(a)) return "GITHUB";
     if (/^(easypanel\.)/.test(a)) return "EASYPANEL";
-    if (/^(company\.|tenant\.)/.test(a)) return "COMPANY";
+    if (/^(company\.|tenant\.|team\.)/.test(a)) return "COMPANY";
     if (/^(plan\.|subscription\.)/.test(a)) return "PLAN";
     if (/^(admin\.cost|finance\.|payment\.)/.test(a)) return "FINANCE";
     if (/^(security\.)/.test(a) || /blocked|suspended|threat/.test(a)) return "SECURITY";
-    if (/^(admin\.|platform\.|impersonate\.)/.test(a)) return "ADMIN";
-    return "OTHER";
+    if (/^(admin\.|platform\.|impersonate\.|audit\.)/.test(a)) return "ADMIN";
+    return "ADMIN";
   }
 
   /**
@@ -90,7 +90,7 @@ export class AuditService {
 
     // 3. Atenção (operações sensíveis de administração, rotações, limpezas, reversões)
     if (
-      /cleared|clear_requested|rollback|rotated|archive|deletion_requested|mfa\.disabled|password\.changed|session\.revoked|access_policy_updated|due_date_changed|plan_changed/.test(
+      /cleared|clear_requested|rollback|rotated|archive|deletion_requested|mfa\.disabled|password\.changed|session\.revoked|access_policy_updated|due_date_changed|plan_changed|impersonat/.test(
         a
       )
     ) {
@@ -113,21 +113,40 @@ export class AuditService {
   }
 
   /**
-   * Grava um evento de auditoria com metadata sanitizada em repouso
+   * Grava um evento de auditoria com metadata sanitizada em repouso e deduplicação de rajadas (< 2s)
    */
   static async record(params: AuditRecordParams) {
     try {
+      const action = params.action.trim();
       const sanitizedMeta = params.metadata
         ? (redactMetadata(params.metadata) as Record<string, unknown>)
         : {};
 
       const ip = this.normalizeIp(params.ip);
 
+      // Deduplicação de eventos idênticos em rajada (< 2 segundos) para evitar registros duplicados de polling ou double-click
+      const twoSecAgo = new Date(Date.now() - 2000);
+      const recentIdentical = await prisma.auditLog.findFirst({
+        where: {
+          action,
+          userId: params.userId || null,
+          tenantId: params.tenantId || null,
+          entity: params.entity?.trim() || null,
+          entityId: params.entityId?.trim() || null,
+          createdAt: { gte: twoSecAgo },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (recentIdentical) {
+        return recentIdentical;
+      }
+
       return await prisma.auditLog.create({
         data: {
           tenantId: params.tenantId || null,
           userId: params.userId || null,
-          action: params.action.trim(),
+          action,
           entity: params.entity?.trim() || null,
           entityId: params.entityId?.trim() || null,
           metadata: asInputJson(sanitizedMeta),
@@ -263,6 +282,7 @@ export class AuditService {
             { action: { startsWith: "company." } },
             { action: { startsWith: "tenant." } },
             { action: { startsWith: "admin.tenant." } },
+            { action: { startsWith: "team." } },
           ],
         };
       case "PLAN":

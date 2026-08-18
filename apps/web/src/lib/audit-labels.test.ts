@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { humanizeAuditAction, auditSeverity, formatAuditIp } from "./audit-labels";
+import {
+  humanizeAuditAction,
+  auditSeverity,
+  formatAuditIp,
+  formatAuditDate,
+  auditCategoryLabel,
+} from "./audit-labels";
 import { pluralizePt } from "./utils";
 
 describe("Audit Labels & Formatters", () => {
@@ -7,8 +13,10 @@ describe("Audit Labels & Formatters", () => {
     it("humaniza eventos exatos conhecidos em pt-BR", () => {
       expect(humanizeAuditAction("auth.login")).toBe("Login administrativo realizado");
       expect(humanizeAuditAction("auth.logout")).toBe("Logout administrativo realizado");
-      expect(humanizeAuditAction("admin.impersonate")).toBe("Acesso como empresa iniciado");
-      expect(humanizeAuditAction("admin.impersonate.stop")).toBe("Acesso como empresa encerrado");
+      expect(humanizeAuditAction("admin.impersonate")).toBe("Acesso administrativo a empresa (Impersonação)");
+      expect(humanizeAuditAction("admin.impersonate.stop")).toBe("Encerramento de acesso a empresa");
+      expect(humanizeAuditAction("team.invite")).toBe("Convite para equipe enviado");
+      expect(humanizeAuditAction("team.invite_revoke")).toBe("Convite para equipe revogado");
       expect(humanizeAuditAction("tenant.onboarding.completed")).toBe("Configuração da empresa concluída");
       expect(humanizeAuditAction("auth.mfa.enabled")).toBe("Autenticação em duas etapas ativada");
       expect(humanizeAuditAction("auth.2fa.enabled")).toBe("Autenticação em duas etapas ativada");
@@ -34,6 +42,27 @@ describe("Audit Labels & Formatters", () => {
       expect(humanizeAuditAction("whatsapp.session.disconnected")).toContain("WhatsApp");
       expect(humanizeAuditAction("custom_event_without_prefix")).toBe("Custom Event Without Prefix");
       expect(humanizeAuditAction("")).toBe("Evento");
+    });
+  });
+
+  describe("auditCategoryLabel & formatAuditDate", () => {
+    it("traduz categorias para labels em pt-BR", () => {
+      expect(auditCategoryLabel("AUTH")).toBe("Autenticação");
+      expect(auditCategoryLabel("ADMIN")).toBe("Administração");
+      expect(auditCategoryLabel("COMPANY")).toBe("Empresas");
+      expect(auditCategoryLabel("PLAN")).toBe("Planos");
+      expect(auditCategoryLabel("FINANCE")).toBe("Financeiro");
+      expect(auditCategoryLabel("DEPLOY")).toBe("Deploy");
+      expect(auditCategoryLabel("GITHUB")).toBe("GitHub");
+      expect(auditCategoryLabel("EASYPANEL")).toBe("EasyPanel");
+      expect(auditCategoryLabel("SECURITY")).toBe("Segurança");
+      expect(auditCategoryLabel(null)).toBe("Geral");
+    });
+
+    it("formata data e horário com separador em ponto médio no padrão 'DD/MM/AAAA · HH:mm'", () => {
+      const formatted = formatAuditDate(new Date("2026-08-17T21:31:00Z"));
+      expect(formatted).toContain("·");
+      expect(formatAuditDate(null)).toBe("—");
     });
   });
 

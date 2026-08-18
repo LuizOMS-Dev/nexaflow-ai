@@ -42,6 +42,59 @@ const EXACT_TITLES: Record<string, string> = {
   "easypanel.configuration.updated": "Configuração do EasyPanel atualizada",
   "easypanel.token.rotated": "Token do EasyPanel rotacionado",
 
+  // Equipe / Membros
+  "team.invite": "Convite para equipe enviado",
+  "team.invite_revoke": "Convite para equipe revogado",
+  "team.invite.created": "Convite para equipe enviado",
+  "team.invite.revoked": "Convite para equipe revogado",
+  "team.member.added": "Membro adicionado à equipe",
+  "team.member.removed": "Membro removido da equipe",
+  "team.member.role_updated": "Função de membro atualizada",
+
+  // Chaves de API e Webhooks
+  "api_key.created": "Chave de API criada",
+  "api_key.revoked": "Chave de API revogada",
+  "webhook.created": "Webhook cadastrado",
+  "webhook.updated": "Webhook atualizado",
+  "webhook.deleted": "Webhook removido",
+  "webhook.secret_rotated": "Chave secreta do webhook rotacionada",
+  "webhook.test_sent": "Disparo de teste do webhook enviado",
+
+  // Notas de Atualização / Changelog
+  "changelog.created": "Nota de atualização criada",
+  "changelog.published": "Nota de atualização publicada",
+  "changelog.updated": "Nota de atualização editada",
+  "changelog.archived": "Nota de atualização arquivada",
+
+  // Leads Comerciais
+  "admin.lead.convert": "Lead comercial convertido em empresa",
+  "admin.lead.update_status": "Status do lead comercial atualizado",
+
+  // Finanças
+  "finance.charge.create": "Cobrança financeira gerada",
+  "finance.charge.delete": "Cobrança financeira removida",
+  "finance.cost.create": "Custo operacional registrado",
+  "finance.cost.update": "Custo operacional atualizado",
+  "finance.cost.delete": "Custo operacional removido",
+
+  // Contatos e Conhecimento
+  "contact.create": "Contato cadastrado",
+  "contact.created": "Contato cadastrado",
+  "contact.update": "Contato atualizado",
+  "contact.updated": "Contato atualizado",
+  "contact.delete": "Contato excluído",
+  "contact.deleted": "Contato excluído",
+  "contact.import": "Importação de contatos realizada",
+  "knowledge.import": "Base de conhecimento importada",
+  "knowledge.bulk_delete": "Exclusão em lote de conhecimento",
+  "tenant_ai.config_updated": "Configurações de IA da empresa atualizadas",
+  "agent.config_imported": "Configuração do agente importada",
+  "STAGE_CHANGE": "Alteração de etapa no funil",
+  "stage_change": "Alteração de etapa no funil",
+  "auth.gateway.signin": "Login via gateway realizado",
+  "auth.password_reset": "Redefinição de senha solicitada",
+  "custom.special_search_event": "Evento de busca especial",
+
   // Auditoria
   "audit.history.clear_requested": "Limpeza do histórico de auditoria solicitada",
   "audit.history.cleared": "Histórico de auditoria limpo",
@@ -64,8 +117,8 @@ const EXACT_TITLES: Record<string, string> = {
   "auth.session.revoked": "Sessão revogada",
   "auth.sessions.revoked_all": "Todas as sessões revogadas",
   "auth.switch_tenant": "Troca de empresa",
-  "admin.impersonate": "Acesso como empresa iniciado",
-  "admin.impersonate.stop": "Acesso como empresa encerrado",
+  "admin.impersonate": "Acesso administrativo a empresa (Impersonação)",
+  "admin.impersonate.stop": "Encerramento de acesso a empresa",
 
   // Empresas / Tenants
   "admin.tenant.create": "Empresa criada",
@@ -106,6 +159,8 @@ const EXACT_TITLES: Record<string, string> = {
   // Planos e Finanças
   "plan.created": "Plano criado",
   "plan.updated": "Plano atualizado",
+  "plan.deleted": "Plano excluído",
+  "plan.duplicated": "Plano duplicado",
   "admin.plan.create": "Plano criado",
   "admin.plan.update": "Plano atualizado",
   "subscription.created": "Assinatura criada",
@@ -119,7 +174,6 @@ const EXACT_TITLES: Record<string, string> = {
   "channel.connected": "Canal conectado",
   "channel.disconnected": "Canal desconectado",
   "automation.delete": "Fluxo excluído",
-  "contact.delete": "Contato excluído",
   "tour.offered": "Tour da plataforma oferecido",
   "tour.started": "Tour da plataforma iniciado",
   "tour.dismissed": "Tour da plataforma dispensado",
@@ -277,4 +331,54 @@ export function formatAuditIp(ip?: string | null): string {
   }
   return clean;
 }
+
+/**
+ * Formata data e horário para a tabela em desktop como 'DD/MM/AAAA · HH:mm'
+ */
+export function formatAuditDate(value?: string | Date | null): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "—";
+  const dateStr = d.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const timeStr = d.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${dateStr} · ${timeStr}`;
+}
+
+/**
+ * Traduz o código da categoria para label legível em pt-BR
+ */
+export function auditCategoryLabel(category?: string | null): string {
+  if (!category) return "Geral";
+  switch (category.toUpperCase()) {
+    case "AUTH":
+      return "Autenticação";
+    case "ADMIN":
+      return "Administração";
+    case "COMPANY":
+      return "Empresas";
+    case "PLAN":
+      return "Planos";
+    case "FINANCE":
+      return "Financeiro";
+    case "DEPLOY":
+      return "Deploy";
+    case "GITHUB":
+      return "GitHub";
+    case "EASYPANEL":
+      return "EasyPanel";
+    case "SECURITY":
+      return "Segurança";
+    default:
+      return category;
+  }
+}
+
+
 

@@ -4,7 +4,7 @@
  */
 
 const SECRET_KEY =
-  /password|passwd|pwd|passwordhash|secret|token|refresh|authorization|cookie|bearer|apikey|api_key|webhook.?secret|totp|mfa|backup.?code|recovery.?code|credential|private.?key|client.?secret|github.?token|easypanel.?token|pat|connection.?string|database.?url|redis.?url|jwt/i;
+  /password|passwd|pwd|passwordhash|secret|token|refresh|authorization|cookie|bearer|apikey|api_key|webhook.?secret|totp|mfa|backup.?code|recovery.?code|credential|private.?key|client.?secret|github.?token|easypanel.?token|pat|connection.?string|database.?url|redis.?url|jwt|csrf|xsrf|session_token|auth_token|access_token|refresh_token/i;
 
 const SECRET_VALUE =
   /\b(sk|pk|nxf|ghp|github_pat)[-_][a-zA-Z0-9_]{8,}\b|Bearer\s+[A-Za-z0-9._~+/=-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/gi;

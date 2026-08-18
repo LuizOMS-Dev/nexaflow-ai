@@ -18,8 +18,14 @@ import {
 } from "lucide-react";
 import { api, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { formatDate, cn } from "@/lib/utils";
-import { humanizeAuditAction, formatAuditIp, auditSeverity } from "@/lib/audit-labels";
+import { cn } from "@/lib/utils";
+import {
+  humanizeAuditAction,
+  formatAuditIp,
+  auditSeverity,
+  formatAuditDate,
+  auditCategoryLabel,
+} from "@/lib/audit-labels";
 import {
   Checkbox,
   DialogFooter,
@@ -216,7 +222,7 @@ export default function AdminAuditPage() {
         createdAt: detail.createdAt,
         actor: detail.user ? `${detail.user.name} (${detail.user.email})` : "Sistema",
         ip: detail.ip,
-        tenant: detail.tenant?.name || "Global",
+        tenant: detail.tenant?.name || "Plataforma",
         metadata: detail.metadata || {},
       };
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
@@ -439,11 +445,11 @@ export default function AdminAuditPage() {
                             </p>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-gray-400">
-                            {log.tenant?.name || "Global"}
+                            {log.tenant?.name || "Plataforma"}
                           </td>
-                          <td className="px-4 py-2.5 align-middle tabular-nums text-gray-400">
+                          <td className="px-4 py-2.5 align-middle tabular-nums text-gray-400 whitespace-nowrap">
                             <time dateTime={log.createdAt} title={new Date(log.createdAt).toLocaleString("pt-BR")}>
-                              {formatDate(log.createdAt)}
+                              {formatAuditDate(log.createdAt)}
                             </time>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-right">
@@ -495,7 +501,7 @@ export default function AdminAuditPage() {
                         <div>
                           <span className="text-gray-500 block text-[11px]">Empresa</span>
                           <span className="truncate block text-gray-300">
-                            {log.tenant?.name || "Global"}
+                            {log.tenant?.name || "Plataforma"}
                           </span>
                         </div>
                         <div>
@@ -504,7 +510,7 @@ export default function AdminAuditPage() {
                         </div>
                         <div>
                           <span className="text-gray-500 block text-[11px]">Horário</span>
-                          <span className="tabular-nums text-gray-400">{formatDate(log.createdAt)}</span>
+                          <span className="tabular-nums text-gray-400">{formatAuditDate(log.createdAt)}</span>
                         </div>
                       </div>
 
@@ -590,7 +596,7 @@ export default function AdminAuditPage() {
                 </StatusBadge>
                 {detail.category && (
                   <span className="rounded px-1.5 py-0.5 text-[10.5px] font-medium uppercase tracking-wider text-gray-400 bg-white/[0.04] border border-white/[0.06]">
-                    {detail.category}
+                    {auditCategoryLabel(detail.category)}
                   </span>
                 )}
               </div>
@@ -643,7 +649,7 @@ export default function AdminAuditPage() {
                   <span>Empresa / Escopo</span>
                 </div>
                 <p className="font-medium text-white/90 truncate">
-                  {detail.tenant?.name || "Global da Plataforma"}
+                  {detail.tenant?.name || "Plataforma"}
                 </p>
               </div>
             </div>

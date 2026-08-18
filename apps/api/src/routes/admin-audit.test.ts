@@ -314,4 +314,46 @@ describe("Módulo Admin Audit — Trilha Confiável, Filtros, Severidade e Limpe
     });
     expect(preservedAudit).toBeDefined();
   });
+
+  // ── 8. Deduplicação de Rajadas e Proteção Extrema de Segredos ───────────
+  it("13. Deduplicação de Rajadas: Evita registros duplicados em rajadas idênticas (< 2s)", async () => {
+    const rec1 = await AuditService.record({
+      action: "easypanel.connection.tested",
+      userId: superadminUserId,
+      entity: "easypanel",
+    });
+
+    const rec2 = await AuditService.record({
+      action: "easypanel.connection.tested",
+      userId: superadminUserId,
+      entity: "easypanel",
+    });
+
+    expect(rec1).toBeDefined();
+    expect(rec2).toBeDefined();
+    expect(rec1?.id).toBe(rec2?.id);
+  });
+
+  it("14. Redação Extrema de Segredos: Garante que PAT, JWT, CSRF, chaves e URLs não vazem", async () => {
+    const rec = await AuditService.record({
+      action: "security.audit_check",
+      userId: superadminUserId,
+      metadata: {
+        github_pat: "github_pat_11AABBCCDDEEFF0011223344",
+        csrfToken: "csrf-token-12345-secret",
+        cookie: "session=abc12345; Secure; HttpOnly",
+        database_url: "postgresql://nexaflow:secretpass@db.internal:5432/db",
+        safeNote: "Auditoria 100% segura",
+      },
+    });
+
+    expect(rec).toBeDefined();
+    const meta = rec?.metadata as any;
+    expect(meta.github_pat).toBe("[omitido]");
+    expect(meta.csrfToken).toBe("[omitido]");
+    expect(meta.cookie).toBe("[omitido]");
+    expect(meta.database_url).toBe("[omitido]");
+    expect(meta.safeNote).toBe("Auditoria 100% segura");
+  });
 });
+
