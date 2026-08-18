@@ -34,6 +34,11 @@ enum MemberRole {
   READONLY
 }
 
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 /// Como o usuário se apresenta visualmente
 enum AvatarType {
   UPLOAD
@@ -260,6 +265,8 @@ model Tenant {
   charges             TenantCharge[]
   costs               TenantCost[]
   convertedLeads      SalesLead[]         @relation("ConvertedSalesLeads")
+  companyProfile      CompanyProfile?
+  subscription        Subscription?
 }
 
 /// Configuração de provedor de IA por empresa (BYOK).
@@ -354,21 +361,23 @@ model User {
 }
 
 model Membership {
-  id        String     @id @default(cuid())
+  id        String           @id @default(cuid())
   tenantId  String
   userId    String
-  role      MemberRole @default(AGENT)
+  role      MemberRole       @default(AGENT)
+  status    MembershipStatus @default(ACTIVE)
   /// Configurações e preferências do membro nesta empresa (ex.: workspaceLandingPage)
   settings  Json?
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
   @@index([tenantId])
+  @@index([tenantId, status])
   @@index([userId])
 }
 
@@ -1313,6 +1322,28 @@ model Notification {
   @@index([userId, dedupeKey])
 }
 
+/// Dados cadastrais e comerciais da empresa (1:1 com Tenant)
+model CompanyProfile {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique
+  legalName String?
+  tradeName String?
+  cnpj      String?
+  email     String?
+  phone     String?
+  website   String?
+  segment   String?
+  city      String?
+  state     String?
+  timezone  String?  @default("America/Sao_Paulo")
+  language  String?  @default("pt-BR")
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
 /// Assinatura / cobrança (manual agora; gateways depois)
 model Subscription {
   id               String    @id @default(cuid())
@@ -1342,6 +1373,8 @@ model Subscription {
   updatedAt        DateTime  @updatedAt
   payments         Payment[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([billingStatus])
   @@index([planId])
   @@index([currentPeriodEnd])
@@ -1360,11 +1393,14 @@ model Payment {
   /// PIX | TRANSFER | BOLETO | CARD | CASH | OTHER
   method          String?
   notes           String?
+  /// Chave de idempotência para evitar duplo-clique / requisição concorrente
+  idempotencyKey  String?       @unique
   createdBy       String?
   createdAt       DateTime      @default(now())
 
   @@index([tenantId, paidAt])
   @@index([subscriptionId])
+  @@index([idempotencyKey])
   @@index([createdAt])
 }
 
