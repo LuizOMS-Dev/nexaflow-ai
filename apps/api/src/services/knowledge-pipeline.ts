@@ -131,7 +131,52 @@ export async function indexKnowledgeDocument(docId: string, content: string) {
       metadata: asInputJson(c.metadata),
     })),
   });
+  await embedKnowledgeChunks(docId).catch(() => null);
   return chunks.length;
+}
+
+/** Embeddings em background do pipeline; falha não derruba o documento lexical. */
+export async function embedKnowledgeChunks(docId: string): Promise<boolean> {
+  const { embedTexts, resolveEmbeddingRuntime } = await import("./ai-core/embeddings");
+  const runtime = resolveEmbeddingRuntime();
+  if (!runtime.available) {
+    await prisma.knowledgeDoc.update({
+      where: { id: docId },
+      data: { embeddingProvider: null, embeddingModel: null, embeddingVersion: null, embeddingDimension: null },
+    });
+    return false;
+  }
+  const rows = await prisma.knowledgeChunk.findMany({
+    where: { docId },
+    orderBy: { chunkIndex: "asc" },
+    select: { id: true, content: true },
+  });
+  if (!rows.length) return false;
+  const batch = await embedTexts(rows.map((r) => r.content));
+  if (!batch) return false;
+  for (let i = 0; i < rows.length; i++) {
+    const vec = batch.vectors[i];
+    if (!vec) continue;
+    await prisma.knowledgeChunk.update({
+      where: { id: rows[i].id },
+      data: {
+        embedding: vec,
+        embeddingModel: batch.model,
+        embeddingVersion: batch.version,
+        embeddingDimension: batch.dimension,
+      },
+    });
+  }
+  await prisma.knowledgeDoc.update({
+    where: { id: docId },
+    data: {
+      embeddingProvider: batch.provider,
+      embeddingModel: batch.model,
+      embeddingVersion: batch.version,
+      embeddingDimension: batch.dimension,
+    },
+  });
+  return true;
 }
 
 export async function processKnowledgeDocument(docId: string, buffer?: Buffer): Promise<void> {

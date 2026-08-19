@@ -32,7 +32,9 @@ Não existe login padrão. O primeiro usuário é criado pelo seed; em uma insta
 | Banco | PostgreSQL 16 · Prisma 6 |
 | Cache | Redis 7 |
 | WhatsApp | Baileys (embutido). Evolution ou WAHA opcionais |
-| IA | Groq → xAI → OpenAI (nessa ordem, se a chave existir) |
+| IA (geração) | Groq → xAI → OpenAI (nessa ordem, se a chave existir) |
+| IA (embeddings) | Provider separado (`EMBEDDING_*`). Groq não gera vetores |
+| Knowledge | PDF/TXT/Markdown, chunking, retrieval lexical + vetorial se embedding configurado |
 
 Requisito: **Node.js 22+**.
 
@@ -133,7 +135,8 @@ Tudo está documentado em [`.env.example`](.env.example). O mínimo para desenvo
 | `REDIS_URL` | Redis |
 | `JWT_SECRET` / `COOKIE_SECRET` / `ENCRYPTION_KEY` | Auth e dados em repouso |
 | `SEED_SUPERADMIN_EMAIL` / `SEED_SUPERADMIN_PASSWORD` | Primeiro admin |
-| `GROQ_API_KEY` | IA (opcional no começo) |
+| `GROQ_API_KEY` | Geração de respostas (opcional no começo) |
+| `EMBEDDING_PROVIDER` / `EMBEDDING_API_KEY` | Busca semântica (opcional; sem isso só lexical) |
 | `WA_GATEWAY_PROVIDER` | `baileys` (padrão), `evolution`, `waha` ou `simulated` |
 
 Em produção, troque todos os secrets. Os valores de desenvolvimento **não** servem para VPS.
@@ -152,8 +155,8 @@ Em produção, troque todos os secrets. Os valores de desenvolvimento **não** s
 | `npm run db:migrate:deploy` | Aplica migrations |
 | `npm run db:seed` | Cria o superadmin |
 | `npm run db:studio` | Prisma Studio |
-| `npm test` | Vitest da API |
-| `npm run test:e2e` | Playwright |
+| `npm test` | Vitest da API (suite completa) |
+| `npm run test:e2e` | Playwright (requer app no ar) |
 | `npm run security:check` | Checagem de segurança |
 | `npm run docker:up` | Stack Docker no Windows |
 
@@ -172,6 +175,8 @@ A arquitetura de produção usa:
 - Postgres, Redis e WAHA sem exposição pública.
 
 O front fala com a API em `/nexa-api` (mesmo origin) e o WebSocket usa o domínio da API (`wss://…/ws`). O `DATABASE_URL` é configurado somente nas variáveis protegidas do EasyPanel; nunca coloque credenciais no repositório.
+
+Knowledge e RAG: [`docs/rag.md`](docs/rag.md). Pgvector **não** está no Postgres atual; vetores, quando gerados, ficam em JSON por chunk, sempre filtrados por tenant.
 
 Em um banco novo, aplique as migrations e execute `npm run db:seed` com `SEED_SUPERADMIN_EMAIL` e `SEED_SUPERADMIN_PASSWORD` definidos para criar o primeiro administrador.
 

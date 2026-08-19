@@ -112,6 +112,11 @@ export const env = {
   xaiBaseUrl: process.env.XAI_BASE_URL || "https://api.x.ai/v1",
   xaiModel: process.env.XAI_MODEL || "grok-4.5",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
+  /** Embeddings independentes da geração (Groq não oferece). Vazio = só lexical. */
+  embeddingProvider: (process.env.EMBEDDING_PROVIDER || "").trim(),
+  embeddingApiKey: process.env.EMBEDDING_API_KEY || process.env.OPENAI_API_KEY || "",
+  embeddingBaseUrl: process.env.EMBEDDING_BASE_URL || "https://api.openai.com/v1",
+  embeddingModel: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
   whatsappToken: process.env.WHATSAPP_TOKEN || "",
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
   /** Token de verificação GET hub.verify_token (Meta). Nunca use default em production. */

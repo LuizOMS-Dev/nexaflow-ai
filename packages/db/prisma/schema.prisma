@@ -1103,6 +1103,7 @@ model KnowledgeDoc {
   embeddingProvider String?
   embeddingModel    String?
   embeddingVersion  String?
+  embeddingDimension Int?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
@@ -1142,6 +1143,7 @@ model KnowledgeChunk {
   embedding        Json?
   embeddingModel   String?
   embeddingVersion String?
+  embeddingDimension Int?
   metadata         Json?
   createdAt        DateTime     @default(now())
   doc              KnowledgeDoc @relation(fields: [docId], references: [id], onDelete: Cascade)

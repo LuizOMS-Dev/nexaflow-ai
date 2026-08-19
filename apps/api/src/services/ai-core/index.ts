@@ -13,3 +13,9 @@ export {
   describeRuntime,
   AiGatewayError,
 } from "./gateway";
+export {
+  embedTexts,
+  embedQuery,
+  resolveEmbeddingRuntime,
+  cosineSimilarity,
+} from "./embeddings";

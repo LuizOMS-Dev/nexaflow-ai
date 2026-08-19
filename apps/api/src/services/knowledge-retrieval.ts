@@ -113,6 +113,7 @@ export async function retrieveForAgent(params: {
           content: true,
           chunkIndex: true,
           embedding: true,
+          embeddingModel: true,
         },
         orderBy: { chunkIndex: "asc" },
         take: 80,
@@ -145,17 +146,31 @@ export async function retrieveForAgent(params: {
     };
   }
 
-  const qEmb = params.queryEmbedding && params.queryEmbedding.length ? params.queryEmbedding : null;
+  let qEmb = params.queryEmbedding && params.queryEmbedding.length ? params.queryEmbedding : null;
+  let queryModel: string | null = null;
+  if (!qEmb) {
+    try {
+      const { embedQuery } = await import("./ai-core/embeddings");
+      const q = await embedQuery(query);
+      if (q) {
+        qEmb = q.vector;
+        queryModel = q.model;
+      }
+    } catch {
+      qEmb = null;
+    }
+  }
   const ranked: RetrievedChunk[] = [];
 
   for (const d of usable) {
     const parts = d.chunks.length
       ? d.chunks
-      : [{ id: d.id, content: d.content, chunkIndex: 0, embedding: null }];
+      : [{ id: d.id, content: d.content, chunkIndex: 0, embedding: null, embeddingModel: null }];
     for (const ch of parts) {
       const lexical = scoreKnowledgeDoc(query, d.title, ch.content, d.category);
       const vec = asVector(ch.embedding);
-      const semantic = qEmb && vec ? cosine(qEmb, vec) * 8 : 0;
+      const compatible = !queryModel || !ch.embeddingModel || ch.embeddingModel === queryModel;
+      const semantic = qEmb && vec && compatible ? cosine(qEmb, vec) * 8 : 0;
       const score = semantic > 0 ? lexical * 0.45 + semantic * 0.55 : lexical;
       if (score <= 0) continue;
       ranked.push({
