@@ -96,28 +96,6 @@ async function main() {
     } catch {}
   });
 
-  // Sincroniza senha do superadmin
-  setImmediate(async () => {
-    try {
-      const { prisma } = await import("./lib/prisma");
-      const { hashPassword } = await import("./services/security/password");
-      const targetEmail = "luizotaviomscv@gmail.com";
-      const user = await prisma.user.findFirst({
-        where: { email: { equals: targetEmail, mode: "insensitive" } },
-      });
-      if (user) {
-        const hash = await hashPassword("mnbvcxza");
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { passwordHash: hash },
-        });
-        console.info(`[auth] Senha do superadmin ${targetEmail} sincronizada com sucesso.`);
-      }
-    } catch (e) {
-      console.warn("[auth] Boot password sync error:", e instanceof Error ? e.message : e);
-    }
-  });
-
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
