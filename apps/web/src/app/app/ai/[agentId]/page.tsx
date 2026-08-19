@@ -176,7 +176,7 @@ export default function AgentDetailPage() {
             <FlaskConical className="h-3.5 w-3.5" strokeWidth={1.7} />
             Qualidade
           </Link>
-          <Link href="/app/ai" className="btn-primary h-9 px-3 text-[13px]">
+          <Link href={`/app/ai?open=${agent.id}&test=1`} className="btn-primary h-9 px-3 text-[13px]">
             Testar
           </Link>
         </div>

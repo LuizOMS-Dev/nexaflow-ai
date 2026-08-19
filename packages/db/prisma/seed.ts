@@ -348,7 +348,7 @@ Off-topic: recuse leve (sem horÃ¡rio de trabalho) e volte ao atendimento.`,
     restrictions:
       "Nunca dizer que Ã© robÃ´/IA. Ficar no contexto do negÃ³cio. Usar catÃ¡logo de preÃ§os de treino.",
     mode: AiMode.AUTO,
-    model: "llama-3.1-8b-instant",
+    model: "openai/gpt-oss-20b",
     temperature: 0.75,
     isActive: true,
     greeting: "Oi! Tudo bem? Aqui Ã© a Ana ðŸ˜Š Como posso te ajudar?",

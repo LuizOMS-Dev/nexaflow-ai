@@ -276,7 +276,7 @@ model TenantAiConfig {
   tenantId         String    @unique
   /// openai | groq | xai | openrouter | mistral | anthropic | gemini
   provider         String    @default("groq")
-  model            String    @default("llama-3.1-8b-instant")
+  model            String    @default("openai/gpt-oss-20b")
   /// platform_managed | byok
   credentialMode   String    @default("platform_managed")
   /// AES-GCM — null se platform_managed
@@ -737,6 +737,7 @@ model Message {
   author       User?        @relation("MessageAuthor", fields: [authorId], references: [id])
 
   @@index([conversationId, createdAt])
+  @@index([externalId])
 }
 
 model Note {
@@ -887,7 +888,7 @@ model AiAgent {
   instructions   String             @default("")
   restrictions   String?
   mode           AiMode             @default(SUGGEST)
-  model          String             @default("llama-3.3-70b-versatile")
+  model          String             @default("openai/gpt-oss-20b")
   temperature    Float              @default(0.4)
   maxMessages    Int                @default(50)
   isActive       Boolean            @default(true)

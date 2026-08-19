@@ -120,6 +120,23 @@ export async function ingestInboundMessage(params: {
   externalId?: string;
   type?: string;
 }) {
+  if (params.externalId) {
+    const duplicate = await prisma.message.findFirst({
+      where: {
+        externalId: params.externalId,
+        conversation: { tenantId: params.tenantId },
+      },
+      include: { conversation: true },
+    });
+    if (duplicate) {
+      return {
+        conversation: duplicate.conversation,
+        message: duplicate,
+        duplicate: true,
+      };
+    }
+  }
+
   // Armazenamento canônico = dígitos. Lookup multi-formato (legado +).
   const { phoneLookupVariants } = await import("../../lib/contact-fields");
   const digits = normalizePhone(params.phone);
@@ -244,13 +261,6 @@ export async function ingestInboundMessage(params: {
         isUnread: true,
       },
     });
-  }
-
-  if (params.externalId) {
-    const exists = await prisma.message.findFirst({
-      where: { conversationId: conversation.id, externalId: params.externalId },
-    });
-    if (exists) return { conversation, message: exists, duplicate: true };
   }
 
   const message = await prisma.message.create({
@@ -848,6 +858,27 @@ async function maybeAutoReplyAi(params: {
   if (recentOut) {
     console.log("[whatsapp] auto-reply: humano já respondeu, skip");
     return;
+  }
+
+  const lastInbound = await prisma.message.findFirst({
+    where: { conversationId: params.conversationId, direction: "INBOUND" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, createdAt: true },
+  });
+  if (lastInbound) {
+    const alreadyReplied = await prisma.message.findFirst({
+      where: {
+        conversationId: params.conversationId,
+        direction: "OUTBOUND",
+        isAiGenerated: true,
+        createdAt: { gte: lastInbound.createdAt },
+      },
+      select: { id: true },
+    });
+    if (alreadyReplied) {
+      console.log("[whatsapp] auto-reply: já respondeu este inbound, skip");
+      return;
+    }
   }
 
   // Garante knowledge operacional (FAQ/políticas) pronto para a IA usar

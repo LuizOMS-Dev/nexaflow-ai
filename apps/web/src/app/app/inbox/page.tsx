@@ -55,6 +55,7 @@ import {
   Modal,
   Select,
   Spinner,
+  useToast,
 } from "@/components/ui";
 import { useAuth } from "@/store/auth";
 
@@ -633,6 +634,7 @@ export default function InboxPage() {
 
 function InboxInner() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { user, tenant } = useAuth();
   const searchParams = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -1122,8 +1124,7 @@ function InboxInner() {
     if (!conversation) return null;
     if (isClosed) return "reopen";
     if (!hasHuman || conversation.status === "PENDING") return "assume";
-    if (iOwnIt) return "transfer";
-    // Outro humano atende — sem ação primária (só menu)
+    if (iOwnIt) return "resume_ai";
     return null;
   })();
 
@@ -1149,8 +1150,12 @@ function InboxInner() {
       });
       qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
-    } catch {
-      /* falha silenciosa — estado local permanece; usuário pode retentar */
+    } catch (err: unknown) {
+      toast({
+        kind: "error",
+        title: opts?.discard ? "Não foi possível descartar" : "Não foi possível aprovar",
+        description: err instanceof Error ? err.message : "Tente novamente.",
+      });
     }
   }
   const listEmpty = !listQuery.isLoading && items.length === 0;
@@ -1899,18 +1904,23 @@ function InboxInner() {
                       {assignMutation.isPending ? "Assumindo…" : "Assumir atendimento"}
                     </button>
                   )}
-                  {primaryAction === "transfer" && (
+                  {primaryAction === "resume_ai" && (
                     <button
                       type="button"
                       className="btn-primary h-8 text-xs"
+                      disabled={resumeAiMutation.isPending}
                       onClick={() => {
-                        setTransferUserId("");
-                        setTransferNote("");
-                        setTransferOpen(true);
+                        if (
+                          confirm(
+                            "Devolver atendimento para IA?\n\nA IA voltará a responder de acordo com as regras do agente."
+                          )
+                        ) {
+                          resumeAiMutation.mutate();
+                        }
                       }}
                     >
-                      <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-                      Transferir
+                      <Bot className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      {resumeAiMutation.isPending ? "Devolvendo…" : "Devolver para IA"}
                     </button>
                   )}
                   {primaryAction === "reopen" && (

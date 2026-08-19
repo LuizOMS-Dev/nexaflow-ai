@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -297,12 +297,16 @@ const WIZARD_STEPS = [
   "Revisão",
 ] as const;
 
+const DEFAULT_AGENT_MODEL = "openai/gpt-oss-20b";
+
 function modelDisplayName(model: string): string {
   const m = (model || "").toLowerCase();
   if (!m) return "Modelo padrão";
-  if (m.includes("llama-3.3") && m.includes("70b")) return "Llama 3.3 70B";
-  if (m.includes("llama-3.1") && m.includes("70b")) return "Llama 3.1 70B";
-  if (m.includes("llama-3.1") && m.includes("8b")) return "Llama 3.1 8B";
+  if (m.includes("gpt-oss-120b")) return "GPT-OSS 120B";
+  if (m.includes("gpt-oss-20b")) return "GPT-OSS 20B";
+  if (m.includes("llama-3.3") && m.includes("70b")) return "GPT-OSS 120B";
+  if (m.includes("llama-3.1") && m.includes("70b")) return "GPT-OSS 120B";
+  if (m.includes("llama-3.1") && m.includes("8b")) return "GPT-OSS 20B";
   if (m.includes("llama")) {
     return model
       .replace(/-/g, " ")
@@ -470,7 +474,7 @@ export default function AiPage() {
     role: "",
     instructions: "",
     mode: "SUGGEST",
-    model: "llama-3.1-8b-instant",
+    model: DEFAULT_AGENT_MODEL,
   });
   const [editTab, setEditTab] = useState<
     "geral" | "comportamento" | "handoff" | "ferramentas" | "conhecimento"
@@ -484,7 +488,7 @@ export default function AiPage() {
     personality: "",
     tone: "",
     mode: "AUTO",
-    model: "llama-3.1-8b-instant",
+    model: DEFAULT_AGENT_MODEL,
     isActive: true,
     transfers: [] as string[],
     transferOther: "",
@@ -523,6 +527,17 @@ export default function AiPage() {
     queryKey: ["ai-agents"],
     queryFn: () => api<Agent[]>("/ai-agents"),
   });
+  const openedSandboxFromQuery = useRef(false);
+  useEffect(() => {
+    if (openedSandboxFromQuery.current || !data?.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get("open");
+    if (!openId || params.get("test") !== "1") return;
+    const agent = data.find((item) => item.id === openId);
+    if (!agent) return;
+    openedSandboxFromQuery.current = true;
+    setChatAgent(agent);
+  }, [data]);
 
   const overview = useQuery({
     queryKey: ["ai-agents-overview"],
@@ -722,7 +737,7 @@ export default function AiPage() {
       role: "",
       instructions: "",
       mode: "SUGGEST",
-      model: "llama-3.1-8b-instant",
+      model: DEFAULT_AGENT_MODEL,
     });
     setManualError("");
     setManualOpen(true);
@@ -755,7 +770,7 @@ export default function AiPage() {
       personality: agent.personality || "",
       tone: agent.tone || "",
       mode: agent.mode,
-      model: agent.model || "llama-3.1-8b-instant",
+      model: agent.model || DEFAULT_AGENT_MODEL,
       isActive: agent.isActive,
       transfers,
       transferOther: customParts.join("; "),
@@ -911,7 +926,7 @@ ${transferBlock ? `\n${transferBlock}` : ""}
       instructions,
       restrictions,
       mode: wizard.mode,
-      model: "llama-3.1-8b-instant",
+      model: DEFAULT_AGENT_MODEL,
       greeting: `Oi! Tudo bem? Como posso te ajudar?`,
       transferRules: {
         triggers: (() => {
