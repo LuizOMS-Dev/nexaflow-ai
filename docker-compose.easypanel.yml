@@ -92,7 +92,7 @@ services:
       ALLOW_MAIL_DISABLED: ${ALLOW_MAIL_DISABLED:-0}
       ALLOW_INSECURE_BOOT: ${ALLOW_INSECURE_BOOT:-0}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
       XAI_API_KEY: ${XAI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       WA_GATEWAY_PROVIDER: waha

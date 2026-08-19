@@ -26,6 +26,7 @@ import {
   knowledgeLooksRelevantToIntent,
   type VerificationEvidence,
 } from "./agent-action-grounding";
+import { canonicalizeGroqModel } from "./ai-core/catalog";
 
 export type AiSuggestion = {
   reply: string;
@@ -232,12 +233,20 @@ function resolveModel(preferred?: string | null): string {
   // Se o agente ainda tem modelo de outro provedor, usa o do provedor atual
   const xaiModels = ["grok", "grok-"];
   const openaiModels = ["gpt-", "o1", "o3"];
-  const groqModels = ["llama", "mixtral", "gemma", "qwen", "deepseek"];
+  const groqModels = ["llama", "mixtral", "gemma", "qwen", "deepseek", "gpt-oss"];
 
   if (env.aiProvider === "groq") {
-    if (xaiModels.some((p) => preferred.toLowerCase().includes(p)) || openaiModels.some((p) => preferred.toLowerCase().includes(p))) {
+    const canonical = canonicalizeGroqModel(preferred);
+    if (canonical !== preferred) return canonical;
+    if (
+      xaiModels.some((p) => preferred.toLowerCase().includes(p)) ||
+      (openaiModels.some((p) => preferred.toLowerCase().includes(p)) &&
+        !preferred.toLowerCase().includes("gpt-oss") &&
+        !preferred.toLowerCase().startsWith("openai/"))
+    ) {
       return fallback;
     }
+    return canonical;
   }
   if (env.aiProvider === "xai" && groqModels.some((p) => preferred.toLowerCase().includes(p))) {
     return fallback;

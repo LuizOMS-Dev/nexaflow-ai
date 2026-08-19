@@ -68,32 +68,32 @@ export const PROVIDER_META: Record<AiProviderId, ProviderMeta> = {
 
 /** Modelos conhecidos — fonte única (não espalhar IDs no código de negócio). */
 export const MODEL_CATALOG: ModelCatalogEntry[] = [
-  // Groq — 8B primeiro (padrão econômico/rápido); 70B opcional (mais capaz, mais token)
+  // Groq — modelos de produção atuais (Llama 3.1/3.3 saíram de linha em 16/08/2026)
   {
     provider: "groq",
-    modelId: "llama-3.1-8b-instant",
-    displayName: "Llama 3.1 8B Instant (recomendado)",
+    modelId: "openai/gpt-oss-20b",
+    displayName: "GPT-OSS 20B (recomendado para atendimento)",
     enabled: true,
     capabilities: TEXT_TOOLS,
-    contextWindow: 128000,
+    contextWindow: 131072,
     productionReady: true,
   },
   {
     provider: "groq",
-    modelId: "llama-3.3-70b-versatile",
-    displayName: "Llama 3.3 70B (máxima qualidade)",
+    modelId: "openai/gpt-oss-120b",
+    displayName: "GPT-OSS 120B (máxima qualidade)",
     enabled: true,
     capabilities: TEXT_TOOLS,
-    contextWindow: 128000,
+    contextWindow: 131072,
     productionReady: true,
   },
   {
     provider: "groq",
-    modelId: "qwen/qwen3-32b",
-    displayName: "Qwen3 32B",
+    modelId: "qwen/qwen3.6-27b",
+    displayName: "Qwen 3.6 27B",
     enabled: true,
     capabilities: TEXT_TOOLS,
-    contextWindow: 128000,
+    contextWindow: 131072,
     productionReady: true,
   },
   // OpenAI
@@ -213,6 +213,21 @@ export function modelSupports(provider: AiProviderId, modelId: string, cap: AiCa
 export function defaultModelFor(provider: AiProviderId): string {
   const first = modelsForProvider(provider)[0];
   return first?.modelId || "unknown";
+}
+
+/** IDs Groq descontinuados → modelo de produção atual. */
+const GROQ_MODEL_ALIASES: Record<string, string> = {
+  "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+  "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+  "llama-3.1-70b-versatile": "openai/gpt-oss-120b",
+  "mixtral-8x7b-32768": "openai/gpt-oss-20b",
+  "gemma2-9b-it": "openai/gpt-oss-20b",
+  "qwen/qwen3-32b": "qwen/qwen3.6-27b",
+};
+
+export function canonicalizeGroqModel(modelId: string): string {
+  const id = (modelId || "").trim();
+  return GROQ_MODEL_ALIASES[id] || id;
 }
 
 export function maskApiKey(key: string): string {

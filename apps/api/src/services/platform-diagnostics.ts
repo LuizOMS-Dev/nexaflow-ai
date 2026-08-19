@@ -469,7 +469,7 @@ export async function probeGroqLiveUsage(): Promise<{
       latencyMs: null,
     };
   }
-  const model = env.aiModel || "llama-3.1-8b-instant";
+  const model = env.aiModel || "openai/gpt-oss-20b";
   const started = Date.now();
   try {
     const res = await fetch(`${env.aiBaseUrl || "https://api.groq.com/openai/v1"}/chat/completions`, {
@@ -480,7 +480,7 @@ export async function probeGroqLiveUsage(): Promise<{
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4,
+        max_completion_tokens: 64,
         temperature: 0,
         messages: [{ role: "user", content: "ok" }],
       }),

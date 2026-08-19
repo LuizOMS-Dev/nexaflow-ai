@@ -206,7 +206,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
         instructions: z.string().default(""),
         restrictions: z.string().optional(),
         mode: z.enum(["SUGGEST", "APPROVE", "AUTO"]).default("SUGGEST"),
-        model: z.string().default("llama-3.1-8b-instant"),
+        model: z.string().default("openai/gpt-oss-20b"),
         temperature: z.number().min(0).max(2).default(0.4),
         greeting: z.string().optional(),
         farewell: z.string().optional(),

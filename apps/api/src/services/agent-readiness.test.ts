@@ -26,7 +26,7 @@ function configuredAgent() {
     instructions: "Responda com clareza usando somente o conhecimento aprovado da empresa.",
     restrictions: "Não invente preços, prazos, políticas ou condições comerciais.",
     mode: "SUGGEST",
-    model: "llama-3.1-8b-instant",
+    model: "openai/gpt-oss-20b",
     temperature: 0.3,
     maxMessages: 30,
     greeting: null,

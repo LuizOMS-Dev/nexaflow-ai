@@ -14,6 +14,10 @@ import type {
 import { PROVIDER_META, modelsForProvider } from "./catalog";
 import { looksLikeProviderKey } from "./credentials";
 
+function usesMaxCompletionTokens(model: string) {
+  return /gpt-oss|qwen3/i.test(model || "");
+}
+
 export function createOpenAICompatibleAdapter(providerId: AiProviderId): AIProviderAdapter {
   const meta = PROVIDER_META[providerId];
   if (!meta.openaiCompatible) {
@@ -111,9 +115,11 @@ export function createOpenAICompatibleAdapter(providerId: AiProviderId): AIProvi
         const c = client(apiKey.trim(), baseUrl);
         const completion = await c.chat.completions.create({
           model: modelId,
-          max_tokens: 8,
           temperature: 0,
           messages: [{ role: "user", content: "Responda apenas: ok" }],
+          ...(usesMaxCompletionTokens(modelId)
+            ? { max_completion_tokens: 128 }
+            : { max_tokens: 8 }),
         });
         // Exige resposta real do provedor (não aceitar “sucesso vazio”)
         const choice = completion.choices?.[0];
@@ -180,7 +186,9 @@ export function createOpenAICompatibleAdapter(providerId: AiProviderId): AIProvi
         const completion = await c.chat.completions.create({
           model: params.model,
           temperature: params.temperature,
-          max_tokens: params.maxTokens,
+          ...(usesMaxCompletionTokens(params.model)
+            ? { max_completion_tokens: params.maxTokens || 1024 }
+            : { max_tokens: params.maxTokens }),
           messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
           response_format:
             params.responseFormat === "json_object" ? { type: "json_object" } : undefined,

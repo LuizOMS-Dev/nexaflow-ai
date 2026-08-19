@@ -22,7 +22,7 @@ function resolveAiProvider(): {
       provider: "groq",
       apiKey: process.env.GROQ_API_KEY,
       baseUrl: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",
-      model: process.env.GROQ_MODEL || process.env.AI_MODEL || "llama-3.1-8b-instant",
+      model: process.env.GROQ_MODEL || process.env.AI_MODEL || "openai/gpt-oss-20b",
     };
   }
   if (process.env.XAI_API_KEY) {

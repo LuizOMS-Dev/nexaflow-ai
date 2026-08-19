@@ -37,7 +37,7 @@ export async function ensureDefaultAiAgent(tenantId: string) {
     restrictions:
       "Não inventar preços. Não oferecer desconto sem autorização. Não sair do contexto do negócio.",
     mode: AiMode.AUTO,
-    model: "llama-3.1-8b-instant",
+    model: "openai/gpt-oss-20b",
     temperature: 0.55,
     isActive: true,
     transferRules: {

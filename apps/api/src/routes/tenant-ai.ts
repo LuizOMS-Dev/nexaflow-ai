@@ -81,7 +81,7 @@ export async function tenantAiRoutes(app: FastifyInstance) {
             }
           : {
               provider: platform?.provider || "groq",
-              model: platform?.model || "llama-3.1-8b-instant",
+              model: platform?.model || "openai/gpt-oss-20b",
               credentialMode: "platform_managed",
               hasApiKey: false,
               apiKeyMasked: null,

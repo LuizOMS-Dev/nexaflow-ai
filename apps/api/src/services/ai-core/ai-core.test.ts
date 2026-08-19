@@ -44,7 +44,7 @@ describe("ai-core catalog", () => {
   });
 
   it("modelSupports consulta matriz", () => {
-    expect(modelSupports("groq", "llama-3.1-8b-instant", "TEXT")).toBe(true);
+    expect(modelSupports("groq", "openai/gpt-oss-20b", "TEXT")).toBe(true);
     expect(modelSupports("openai", "gpt-4o-mini", "TOOLS")).toBe(true);
   });
 
@@ -89,7 +89,8 @@ describe("resolveModelForProvider", () => {
     expect(resolveModelForProvider("openai", "llama-3.3-70b-versatile")).toBe(
       defaultModelFor("openai")
     );
-    expect(resolveModelForProvider("groq", "llama-3.1-8b-instant")).toBe("llama-3.1-8b-instant");
+    expect(resolveModelForProvider("groq", "llama-3.1-8b-instant")).toBe("openai/gpt-oss-20b");
+    expect(resolveModelForProvider("groq", "openai/gpt-oss-20b")).toBe("openai/gpt-oss-20b");
   });
 });
 

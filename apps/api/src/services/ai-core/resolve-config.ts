@@ -7,7 +7,7 @@ import { env } from "../../lib/env";
 import { prisma } from "../../lib/prisma";
 import { decryptSecret } from "../security/crypto";
 import type { AiProviderId, AiRuntimeConfig, AiScope, CredentialMode } from "./types";
-import { PROVIDER_META, defaultModelFor, findModel } from "./catalog";
+import { PROVIDER_META, defaultModelFor, findModel, canonicalizeGroqModel } from "./catalog";
 
 function platformFromEnv(): AiRuntimeConfig | null {
   if (!env.aiProvider || !env.aiApiKey) return null;
@@ -30,12 +30,14 @@ function pickModel(
   tenantModel?: string | null,
   platformModel?: string | null
 ): string {
-  const o = (agentOverride || "").trim();
+  const o = provider === "groq" ? canonicalizeGroqModel((agentOverride || "").trim()) : (agentOverride || "").trim();
   if (o && findModel(provider, o)) return o;
-  const t = (tenantModel || "").trim();
+  const tRaw = (tenantModel || "").trim();
+  const t = provider === "groq" ? canonicalizeGroqModel(tRaw) : tRaw;
   if (t && findModel(provider, t)) return t;
   if (t) return t; // permite IDs custom (OpenRouter etc.)
-  const p = (platformModel || "").trim();
+  const pRaw = (platformModel || "").trim();
+  const p = provider === "groq" ? canonicalizeGroqModel(pRaw) : pRaw;
   if (p) return p;
   return defaultModelFor(provider);
 }
@@ -168,12 +170,13 @@ export function resolveModelForProvider(
 ): string {
   const def = fallback || defaultModelFor(provider);
   if (!preferred?.trim()) return def;
-  const p = preferred.trim();
+  const p = provider === "groq" ? canonicalizeGroqModel(preferred.trim()) : preferred.trim();
   // se o ID parece de outro ecossistema, usa default do provider ativo
   const looksOpenAI = /^(gpt-|o1|o3)/i.test(p);
   const looksGrok = /grok/i.test(p);
   const looksLlama = /llama|mixtral|gemma|qwen/i.test(p);
-  if (provider === "groq" && (looksOpenAI || looksGrok) && !looksLlama) return def;
+  const groqNative = /^openai\/gpt-oss|^qwen\//i.test(p);
+  if (provider === "groq" && (looksOpenAI || looksGrok) && !looksLlama && !groqNative) return def;
   if (provider === "openai" && (looksGrok || looksLlama)) return def;
   if (provider === "xai" && (looksLlama || looksOpenAI)) return def;
   return p;
