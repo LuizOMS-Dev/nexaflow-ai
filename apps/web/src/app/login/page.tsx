@@ -152,6 +152,9 @@ export default function LoginPage() {
     accessToken?: string;
     mfaRequired?: boolean;
     mfaToken?: string;
+    mustChangePassword?: boolean;
+    resetToken?: string;
+    message?: string;
     user?: {
       id: string;
       email: string;
@@ -347,6 +350,13 @@ export default function LoginPage() {
           method: "POST",
           json: { mfaToken, code: mfaCode.replace(/\s/g, "") },
         });
+        if (data.mustChangePassword && data.resetToken) {
+          setResetToken(data.resetToken);
+          setView("reset");
+          setMfaToken(null);
+          setLoading(false);
+          return;
+        }
         finishLogin(data);
       } catch (err) {
         const message =
@@ -382,6 +392,13 @@ export default function LoginPage() {
       if (data.mfaRequired && data.mfaToken) {
         setMfaToken(data.mfaToken);
         setView("mfa");
+        setLoading(false);
+        return;
+      }
+
+      if (data.mustChangePassword && data.resetToken) {
+        setResetToken(data.resetToken);
+        setView("reset");
         setLoading(false);
         return;
       }
@@ -447,7 +464,7 @@ export default function LoginPage() {
           : view === "forgot-sent"
             ? undefined
             : view === "reset"
-              ? "Mínimo de 10 caracteres."
+              ? "Defina uma nova senha. Mínimo de 10 caracteres."
               : view === "reset-done"
                 ? "Você já pode entrar com a nova senha."
                 : view === "link-invalid"

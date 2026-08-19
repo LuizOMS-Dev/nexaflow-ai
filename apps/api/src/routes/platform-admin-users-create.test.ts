@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomBytes } from "crypto";
 import { buildApp } from "../app";
 import { prisma } from "../lib/prisma";
-import { hashPassword } from "../services/security/password";
+import { hashPassword, verifyPassword } from "../services/security/password";
 
 describe("Platform admin user provisioning", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
@@ -532,5 +532,161 @@ describe("Platform admin user provisioning", () => {
     const still = await prisma.user.findUnique({ where: { id: user.id } });
     expect(still).toBeTruthy();
     expect(still?.email).toBe(email);
+  });
+
+  it("novo usuário de empresa com senha temporária — hash oficial e troca no primeiro login", async () => {
+    const tenant = await createTenant();
+    const email = `temp-${testId}@test.local`;
+    const temp = "TempAccess123!";
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/users",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        kind: "company",
+        name: "Temp User",
+        email,
+        tenantId: tenant.id,
+        role: "AGENT",
+        accessMethod: "temporary_password",
+        temporaryPassword: temp,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { createdUser: boolean; mustChangePassword: boolean; firstAccess: string };
+    expect(body.createdUser).toBe(true);
+    expect(body.mustChangePassword).toBe(true);
+    expect(body.firstAccess).toBe("temporary_password");
+    expect(JSON.stringify(body).toLowerCase()).not.toContain(temp.toLowerCase());
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    expect(user?.mustChangePassword).toBe(true);
+    expect(user?.passwordHash.startsWith("$argon2")).toBe(true);
+    expect((await verifyPassword(user!.passwordHash, temp)).ok).toBe(true);
+    const inviteTokens = await prisma.passwordResetToken.findMany({ where: { userId: user!.id } });
+    expect(inviteTokens).toHaveLength(0);
+
+    const logs = await prisma.auditLog.findMany({ where: { entityId: user!.id } });
+    const dumped = JSON.stringify(logs).toLowerCase();
+    expect(dumped).not.toContain("password");
+    expect(dumped).not.toContain(temp.toLowerCase());
+    expect(dumped).not.toContain(user!.passwordHash.toLowerCase());
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email, password: temp },
+    });
+    expect(login.statusCode).toBe(200);
+    const loginBody = login.json() as { mustChangePassword?: boolean; resetToken?: string; accessToken?: string };
+    expect(loginBody.mustChangePassword).toBe(true);
+    expect(loginBody.resetToken).toBeTruthy();
+    expect(loginBody.accessToken).toBeFalsy();
+    expect(JSON.stringify(loginBody).toLowerCase()).not.toContain(temp.toLowerCase());
+
+    const reset = await app.inject({
+      method: "POST",
+      url: "/auth/reset-password",
+      payload: { token: loginBody.resetToken, password: "NewOfficial123!" },
+    });
+    expect(reset.statusCode).toBe(200);
+    const after = await prisma.user.findUnique({ where: { email } });
+    expect(after?.mustChangePassword).toBe(false);
+    expect((await verifyPassword(after!.passwordHash, temp)).ok).toBe(false);
+    expect((await verifyPassword(after!.passwordHash, "NewOfficial123!")).ok).toBe(true);
+
+    const login2 = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email, password: "NewOfficial123!" },
+    });
+    expect(login2.statusCode).toBe(200);
+    expect((login2.json() as { accessToken?: string }).accessToken).toBeTruthy();
+  });
+
+  it("novo Superadmin com senha temporária exige troca e não vaza senha", async () => {
+    const email = `sa-temp-${testId}@test.local`;
+    const temp = "SaTempPass123!";
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/users",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        kind: "platform",
+        name: "SA Temp",
+        email,
+        accessMethod: "temporary_password",
+        temporaryPassword: temp,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { createdUser: boolean; mustChangePassword: boolean };
+    expect(body.createdUser).toBe(true);
+    expect(body.mustChangePassword).toBe(true);
+    expect(JSON.stringify(body)).not.toMatch(/SaTempPass/i);
+    const user = await prisma.user.findUnique({ where: { email } });
+    expect(user?.platformRole).toBe("SUPERADMIN");
+    expect(user?.mustChangePassword).toBe(true);
+    const tokens = await prisma.passwordResetToken.count({ where: { userId: user!.id } });
+    expect(tokens).toBe(0);
+  });
+
+  it("User existente não tem senha alterada mesmo se enviar senha temporária", async () => {
+    const tenant = await createTenant();
+    const passwordHash = await hashPassword("KeepThisPass123!");
+    const existing = await prisma.user.create({
+      data: {
+        email: `keep-${testId}@test.local`,
+        name: "Keep",
+        passwordHash,
+        status: "ACTIVE",
+        twoFactorEnabled: true,
+        twoFactorSecret: "keep-secret",
+        mustChangePassword: false,
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/users",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        kind: "company",
+        name: "Ignored",
+        email: existing.email,
+        tenantId: tenant.id,
+        role: "AGENT",
+        accessMethod: "temporary_password",
+        temporaryPassword: "OverwritePass123!",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { reusedUser: boolean }).reusedUser).toBe(true);
+    const same = await prisma.user.findUnique({ where: { id: existing.id } });
+    expect(same?.passwordHash).toBe(passwordHash);
+    expect(same?.mustChangePassword).toBe(false);
+    expect(same?.twoFactorEnabled).toBe(true);
+    expect(same?.twoFactorSecret).toBe("keep-secret");
+  });
+
+  it("senha fraca é rejeitada na criação com senha temporária", async () => {
+    const tenant = await createTenant();
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/users",
+      headers: { authorization: `Bearer ${superadminToken}` },
+      payload: {
+        kind: "company",
+        name: "Weak",
+        email: `weak-${testId}@test.local`,
+        tenantId: tenant.id,
+        role: "AGENT",
+        accessMethod: "temporary_password",
+        temporaryPassword: "123456",
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error?: string }).error).toBe("WEAK_PASSWORD");
+    const created = await prisma.user.findUnique({ where: { email: `weak-${testId}@test.local` } });
+    expect(created).toBeNull();
   });
 });

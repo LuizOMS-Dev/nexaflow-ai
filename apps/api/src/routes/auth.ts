@@ -93,6 +93,35 @@ function clientMeta(request: FastifyRequest) {
   };
 }
 
+/** Reusa PasswordResetToken oficial — senha temporária não entra em sessão até a troca. */
+async function issueMustChangePasswordChallenge(
+  userId: string,
+  ip: string | null,
+  userAgent: string | null
+) {
+  const raw = randomBytes(32).toString("base64url");
+  await prisma.passwordResetToken.create({
+    data: {
+      userId,
+      tokenHash: hashOpaqueToken(raw),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      ip,
+    },
+  });
+  await recordSecurityEvent({
+    type: "PASSWORD_RESET_REQUESTED",
+    userId,
+    ip,
+    userAgent,
+    metadata: { reason: "must_change_password" },
+  });
+  return {
+    mustChangePassword: true as const,
+    resetToken: raw,
+    message: "Altere a senha temporária para continuar.",
+  };
+}
+
 async function signAccess(
   app: FastifyInstance,
   payload: {
@@ -280,6 +309,10 @@ export async function authRoutes(app: FastifyInstance) {
         mfaToken,
         message: "Informe o código do autenticador.",
       };
+    }
+
+    if (user.mustChangePassword) {
+      return issueMustChangePasswordChallenge(user.id, ip, userAgent);
     }
 
     return completeLogin(app, reply, {
@@ -512,6 +545,10 @@ export async function authRoutes(app: FastifyInstance) {
         : user.memberships.find((m) => m.tenantId === challenge.tenantId) ||
           user.memberships[0] ||
           null;
+
+    if (user.mustChangePassword) {
+      return issueMustChangePasswordChallenge(user.id, ip, userAgent);
+    }
 
     return completeLogin(app, reply, {
       user,
@@ -1180,7 +1217,7 @@ export async function authRoutes(app: FastifyInstance) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: row.userId },
-        data: { passwordHash, passwordChangedAt: new Date() },
+        data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false },
       }),
       prisma.passwordResetToken.update({
         where: { id: row.id },
@@ -1254,6 +1291,7 @@ export async function authRoutes(app: FastifyInstance) {
               passwordHash,
               status: "ACTIVE",
               passwordChangedAt: new Date(),
+              mustChangePassword: false,
             },
           });
         } else {
@@ -1262,6 +1300,7 @@ export async function authRoutes(app: FastifyInstance) {
             data: {
               passwordHash,
               passwordChangedAt: new Date(),
+              mustChangePassword: false,
               name: body.name || u.name || invite.name,
               status: "ACTIVE",
               isActive: true,
@@ -1957,7 +1996,7 @@ export async function authRoutes(app: FastifyInstance) {
       const passwordHash = await hashPassword(body.newPassword);
       await prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash, passwordChangedAt: new Date() },
+        data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false },
       });
       await revokeAllUserSessions(user.id, "password_changed", jwtUser.sid);
       await recordSecurityEvent({

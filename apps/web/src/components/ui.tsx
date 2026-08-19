@@ -730,6 +730,75 @@ export function ChoiceCard({
   );
 }
 
+export type RadioOption = {
+  value: string;
+  label: string;
+  description?: string;
+  disabled?: boolean;
+};
+
+/** RadioGroup do Design System — nunca usar <input type="radio"> nativo. */
+export function RadioGroup({
+  value,
+  onChange,
+  options,
+  disabled,
+  "aria-label": ariaLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: RadioOption[];
+  disabled?: boolean;
+  "aria-label"?: string;
+}) {
+  return (
+    <div className="grid gap-2" role="radiogroup" aria-label={ariaLabel}>
+      {options.map((opt) => {
+        const selected = value === opt.value;
+        const blocked = disabled || opt.disabled;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            disabled={blocked}
+            onClick={() => {
+              if (!blocked) onChange(opt.value);
+            }}
+            className={cn(
+              "flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition",
+              "outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50",
+              selected
+                ? "border-violet-500/40 bg-violet-500/10 dark:border-violet-400/35 dark:bg-violet-500/[0.12]"
+                : "border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04]",
+              blocked && "cursor-not-allowed opacity-50"
+            )}
+          >
+            <span
+              className={cn(
+                "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                selected ? "border-violet-400 bg-violet-500" : "border-white/25"
+              )}
+              aria-hidden
+            >
+              {selected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-medium text-white">{opt.label}</span>
+              {opt.description ? (
+                <span className="mt-0.5 block text-[12px] leading-relaxed text-gray-500">
+                  {opt.description}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Banner de consequência (danger / warning) */
 export function ConsequenceBanner({
   children,

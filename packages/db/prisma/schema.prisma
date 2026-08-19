@@ -339,6 +339,8 @@ model User {
   lastStrongAuthAt     DateTime?
   lastLoginAt          DateTime?
   passwordChangedAt    DateTime?
+  /// Senha temporária definida por admin — obriga troca no primeiro login
+  mustChangePassword   Boolean       @default(false)
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 

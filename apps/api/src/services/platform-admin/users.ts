@@ -3,7 +3,7 @@ import type { MemberRole, Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
-import { hashOpaqueToken, hashPassword } from "../security/password";
+import { hashOpaqueToken, hashPassword, validatePasswordPolicy } from "../security/password";
 import { appPublicUrl, sendMail } from "../security/mail";
 import { testUserEmailFilter } from "./fixtures";
 
@@ -303,6 +303,30 @@ export async function getUserDetail(id: string) {
   return { ...user, activeSessions };
 }
 
+export type FirstAccessMethod = "invite" | "temporary_password";
+
+async function credentialsForNewUser(
+  accessMethod: FirstAccessMethod | undefined,
+  temporaryPassword?: string
+): Promise<{ passwordHash: string; mustChangePassword: boolean; method: FirstAccessMethod }> {
+  const method: FirstAccessMethod =
+    accessMethod === "temporary_password" ? "temporary_password" : "invite";
+  if (method === "temporary_password") {
+    const policy = validatePasswordPolicy(temporaryPassword || "");
+    if (policy) throw new AppError(policy, 400, "WEAK_PASSWORD");
+    return {
+      passwordHash: await hashPassword(temporaryPassword!),
+      mustChangePassword: true,
+      method,
+    };
+  }
+  return {
+    passwordHash: await hashPassword(`${randomBytes(32).toString("base64url")}Aa1!`),
+    mustChangePassword: false,
+    method,
+  };
+}
+
 async function sendFirstAccessMail(email: string, userId: string, kind: "company" | "platform") {
   const raw = randomBytes(32).toString("base64url");
   await prisma.passwordResetToken.create({
@@ -330,6 +354,8 @@ export async function provisionCompanyUser(
     email: string;
     tenantId: string;
     role?: MemberRole;
+    accessMethod?: FirstAccessMethod;
+    temporaryPassword?: string;
   },
   actor: { sub: string; ip?: string }
 ) {
@@ -352,17 +378,21 @@ export async function provisionCompanyUser(
     let user = await tx.user.findUnique({ where: { email } });
     let createdUser = false;
 
+    let firstAccess: FirstAccessMethod | "existing" = "existing";
     if (!user) {
+      const creds = await credentialsForNewUser(input.accessMethod, input.temporaryPassword);
       user = await tx.user.create({
         data: {
           email,
           name,
-          passwordHash: await hashPassword(randomBytes(32).toString("base64url") + "Aa1!"),
+          passwordHash: creds.passwordHash,
           status: "ACTIVE",
           isActive: true,
+          mustChangePassword: creds.mustChangePassword,
         },
       });
       createdUser = true;
+      firstAccess = creds.method;
       await tx.auditLog.create({
         data: {
           userId: actor.sub,
@@ -370,7 +400,11 @@ export async function provisionCompanyUser(
           action: "user.created",
           entity: "user",
           entityId: user.id,
-          metadata: { email, targetUserId: user.id },
+          metadata: {
+            email,
+            targetUserId: user.id,
+            firstAccess: creds.method === "temporary_password" ? "temporary" : "invite",
+          },
           ip: actor.ip || null,
         },
       });
@@ -418,10 +452,12 @@ export async function provisionCompanyUser(
       membership: { id: membership.id, tenantId: membership.tenantId, role: membership.role },
       createdUser,
       reusedUser: !createdUser,
+      firstAccess,
+      mustChangePassword: createdUser && firstAccess === "temporary_password",
     };
   });
 
-  if (result.createdUser) {
+  if (result.createdUser && result.firstAccess === "invite") {
     await sendFirstAccessMail(email, result.user.id, "company").catch(() => null);
   }
 
@@ -429,7 +465,12 @@ export async function provisionCompanyUser(
 }
 
 export async function provisionPlatformAdmin(
-  input: { name: string; email: string },
+  input: {
+    name: string;
+    email: string;
+    accessMethod?: FirstAccessMethod;
+    temporaryPassword?: string;
+  },
   actor: { sub: string; ip?: string }
 ) {
   const email = normalizeEmail(input.email);
@@ -446,25 +487,34 @@ export async function provisionPlatformAdmin(
     let createdUser = false;
     let promoted = false;
 
+    let firstAccess: FirstAccessMethod | "existing" = "existing";
     if (!user) {
+      const creds = await credentialsForNewUser(input.accessMethod, input.temporaryPassword);
       user = await tx.user.create({
         data: {
           email,
           name,
-          passwordHash: await hashPassword(randomBytes(32).toString("base64url") + "Aa1!"),
+          passwordHash: creds.passwordHash,
           status: "ACTIVE",
           isActive: true,
           platformRole: "SUPERADMIN",
+          mustChangePassword: creds.mustChangePassword,
         },
       });
       createdUser = true;
+      firstAccess = creds.method;
       await tx.auditLog.create({
         data: {
           userId: actor.sub,
           action: "user.created",
           entity: "user",
           entityId: user.id,
-          metadata: { email, targetUserId: user.id, platformRole: "SUPERADMIN" },
+          metadata: {
+            email,
+            targetUserId: user.id,
+            platformRole: "SUPERADMIN",
+            firstAccess: creds.method === "temporary_password" ? "temporary" : "invite",
+          },
           ip: actor.ip || null,
         },
       });
@@ -509,10 +559,12 @@ export async function provisionPlatformAdmin(
       },
       createdUser,
       promoted,
+      firstAccess,
+      mustChangePassword: createdUser && firstAccess === "temporary_password",
     };
   });
 
-  if (result.createdUser) {
+  if (result.createdUser && result.firstAccess === "invite") {
     await sendFirstAccessMail(email, result.user.id, "platform").catch(() => null);
   }
 

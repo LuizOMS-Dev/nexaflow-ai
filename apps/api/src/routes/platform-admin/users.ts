@@ -53,11 +53,15 @@ export async function adminUsersRoutes(app: FastifyInstance) {
             email: z.string().email(),
             tenantId: z.string().cuid(),
             role: z.enum(["ADMIN", "SUPERVISOR", "AGENT", "SALES", "READONLY"]).optional(),
+            accessMethod: z.enum(["invite", "temporary_password"]).optional().default("invite"),
+            temporaryPassword: z.string().max(128).optional(),
           }),
           z.object({
             kind: z.literal("platform"),
             name: z.string().trim().min(2).max(120),
             email: z.string().email(),
+            accessMethod: z.enum(["invite", "temporary_password"]).optional().default("invite"),
+            temporaryPassword: z.string().max(128).optional(),
           }),
         ])
         .parse(request.body);
@@ -65,12 +69,27 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       const actor = { sub: request.user.sub, ip: request.ip };
       if (body.kind === "company") {
         return provisionCompanyUser(
-          { name: body.name, email: body.email, tenantId: body.tenantId, role: body.role },
+          {
+            name: body.name,
+            email: body.email,
+            tenantId: body.tenantId,
+            role: body.role,
+            accessMethod: body.accessMethod,
+            temporaryPassword: body.temporaryPassword,
+          },
           actor
         );
       }
       await requireRecentAuthentication(request.user, { action: "grant_superadmin" });
-      return provisionPlatformAdmin({ name: body.name, email: body.email }, actor);
+      return provisionPlatformAdmin(
+        {
+          name: body.name,
+          email: body.email,
+          accessMethod: body.accessMethod,
+          temporaryPassword: body.temporaryPassword,
+        },
+        actor
+      );
     }
   );
 
