@@ -448,7 +448,7 @@ export async function createCompany(
         },
       });
 
-      // 5. Criação da Assinatura com Preço Contratado Snapshot
+      // 5. Assinatura 1:1 — existe mesmo sem plano no catálogo.
       let contractedPriceMonthly: number | null = null;
       let contractedPriceAnnual: number | null = null;
 
@@ -467,21 +467,21 @@ export async function createCompany(
               ? Number(plan.priceAnnual)
               : Math.round(catMonthly * 12 * 100) / 100;
         }
-
-        const billingDueDay = 10;
-        await tx.subscription.create({
-          data: {
-            tenantId: tenant.id,
-            planId: plan.id,
-            billingStatus: "ACTIVE",
-            billingCycle: "MONTHLY",
-            priceMonthly: contractedPriceMonthly,
-            priceAnnual: contractedPriceAnnual,
-            billingDueDay,
-            currentPeriodEnd: computeNextDueDate(billingDueDay),
-          },
-        });
       }
+
+      const billingDueDay = 10;
+      await tx.subscription.create({
+        data: {
+          tenantId: tenant.id,
+          planId: plan?.id || null,
+          billingStatus: "ACTIVE",
+          billingCycle: "MONTHLY",
+          priceMonthly: contractedPriceMonthly,
+          priceAnnual: contractedPriceAnnual,
+          billingDueDay,
+          currentPeriodEnd: computeNextDueDate(billingDueDay),
+        },
+      });
 
       // 6. Registro de Auditoria Atômico
       await tx.auditLog.create({

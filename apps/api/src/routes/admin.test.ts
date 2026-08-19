@@ -83,7 +83,15 @@ describe("platform admin — isolamento e contratos", () => {
   afterAll(async () => {
     await cleanupTestTenant(tenantId).catch(() => null);
     await prisma.user.deleteMany({
-      where: { email: { in: [`super-admin-${suffix}@test.local`, `other-admin-${suffix}@test.local`] } },
+      where: {
+        email: {
+          in: [
+            `super-admin-${suffix}@test.local`,
+            `other-admin-${suffix}@test.local`,
+            `visible-paginated-${suffix}@nexaflow.example`,
+          ],
+        },
+      },
     }).catch(() => null);
     await app.close().catch(() => null);
   });
@@ -129,6 +137,15 @@ describe("platform admin — isolamento e contratos", () => {
   });
 
   it("usuários vêm paginados", async () => {
+    // @test.local é filtrado da listagem operacional — cria identidade visível.
+    await prisma.user.create({
+      data: {
+        email: `visible-paginated-${suffix}@nexaflow.example`,
+        name: "Visible Paginated",
+        passwordHash: await hashPassword("Test@Pass12345"),
+        status: "ACTIVE",
+      },
+    });
     const res = await app.inject({
       method: "GET",
       url: "/admin/users?page=1&limit=10",
@@ -138,6 +155,7 @@ describe("platform admin — isolamento e contratos", () => {
     const body = res.json() as { items: unknown[]; total: number; totalPages: number };
     expect(Array.isArray(body.items)).toBe(true);
     expect(body.total).toBeGreaterThan(0);
+    expect(body.totalPages).toBeGreaterThanOrEqual(1);
   });
 
   it("superadmin não altera o próprio status", async () => {

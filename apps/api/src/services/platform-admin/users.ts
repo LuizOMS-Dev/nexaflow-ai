@@ -13,6 +13,34 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function prismaErrorCode(err: unknown): string {
+  return typeof err === "object" && err && "code" in err ? String((err as { code?: string }).code) : "";
+}
+
+/**
+ * Interactive tx retry: unique-constraint conflicts abort the Postgres tx.
+ * Callers must throw AppError for business conflicts so those are not retried.
+ */
+async function runSerializableProvision<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  attempts = 3
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await prisma.$transaction(fn);
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      if (prismaErrorCode(err) === "P2002") {
+        lastErr = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 export type ListUsersQuery = {
   search?: string;
   scope?: "all" | "companies" | "platform";
@@ -288,41 +316,35 @@ export async function provisionCompanyUser(
 
   const tenant = assertFound(await prisma.tenant.findUnique({ where: { id: input.tenantId } }));
 
-  const result = await prisma.$transaction(async (tx) => {
+  // Unique(email) / Unique(tenantId,userId) are the source of truth.
+  // After P2002 Postgres aborts the current tx (25P02) — never query it again.
+  // Retry the whole transaction so the loser re-reads committed rows.
+  const result = await runSerializableProvision(async (tx) => {
     let user = await tx.user.findUnique({ where: { email } });
     let createdUser = false;
 
     if (!user) {
-      try {
-        user = await tx.user.create({
-          data: {
-            email,
-            name,
-            passwordHash: await hashPassword(randomBytes(32).toString("base64url") + "Aa1!"),
-            status: "ACTIVE",
-            isActive: true,
-          },
-        });
-        createdUser = true;
-      } catch (err: unknown) {
-        const code = typeof err === "object" && err && "code" in err ? String((err as { code?: string }).code) : "";
-        if (code !== "P2002") throw err;
-        user = await tx.user.findUnique({ where: { email } });
-        if (!user) throw err;
-      }
-      if (createdUser) {
-        await tx.auditLog.create({
-          data: {
-            userId: actor.sub,
-            tenantId: tenant.id,
-            action: "user.created",
-            entity: "user",
-            entityId: user.id,
-            metadata: { email, targetUserId: user.id },
-            ip: actor.ip || null,
-          },
-        });
-      }
+      user = await tx.user.create({
+        data: {
+          email,
+          name,
+          passwordHash: await hashPassword(randomBytes(32).toString("base64url") + "Aa1!"),
+          status: "ACTIVE",
+          isActive: true,
+        },
+      });
+      createdUser = true;
+      await tx.auditLog.create({
+        data: {
+          userId: actor.sub,
+          tenantId: tenant.id,
+          action: "user.created",
+          entity: "user",
+          entityId: user.id,
+          metadata: { email, targetUserId: user.id },
+          ip: actor.ip || null,
+        },
+      });
     }
 
     const existing = await tx.membership.findUnique({
@@ -332,15 +354,23 @@ export async function provisionCompanyUser(
       throw new AppError("Este usuário já faz parte desta empresa.", 409, "MEMBERSHIP_ALREADY_EXISTS");
     }
 
-    const membership = await tx.membership.create({
-      data: {
-        tenantId: tenant.id,
-        userId: user.id,
-        role,
-        status: "ACTIVE",
-        isActive: true,
-      },
-    });
+    let membership;
+    try {
+      membership = await tx.membership.create({
+        data: {
+          tenantId: tenant.id,
+          userId: user.id,
+          role,
+          status: "ACTIVE",
+          isActive: true,
+        },
+      });
+    } catch (err: unknown) {
+      if (prismaErrorCode(err) === "P2002") {
+        throw new AppError("Este usuário já faz parte desta empresa.", 409, "MEMBERSHIP_ALREADY_EXISTS");
+      }
+      throw err;
+    }
 
     await tx.auditLog.create({
       data: {
@@ -382,7 +412,7 @@ export async function provisionPlatformAdmin(
     throw new AppError("E-mail inválido.", 400, "INVALID_EMAIL");
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await runSerializableProvision(async (tx) => {
     let user = await tx.user.findUnique({ where: { email } });
     let createdUser = false;
     let promoted = false;
