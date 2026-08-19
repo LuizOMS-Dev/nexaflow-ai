@@ -69,7 +69,7 @@ export function NewUserDialog({ open, onClose }: Props) {
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [temporaryPasswordConfirm, setTemporaryPasswordConfirm] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [existingHint, setExistingHint] = useState<string | null>(null);
+  const [existingUser, setExistingUser] = useState(false);
 
   const tenantsQuery = useQuery({
     queryKey: ["admin-tenants", "user-create"],
@@ -96,17 +96,17 @@ export function NewUserDialog({ open, onClose }: Props) {
 
   function setInlineIdle() {
     setErrors({});
-    setExistingHint(null);
+    setExistingUser(false);
   }
 
   useEffect(() => {
-    if (existingHint) setAccessMethod("invite");
-  }, [existingHint]);
+    if (existingUser) setAccessMethod("invite");
+  }, [existingUser]);
 
   const mut = useMutation({
     mutationFn: async () => {
       const firstAccess =
-        existingHint || accessMethod !== "temporary_password"
+        existingUser || accessMethod !== "temporary_password"
           ? { accessMethod: "invite" as const }
           : { accessMethod: "temporary_password" as const, temporaryPassword };
       if (kind === "company") {
@@ -160,7 +160,7 @@ export function NewUserDialog({ open, onClose }: Props) {
   async function onEmailBlur() {
     const value = email.trim().toLowerCase();
     if (!value || (kind !== "company" && kind !== "platform") || !value.includes("@")) {
-      setExistingHint(null);
+      setExistingUser(false);
       return;
     }
     try {
@@ -168,15 +168,9 @@ export function NewUserDialog({ open, onClose }: Props) {
         `/admin/users?search=${encodeURIComponent(value)}&limit=8`
       );
       const exists = (res.items || []).some((u) => u.email.toLowerCase() === value);
-      setExistingHint(
-        exists
-          ? kind === "platform"
-            ? "Este usuário já possui uma conta no NexaFlow. Somente o papel global será atualizado. Senha, MFA e sessões permanecem iguais."
-            : "Este usuário já possui uma conta no NexaFlow. Será criado apenas o vínculo com esta empresa."
-          : null
-      );
+      setExistingUser(exists);
     } catch {
-      setExistingHint(null);
+      setExistingUser(false);
     }
   }
 
@@ -188,7 +182,7 @@ export function NewUserDialog({ open, onClose }: Props) {
     if (kind === "company" && !tenantId) next.tenantId = "Selecione a empresa.";
     if (kind === "company" && !role) next.role = "Selecione o papel.";
     if (kind === "platform" && !ack) next.ack = "Confirme o acesso administrativo global.";
-    if (!existingHint && accessMethod === "temporary_password") {
+    if (!existingUser && accessMethod === "temporary_password") {
       if (temporaryPassword.length < 10) next.temporaryPassword = "A senha deve ter pelo menos 10 caracteres.";
       if (temporaryPassword !== temporaryPasswordConfirm) next.temporaryPasswordConfirm = "As senhas não coincidem.";
     }
@@ -296,14 +290,16 @@ export function NewUserDialog({ open, onClose }: Props) {
               value={email}
               disabled={busy}
               autoComplete="email"
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (existingUser) setExistingUser(false);
+              }}
               onBlur={() => void onEmailBlur()}
             />
             {errors.email ? <p className="mt-1 text-[12px] text-rose-400">{errors.email}</p> : null}
           </label>
           {kind === "company" ? (
             <>
-              {existingHint ? <ConsequenceBanner tone="warning">{existingHint}</ConsequenceBanner> : null}
               <div>
                 <span className="mb-1 block text-[12px] font-medium text-gray-300">Empresa</span>
                 <Select
@@ -337,18 +333,17 @@ export function NewUserDialog({ open, onClose }: Props) {
                 {errors.role ? <p className="mt-1 text-[12px] text-rose-400">{errors.role}</p> : null}
               </div>
             </>
+          ) : null}
+          {existingUser ? (
+            <ConsequenceBanner tone="warning">
+              <p>Este usuário já possui uma conta no NexaFlow.</p>
+              <p className="mt-1 text-[12px] text-gray-400">
+                {kind === "platform"
+                  ? "Somente o papel global será atualizado. Senha, MFA e sessões permanecem iguais."
+                  : "Será criado somente o vínculo com esta empresa. Senha, MFA e sessões permanecem iguais."}
+              </p>
+            </ConsequenceBanner>
           ) : (
-            <>
-              {existingHint ? <ConsequenceBanner tone="warning">{existingHint}</ConsequenceBanner> : null}
-              <ConsequenceBanner tone="warning">
-                <label className="flex items-start gap-2.5">
-                  <Checkbox checked={ack} onCheckedChange={setAck} disabled={busy} className="mt-0.5" />
-                  <span>Entendo que este usuário terá acesso administrativo global ao NexaFlow.</span>
-                </label>
-              </ConsequenceBanner>
-            </>
-          )}
-          {!existingHint ? (
             <div>
               <span className="mb-1.5 block text-[12px] font-medium text-gray-300">Primeiro acesso</span>
               <RadioGroup
@@ -366,7 +361,7 @@ export function NewUserDialog({ open, onClose }: Props) {
                     value: "temporary_password",
                     label: "Definir senha temporária",
                     description:
-                      "Você define uma senha inicial e o usuário deverá alterá-la no primeiro acesso.",
+                      "O administrador define uma senha inicial e o usuário deverá alterá-la no primeiro acesso.",
                   },
                 ]}
               />
@@ -413,15 +408,24 @@ export function NewUserDialog({ open, onClose }: Props) {
                       </li>
                     ))}
                   </ul>
-                  <label className="flex items-start gap-2.5 text-[12.5px] text-gray-300">
-                    <Checkbox checked disabled onCheckedChange={() => undefined} className="mt-0.5" />
-                    <span>Exigir alteração da senha no primeiro acesso</span>
-                  </label>
+                  <p className="text-[12.5px] text-gray-400">
+                    O usuário deverá alterar esta senha no primeiro acesso.
+                  </p>
                 </div>
               ) : null}
             </div>
+          )}
+          {kind === "platform" ? (
+            <>
+              <ConsequenceBanner tone="warning">
+                <label className="flex items-start gap-2.5">
+                  <Checkbox checked={ack} onCheckedChange={setAck} disabled={busy} className="mt-0.5" />
+                  <span>Entendo que este usuário terá acesso administrativo global ao NexaFlow.</span>
+                </label>
+              </ConsequenceBanner>
+              {errors.ack ? <p className="text-[12px] text-rose-400">{errors.ack}</p> : null}
+            </>
           ) : null}
-          {errors.ack ? <p className="text-[12px] text-rose-400">{errors.ack}</p> : null}
           {errors.form ? <p className="text-[12.5px] text-rose-400">{errors.form}</p> : null}
         </div>
       )}
