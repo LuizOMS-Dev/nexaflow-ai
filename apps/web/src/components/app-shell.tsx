@@ -1321,16 +1321,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {impersonating && (
         <div className="nf-shell-banner" role="status">
           <span className="min-w-0 flex-1">
-            Você está acessando
-            {tenant?.name ? ` a ${tenant.name}` : " uma empresa"} como Superadministrador.
-            Ações são auditadas.
+            Você está acessando {tenant?.name || "esta empresa"} como administrador.
           </span>
           <button
             type="button"
             className="btn-secondary btn-sm h-7 shrink-0"
             onClick={() => void endImpersonation()}
           >
-            Voltar para Administração
+            Encerrar acesso administrativo
           </button>
         </div>
       )}

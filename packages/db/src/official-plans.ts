@@ -181,7 +181,7 @@ export const OFFICIAL_PLANS: OfficialPlanDef[] = [
     priceMonthly: 0,
     priceAnnual: null,
     priceOnRequest: true,
-    maxUsers: 999,
+    maxUsers: 999_999,
     maxChannels: 2,
     maxContacts: 1_000_000,
     maxConversations: 1_000_000,
@@ -191,7 +191,7 @@ export const OFFICIAL_PLANS: OfficialPlanDef[] = [
     isActive: true,
     features: {
       maxAgents: 50,
-      maxActiveFlows: 999,
+      maxActiveFlows: 999_999,
       monthlyAiCredits: 100000,
       campaignsEnabled: true,
       advancedAutomationEnabled: true,
