@@ -979,6 +979,8 @@ async function maybeAutoReplyAi(params: {
     model: generated.model,
     tokensIn: generated.tokensIn,
     tokensOut: generated.tokensOut,
+    correlationId: generated.correlationId,
+    sources: generated.sources,
     reason: forceHandoff
       ? degradationReason || "provider_error"
       : undefined,
@@ -1014,6 +1016,8 @@ async function sendAiOutboundAndHandoff(params: {
   skipUsageCredit?: boolean;
   forceHandoff?: boolean;
   runLearning?: boolean;
+  correlationId?: string;
+  sources?: Array<{ title: string; documentId: string; version: number; chunkIndex: number; score: number }>;
 }) {
   const { createHash } = await import("crypto");
   const { dispatchWhatsAppText } = await import("./message-dispatch");
@@ -1097,6 +1101,8 @@ async function sendAiOutboundAndHandoff(params: {
         humanStyle: true,
         platformDegradation: params.forceHandoff || false,
         degradationReason: params.reason || null,
+        correlationId: params.correlationId || null,
+        sources: params.sources || [],
       },
     },
   });

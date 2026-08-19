@@ -4,14 +4,13 @@
  * Não sincroniza planos de assinatura NexaFlow (tabela Plan).
  */
 import { prisma } from "../lib/prisma";
-import { asInputJson } from "../lib/json";
 import {
   hasStarterPlaceholders,
   STARTER_SOURCE_URL,
   STARTER_PLANS_TITLE,
 } from "./knowledge-starter";
 
-export type KnowledgeStatus = "draft" | "ready" | "archived";
+export type KnowledgeStatus = "draft" | "ready" | "archived" | "queued" | "processing" | "failed";
 export type KnowledgeSource =
   | "manual"
   | "document"
@@ -27,6 +26,9 @@ export const KNOWLEDGE_STATUS_LABEL: Record<string, string> = {
   ready: "Pronto",
   published: "Pronto",
   archived: "Arquivado",
+  queued: "Na fila",
+  processing: "Processando",
+  failed: "Falhou",
 };
 
 export const KNOWLEDGE_SOURCE_LABEL: Record<string, string> = {
@@ -43,9 +45,10 @@ export function normalizeKnowledgeStatus(raw?: string | null): KnowledgeStatus {
   const s = (raw || "ready").toLowerCase();
   if (s === "draft" || s === "rascunho") return "draft";
   if (s === "archived" || s === "arquivado") return "archived";
-  // published / ready / processing / error → ready for agent use only when published/ready
+  if (s === "queued" || s === "na fila") return "queued";
+  if (s === "processing" || s === "processando") return "processing";
+  if (s === "failed" || s === "error" || s === "falhou") return "failed";
   if (s === "published" || s === "ready" || s === "pronto") return "ready";
-  if (s === "processing" || s === "error") return "draft";
   return "ready";
 }
 
@@ -104,6 +107,22 @@ export type KnowledgeListItem = {
   /** Modelo inicial "Planos e preços" (seed da empresa) */
   isStarterTemplate?: boolean;
   hasExamplePlaceholders?: boolean;
+  contentHash?: string | null;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  fileName?: string | null;
+  processedAt?: Date | null;
+  errorMessage?: string | null;
+  embeddingModel?: string | null;
+  embeddingVersion?: string | null;
+  chunkCount?: number;
+  chunks?: Array<{
+    id: string;
+    chunkIndex: number;
+    content: string;
+    tokenCount: number | null;
+    embeddingModel: string | null;
+  }>;
 };
 
 function mapDoc(
@@ -121,7 +140,23 @@ function mapDoc(
     version: number;
     createdAt: Date;
     updatedAt: Date;
+    contentHash?: string | null;
+    mimeType?: string | null;
+    byteSize?: number | null;
+    fileName?: string | null;
+    processedAt?: Date | null;
+    errorMessage?: string | null;
+    embeddingModel?: string | null;
+    embeddingVersion?: string | null;
     agentLinks?: Array<{ agent: { id: string; name: string } }>;
+    chunks?: Array<{
+      id: string;
+      chunkIndex: number;
+      content: string;
+      tokenCount: number | null;
+      embeddingModel: string | null;
+    }>;
+    _count?: { chunks: number };
   },
   opts?: { contentPreview?: boolean }
 ): KnowledgeListItem {
@@ -170,6 +205,16 @@ function mapDoc(
     editableContent: true,
     isStarterTemplate,
     hasExamplePlaceholders: hasStarterPlaceholders(doc.content),
+    contentHash: doc.contentHash ?? null,
+    mimeType: doc.mimeType ?? null,
+    byteSize: doc.byteSize ?? null,
+    fileName: doc.fileName ?? null,
+    processedAt: doc.processedAt ?? null,
+    errorMessage: doc.errorMessage ?? null,
+    embeddingModel: doc.embeddingModel ?? null,
+    embeddingVersion: doc.embeddingVersion ?? null,
+    chunkCount: doc._count?.chunks ?? doc.chunks?.length ?? 0,
+    chunks: doc.chunks,
   };
 }
 
@@ -180,6 +225,12 @@ export async function listKnowledgeDocs(params: {
   agentId?: string;
   q?: string;
 }): Promise<KnowledgeListItem[]> {
+  try {
+    const { failStuckKnowledgeJobs } = await import("./knowledge-pipeline");
+    await failStuckKnowledgeJobs(params.tenantId);
+  } catch {
+    /* ignore */
+  }
   // Migração leve legada (sem recriar se excluído)
   try {
     const { migrateLegacyPlansDocIfNeeded } = await import("./knowledge-starter");
@@ -235,6 +286,7 @@ export async function listKnowledgeDocs(params: {
         where: { tenantId: params.tenantId },
         include: { agent: { select: { id: true, name: true } } },
       },
+      _count: { select: { chunks: true } },
     },
     take: 200,
   });
@@ -262,6 +314,18 @@ export async function getKnowledgeDoc(
         where: { tenantId },
         include: { agent: { select: { id: true, name: true } } },
       },
+      chunks: {
+        orderBy: { chunkIndex: "asc" },
+        take: 80,
+        select: {
+          id: true,
+          chunkIndex: true,
+          content: true,
+          tokenCount: true,
+          embeddingModel: true,
+        },
+      },
+      _count: { select: { chunks: true } },
     },
   });
   if (!doc) return null;
@@ -277,6 +341,18 @@ export async function getKnowledgeDoc(
             where: { tenantId },
             include: { agent: { select: { id: true, name: true } } },
           },
+          chunks: {
+            orderBy: { chunkIndex: "asc" },
+            take: 80,
+            select: {
+              id: true,
+              chunkIndex: true,
+              content: true,
+              tokenCount: true,
+              embeddingModel: true,
+            },
+          },
+          _count: { select: { chunks: true } },
         },
       });
       if (refreshed) return mapDoc(refreshed);
@@ -330,67 +406,32 @@ export async function getKnowledgeForAgent(params: {
   take?: number;
   /** última pergunta do cliente — melhora relevância */
   query?: string | null;
-}): Promise<Array<{ id: string; title: string; content: string; category: string | null }>> {
-  const take = Math.min(Math.max(params.take ?? 12, 1), 24);
-  // Candidatos amplos para ranquear (evita “só os 8 últimos” irrelevantes)
-  const pool = Math.min(Math.max(take * 5, 40), 80);
-
-  const agentId = params.agentId || undefined;
-  const docs = await prisma.knowledgeDoc.findMany({
-    where: {
-      tenantId: params.tenantId,
-      status: { in: ["ready", "published"] },
-      // nunca injetar source system legado de catálogo NexaFlow
-      NOT: { sourceType: "system" },
-      ...(agentId
-        ? {
-            OR: [
-              { scope: "all" },
-              {
-                scope: "agents",
-                agentLinks: {
-                  some: { agentId, tenantId: params.tenantId },
-                },
-              },
-            ],
-          }
-        : {}),
-    },
-    orderBy: [{ updatedAt: "desc" }],
-    take: pool,
-    select: {
-      id: true,
-      title: true,
-      content: true,
-      category: true,
-      sourceType: true,
-    },
+}): Promise<
+  Array<{
+    id: string;
+    title: string;
+    content: string;
+    category: string | null;
+    score?: number;
+    version?: number;
+    chunkIndex?: number;
+  }>
+> {
+  const { retrieveForAgent } = await import("./knowledge-retrieval");
+  const result = await retrieveForAgent({
+    tenantId: params.tenantId,
+    agentId: params.agentId,
+    query: params.query,
+    take: params.take ?? 8,
   });
-
-  // Defesa extra: se ainda houver placeholders de exemplo, não enviar à IA
-  let usable = docs.filter((d) => !hasStarterPlaceholders(d.content));
-
-  const q = (params.query || "").trim();
-  if (q && usable.length > 1) {
-    const ranked = usable
-      .map((d) => ({
-        d,
-        score: scoreKnowledgeDoc(q, d.title, d.content, d.category),
-      }))
-      .sort((a, b) => b.score - a.score || b.d.title.localeCompare(a.d.title));
-
-    const withHits = ranked.filter((x) => x.score > 0);
-    // Se achar hits, usa os melhores; senão mantém recência (contexto geral)
-    usable = (withHits.length ? withHits : ranked).slice(0, take).map((x) => x.d);
-  } else {
-    usable = usable.slice(0, take);
-  }
-
-  return usable.map((d) => ({
-    id: d.id,
-    title: d.title,
-    content: d.content,
-    category: d.category,
+  return result.chunks.map((c) => ({
+    id: c.documentId,
+    title: c.title,
+    content: c.content,
+    category: c.category,
+    score: c.score,
+    version: c.version,
+    chunkIndex: c.chunkIndex,
   }));
 }
 
@@ -429,19 +470,8 @@ export async function setKnowledgeAgentLinks(params: {
 }
 
 export async function rebuildChunks(docId: string, content: string) {
-  await prisma.knowledgeChunk.deleteMany({ where: { docId } });
-  const parts = content
-    .split(/\n{2,}/)
-    .filter(Boolean)
-    .slice(0, 20);
-  if (!parts.length) return;
-  await prisma.knowledgeChunk.createMany({
-    data: parts.map((c) => ({
-      docId,
-      content: c.slice(0, 2000),
-      metadata: asInputJson({}),
-    })),
-  });
+  const { indexKnowledgeDocument } = await import("./knowledge-pipeline");
+  await indexKnowledgeDocument(docId, content);
 }
 
 /** Arquiva docs de demo/treino claramente marcados (não apaga). */

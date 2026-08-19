@@ -66,6 +66,21 @@ type Doc = {
   editableContent?: boolean;
   isStarterTemplate?: boolean;
   hasExamplePlaceholders?: boolean;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  fileName?: string | null;
+  processedAt?: string | null;
+  errorMessage?: string | null;
+  embeddingModel?: string | null;
+  embeddingVersion?: string | null;
+  chunkCount?: number;
+  chunks?: Array<{
+    id: string;
+    chunkIndex: number;
+    content: string;
+    tokenCount: number | null;
+    embeddingModel: string | null;
+  }>;
 };
 
 const EXAMPLE_MARKERS = [
@@ -129,14 +144,23 @@ function normalizeTitle(t: string): string {
 
 function statusMeta(status?: string | null): {
   text: string;
-  key: "draft" | "ready" | "archived" | "processing";
+  key: "draft" | "ready" | "archived" | "processing" | "failed";
   className: string;
   dot: string;
 } {
   const s = (status || "ready").toLowerCase();
-  if (s === "processing" || s === "processando") {
+  if (s === "failed" || s === "error" || s === "falhou") {
     return {
-      text: "Processando",
+      text: "Falhou",
+      key: "failed",
+      className:
+        "bg-rose-500/[0.12] text-rose-800 ring-1 ring-inset ring-rose-500/20 dark:text-rose-200",
+      dot: "bg-rose-500",
+    };
+  }
+  if (s === "queued" || s === "na fila" || s === "processing" || s === "processando") {
+    return {
+      text: s === "queued" || s === "na fila" ? "Na fila" : "Processando",
       key: "processing",
       className:
         "bg-sky-500/[0.12] text-sky-800 ring-1 ring-inset ring-sky-500/20 dark:text-sky-200",
@@ -173,7 +197,7 @@ function statusMeta(status?: string | null): {
 /** Status de formulário (draft/ready/archived) — processando mapeia para rascunho na edição */
 function formStatusKey(status?: string | null): "draft" | "ready" | "archived" {
   const k = statusMeta(status).key;
-  if (k === "processing") return "draft";
+  if (k === "processing" || k === "failed") return "draft";
   return k;
 }
 
@@ -248,9 +272,21 @@ export default function KnowledgePage() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [editForm, setEditForm] = useState<FormState>(emptyForm());
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
+
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["knowledge"],
     queryFn: () => api<Doc[]>("/knowledge"),
+    refetchInterval: (q) => {
+      const items = q.state.data || [];
+      return items.some((d) => {
+        const s = (d.status || "").toLowerCase();
+        return s === "queued" || s === "processing";
+      })
+        ? 2500
+        : false;
+    },
   });
 
   const agentsQ = useQuery({
@@ -418,6 +454,7 @@ export default function KnowledgePage() {
       if (k === "ready") ready += 1;
       else if (k === "draft") draft += 1;
       else if (k === "processing") processing += 1;
+      else if (k === "failed") draft += 1;
       else archived += 1;
       if ((d.scope || "all") === "all") {
         agentList.forEach((a) => agentIds.add(a.id));
@@ -483,8 +520,7 @@ export default function KnowledgePage() {
       }
       if (statusFilter !== "ALL") {
         const key = statusMeta(d.status).key;
-        const mapped = key === "processing" ? "draft" : key;
-        if (mapped !== statusFilter && key !== statusFilter) return false;
+        if (key !== statusFilter) return false;
       }
       if (sourceFilter !== "ALL") {
         const src = (d.sourceType || "manual").toLowerCase();
@@ -559,6 +595,69 @@ export default function KnowledgePage() {
     setImportOpen(true);
   }
 
+  function openUpload() {
+    setAddMenuOpen(false);
+    fileInputRef.current?.click();
+  }
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      setUploadPct(8);
+      const buf = await file.arrayBuffer();
+      setUploadPct(40);
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      const step = 0x8000;
+      for (let i = 0; i < bytes.length; i += step) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + step));
+      }
+      const contentBase64 = btoa(binary);
+      setUploadPct(70);
+      const res = await api<Doc>("/knowledge/upload", {
+        method: "POST",
+        json: {
+          filename: file.name,
+          contentBase64,
+          mimeType: file.type || undefined,
+        },
+        timeoutMs: 60000,
+      });
+      setUploadPct(100);
+      return res;
+    },
+    onSuccess: (doc) => {
+      qc.invalidateQueries({ queryKey: ["knowledge"] });
+      setUploadPct(null);
+      toast({
+        kind: "success",
+        title: doc.status === "failed" ? "Upload recebido com erro" : "Documento enviado",
+        description:
+          doc.status === "queued" || doc.status === "processing"
+            ? "Indexando em segundo plano."
+            : doc.errorMessage || undefined,
+      });
+    },
+    onError: (e: Error) => {
+      setUploadPct(null);
+      toast({
+        kind: "error",
+        title: "Não foi possível enviar o arquivo",
+        description: e.message,
+      });
+    },
+  });
+
+  const reprocessMutation = useMutation({
+    mutationFn: (id: string) => api<Doc>(`/knowledge/${id}/reprocess`, { method: "POST" }),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ["knowledge"] });
+      setViewDoc(updated);
+      toast({ kind: "success", title: "Reprocessamento iniciado" });
+    },
+    onError: (e: Error) =>
+      toast({ kind: "error", title: "Não foi possível reprocessar", description: e.message }),
+  });
+
   function focusSearch() {
     searchRef.current?.focus();
     searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -573,12 +672,15 @@ export default function KnowledgePage() {
     { value: "ALL", label: "Status" },
     { value: "ready", label: "Pronto" },
     { value: "draft", label: "Rascunho" },
+    { value: "processing", label: "Processando" },
+    { value: "failed", label: "Falhou" },
     { value: "archived", label: "Arquivado" },
   ];
 
   const sourceOptions = [
     { value: "ALL", label: "Origem" },
     { value: "manual", label: "Manual" },
+    { value: "document", label: "Documento" },
     { value: "import", label: "Importação" },
     { value: "system", label: "Sistema" },
     { value: "learning", label: "Aprendizado" },
@@ -636,6 +738,22 @@ export default function KnowledgePage() {
         </div>
       }
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) uploadMutation.mutate(file);
+        }}
+      />
+      {uploadPct != null ? (
+        <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.08] px-3 py-2 text-[12.5px] text-sky-900 dark:text-sky-100">
+          Enviando documento… {uploadPct}%
+        </div>
+      ) : null}
       {/* ── Resumo da biblioteca ── */}
       {!isLoading && docs.length > 0 ? (
         <div className="flex flex-wrap items-stretch gap-y-1 rounded-2xl border border-teal-500/15 bg-[var(--surface-raised)] px-2 py-2.5 dark:border-teal-400/15 sm:px-3">
@@ -907,7 +1025,12 @@ export default function KnowledgePage() {
                   isDup={duplicateIds.has(doc.id)}
                   selected={selectedIds.includes(doc.id)}
                   onToggleSelect={() => toggleSelect(doc.id)}
-                  onView={() => setViewDoc(doc)}
+                  onView={() => {
+                    setViewDoc(doc);
+                    void api<Doc>(`/knowledge/${doc.id}`)
+                      .then((full) => setViewDoc(full))
+                      .catch(() => undefined);
+                  }}
                   onEdit={() => openEdit(doc)}
                   onDuplicate={() => duplicateMutation.mutate(doc.id)}
                   onArchive={() => setArchiveDoc(doc)}
@@ -922,16 +1045,15 @@ export default function KnowledgePage() {
 
       {/* Empty global (sem docs e sem filtros) */}
       {!isLoading && !isError && !docs.length && !hasFilters ? (
-        <div className="flex flex-col items-center rounded-2xl border border-dashed border-violet-500/20 bg-gradient-to-b from-violet-500/[0.05] to-transparent px-6 py-16 text-center dark:border-violet-400/15 dark:from-violet-500/[0.08]">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/[0.12] text-violet-600 ring-1 ring-violet-500/15 dark:text-violet-300">
-            <Library className="h-6 w-6" strokeWidth={1.5} />
+        <div className="flex flex-col items-center rounded-2xl border border-dashed border-violet-500/20 bg-gradient-to-b from-violet-500/[0.05] to-transparent px-6 py-10 text-center dark:border-violet-400/15 dark:from-violet-500/[0.08]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/[0.12] text-violet-600 ring-1 ring-violet-500/15 dark:text-violet-300">
+            <Library className="h-5 w-5" strokeWidth={1.5} />
           </span>
-          <h2 className="mt-5 font-display text-lg font-semibold tracking-tight text-ink dark:text-white">
-            Biblioteca vazia
+          <h2 className="mt-3 font-display text-[15px] font-semibold tracking-tight text-ink dark:text-white">
+            Sem documentos
           </h2>
-          <p className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-muted">
-            Guarde aqui o que os agentes precisam saber — horários, preços, políticas e respostas
-            frequentes. Depois é só publicar.
+          <p className="mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-muted">
+            Adicione PDF, texto ou um item manual para os agentes consultarem.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
             <button
@@ -1064,9 +1186,16 @@ export default function KnowledgePage() {
             onClick={openCreateManual}
           />
           <OriginChoice
+            icon={<FileText className="h-4 w-4" strokeWidth={1.75} />}
+            title="Enviar PDF ou texto"
+            description="PDF, TXT ou Markdown. O arquivo é processado e indexado."
+            accent="violet"
+            onClick={openUpload}
+          />
+          <OriginChoice
             icon={<Upload className="h-4 w-4" strokeWidth={1.75} />}
-            title="Importar arquivo"
-            description="Arquivo .txt ou .md. Você revisa antes de confirmar."
+            title="Importar e revisar seções"
+            description="Arquivo .txt ou .md dividido em itens. Você revisa antes de confirmar."
             accent="violet"
             onClick={openImport}
           />
@@ -1145,17 +1274,29 @@ export default function KnowledgePage() {
               Fechar
             </button>
             {viewDoc ? (
-              <button
-                type="button"
-                className="btn-primary h-9 px-4"
-                onClick={() => {
-                  openEdit(viewDoc);
-                  setViewDoc(null);
-                }}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Editar
-              </button>
+              <>
+                {(viewDoc.status === "failed" || viewDoc.status === "processing") && (
+                  <button
+                    type="button"
+                    className="btn-secondary h-9 px-3.5"
+                    disabled={reprocessMutation.isPending}
+                    onClick={() => reprocessMutation.mutate(viewDoc.id)}
+                  >
+                    {reprocessMutation.isPending ? "Reprocessando…" : "Reprocessar"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary h-9 px-4"
+                  onClick={() => {
+                    openEdit(viewDoc);
+                    setViewDoc(null);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar
+                </button>
+              </>
             ) : null}
           </DialogFooter>
         }
@@ -1614,6 +1755,22 @@ function KnowledgeRow({
                 ·
               </span>
               <span>{src.label}</span>
+              {typeof doc.chunkCount === "number" ? (
+                <>
+                  <span aria-hidden className="text-ink-faint/50">
+                    ·
+                  </span>
+                  <span>{doc.chunkCount} {doc.chunkCount === 1 ? "trecho" : "trechos"}</span>
+                </>
+              ) : null}
+              {doc.byteSize ? (
+                <>
+                  <span aria-hidden className="text-ink-faint/50">
+                    ·
+                  </span>
+                  <span>{doc.byteSize < 1024 ? `${doc.byteSize} B` : `${Math.max(1, Math.round(doc.byteSize / 1024))} KB`}</span>
+                </>
+              ) : null}
               <span aria-hidden className="text-ink-faint/50">
                 ·
               </span>
@@ -1733,12 +1890,45 @@ function KnowledgeReadView({ doc, isDup }: { doc: Doc; isDup: boolean }) {
         </p>
       ) : null}
 
+      {doc.errorMessage ? (
+        <p className="rounded-xl border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-[12px] text-rose-900 dark:text-rose-100">
+          {doc.errorMessage}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-muted">
+        {typeof doc.chunkCount === "number" ? <span>{doc.chunkCount} trechos</span> : null}
+        {doc.embeddingModel ? <span>Embedding: {doc.embeddingModel}</span> : null}
+        {doc.processedAt ? <span>Indexado {formatDate(doc.processedAt)}</span> : null}
+        {doc.fileName ? <span>{doc.fileName}</span> : null}
+      </div>
+
       <div>
         <SectionLabel>Conteúdo</SectionLabel>
         <div className="mt-2 max-h-[50vh] overflow-y-auto rounded-xl border border-black/[0.05] bg-black/[0.015] px-4 py-3.5 text-[13.5px] leading-[1.65] whitespace-pre-wrap text-ink-secondary dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-gray-300">
           {doc.content}
         </div>
       </div>
+
+      {doc.chunks && doc.chunks.length > 0 ? (
+        <div>
+          <SectionLabel>Trechos indexados</SectionLabel>
+          <ul className="mt-2 space-y-2">
+            {doc.chunks.slice(0, 12).map((ch) => (
+              <li
+                key={ch.id}
+                className="rounded-xl border border-black/[0.05] bg-black/[0.015] px-3 py-2 text-[12.5px] text-ink-secondary dark:border-white/[0.07] dark:bg-white/[0.02]"
+              >
+                <span className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-faint">
+                  #{ch.chunkIndex + 1}
+                  {ch.tokenCount ? ` · ${ch.tokenCount} tokens` : ""}
+                </span>
+                <p className="mt-1 line-clamp-4 whitespace-pre-wrap">{ch.content}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

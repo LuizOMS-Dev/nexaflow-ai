@@ -9,6 +9,7 @@
 import { randomUUID } from "crypto";
 
 import { env } from "../lib/env";
+import { chunkKnowledgeContent } from "./knowledge-chunking";
 
 export type ImportDraftItem = {
   /** id temporário (cliente/servidor) */
@@ -272,6 +273,8 @@ export function findDuplicate(
 }
 
 export function chunkContent(content: string): string[] {
+  const chunks = chunkKnowledgeContent(content);
+  if (chunks.length) return chunks.map((c) => c.content);
   return content
     .split(/\n{2,}/)
     .map((c) => c.trim())

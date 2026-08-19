@@ -194,6 +194,35 @@ export async function conversationRoutes(app: FastifyInstance) {
     return conversation;
   });
 
+  app.get(
+    "/conversations/:id/ai-executions",
+    { preHandler: [app.requirePermission("conversations.read")] },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      const tenantId = request.user.tenantId!;
+      assertFound(await prisma.conversation.findFirst({ where: { id, tenantId }, select: { id: true } }));
+      const { listAiExecutionsForConversation } = await import("../services/ai-execution");
+      return listAiExecutionsForConversation(tenantId, id, 30);
+    }
+  );
+
+  app.patch(
+    "/conversations/:id/memory",
+    { preHandler: [app.requirePermission("conversations.reply")] },
+    async (request) => {
+      if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);
+      const { id } = request.params as { id: string };
+      const body = z.object({ summary: z.string().max(2000).nullable() }).parse(request.body);
+      const { setConversationMemory, getConversationMemory } = await import("../services/conversation-memory");
+      await setConversationMemory({
+        tenantId: request.user.tenantId!,
+        conversationId: id,
+        summary: body.summary,
+      });
+      return getConversationMemory(request.user.tenantId!, id);
+    }
+  );
+
   app.post("/conversations", { preHandler: [app.requirePermission("conversations.reply")] }, async (request) => {
     if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);
     const body = z

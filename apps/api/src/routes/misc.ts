@@ -173,12 +173,16 @@ export async function miscRoutes(app: FastifyInstance) {
         sourceType: body.sourceType || "manual",
         status: body.status || "ready",
         scope,
+        contentHash: (await import("crypto")).createHash("sha256").update(body.content).digest("hex"),
+        mimeType: "text/plain",
+        byteSize: Buffer.byteLength(body.content, "utf8"),
         chunks: {
-          create: body.content
-            .split(/\n{2,}/)
-            .filter(Boolean)
-            .slice(0, 20)
-            .map((content) => ({ content: content.slice(0, 2000) })),
+          create: (await import("../services/knowledge-chunking")).chunkKnowledgeContent(body.content).map((c) => ({
+            content: c.content,
+            chunkIndex: c.chunkIndex,
+            tokenCount: c.tokenCount,
+            metadata: c.metadata,
+          })),
         },
       },
     });
@@ -307,7 +311,9 @@ export async function miscRoutes(app: FastifyInstance) {
     );
     const { markStarterPlansRemovedIfMatch } = await import("../services/knowledge-starter");
     await markStarterPlansRemovedIfMatch(tenantId, existing);
+    const { deleteKnowledgeFile } = await import("../services/knowledge-pipeline");
     await prisma.knowledgeDoc.delete({ where: { id } });
+    await deleteKnowledgeFile(existing.storagePath);
     return {
       ok: true,
       hadLinks: existing.agentLinks.length > 0,
@@ -389,8 +395,82 @@ export async function miscRoutes(app: FastifyInstance) {
   );
 
   /**
-   * Modelo de arquivo para importação em lote (TXT/Markdown).
+   * Upload de PDF / TXT / Markdown (um documento). Processa fora do request.
    */
+  app.post(
+    "/knowledge/upload",
+    {
+      preHandler: [app.requireTenant, app.requirePermission("ai.manage")],
+      bodyLimit: 15_000_000,
+    },
+    async (request) => {
+      if (!["ADMIN", "SUPERVISOR"].includes(request.user.role || "") && !isTrueSuperadmin(request.user)) {
+        throw new AppError("Sem permissão", 403);
+      }
+      const body = z
+        .object({
+          filename: z.string().min(1).max(200),
+          contentBase64: z.string().min(16).max(14_000_000),
+          mimeType: z.string().max(120).optional(),
+          title: z.string().max(200).optional(),
+          category: z.string().max(80).optional(),
+          scope: z.enum(["all", "agents"]).optional(),
+          agentIds: z.array(z.string()).optional(),
+          replaceId: z.string().optional().nullable(),
+          force: z.boolean().optional(),
+        })
+        .parse(request.body);
+
+      const raw = body.contentBase64.replace(/^data:[^;]+;base64,/, "");
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(raw, "base64");
+      } catch {
+        throw new AppError("Arquivo inválido.", 400, "BAD_FILE");
+      }
+      const { createKnowledgeFromUpload } = await import("../services/knowledge-pipeline");
+      const created = await createKnowledgeFromUpload({
+        tenantId: request.user.tenantId!,
+        userId: request.user.sub,
+        filename: body.filename,
+        buffer,
+        declaredMime: body.mimeType,
+        title: body.title,
+        category: body.category,
+        scope: body.scope,
+        agentIds: body.agentIds,
+        replaceId: body.replaceId,
+        force: body.force,
+      });
+      await audit({
+        tenantId: request.user.tenantId!,
+        userId: request.user.sub,
+        action: "knowledge.upload",
+        entity: "knowledge",
+        entityId: created.id,
+        metadata: { filename: body.filename, status: created.status },
+        ip: request.ip,
+      });
+      const { getKnowledgeDoc } = await import("../services/knowledge");
+      return { ...(await getKnowledgeDoc(request.user.tenantId!, created.id)), status: created.status };
+    }
+  );
+
+  app.post(
+    "/knowledge/:id/reprocess",
+    { preHandler: [app.requireTenant, app.requirePermission("ai.manage")] },
+    async (request) => {
+      if (!["ADMIN", "SUPERVISOR"].includes(request.user.role || "") && !isTrueSuperadmin(request.user)) {
+        throw new AppError("Sem permissão", 403);
+      }
+      const { id } = request.params as { id: string };
+      const { reprocessKnowledgeDocument } = await import("../services/knowledge-pipeline");
+      await reprocessKnowledgeDocument(request.user.tenantId!, id);
+      const { getKnowledgeDoc } = await import("../services/knowledge");
+      return assertFound(await getKnowledgeDoc(request.user.tenantId!, id));
+    }
+  );
+
   app.get(
     "/knowledge/import/sample",
     { preHandler: [app.requireTenant, app.requirePermission("ai.manage")] },

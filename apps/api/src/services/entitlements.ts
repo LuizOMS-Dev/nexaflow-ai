@@ -228,7 +228,7 @@ export async function assertAiCreditsAvailable(tenantId: string, need = 1) {
   const cap = limits.monthlyAiCredits + limits.extraAiCredits;
   if (used + need > cap) {
     throw new AppError(
-      `Créditos de IA do mês esgotados (${used.toLocaleString("pt-BR")} de ${cap.toLocaleString("pt-BR")}). O atendimento humano continua disponível.`,
+      `Limite de IA do plano atingido. Créditos do mês esgotados (${used.toLocaleString("pt-BR")} de ${cap.toLocaleString("pt-BR")}). O atendimento humano continua disponível.`,
       403,
       "PLAN_LIMIT_AI_CREDITS"
     );

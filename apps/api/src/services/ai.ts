@@ -682,6 +682,9 @@ export async function generateHumanWhatsAppReply(params: {
   tokensOut?: number;
   /** Política plataforma: handoff humano após esta resposta */
   needsHumanHandoff?: boolean;
+  correlationId?: string;
+  sources?: Array<{ title: string; documentId: string; version: number; chunkIndex: number; score: number }>;
+  knowledgeInsufficient?: boolean;
   degradationReason?:
     | "provider_rate_limit"
     | "tenant_credits_exhausted"
@@ -717,13 +720,22 @@ export async function generateHumanWhatsAppReply(params: {
 
   const lastInbound = [...messages].reverse().find((m) => m.direction === "INBOUND");
 
-  const { getKnowledgeForAgent } = await import("./knowledge");
-  const knowledge = await getKnowledgeForAgent({
+  const { retrieveForAgent, wrapKnowledgeAsData, sourcesFromChunks } = await import(
+    "./knowledge-retrieval"
+  );
+  const retrieval = await retrieveForAgent({
     tenantId: params.tenantId,
     agentId: agent?.id,
-    take: 4,
+    take: 6,
     query: lastInbound?.content || null,
   });
+  const knowledge = retrieval.chunks.map((c) => ({
+    id: c.documentId,
+    title: c.title,
+    content: c.content,
+    category: c.category,
+  }));
+  const knowledgeSources = sourcesFromChunks(retrieval.chunks);
 
   const agentName = (agent?.name || "Atendente").trim() || "Atendente";
   const companyHint = tenantRow?.name || "nossa empresa";
@@ -732,7 +744,21 @@ export async function generateHumanWhatsAppReply(params: {
   const isFirst = inboundCount <= 1;
 
   const contact = conversation.contact;
-  const memorySummary = (contact.memory?.summary || "").trim().slice(0, 200);
+  const contactMemorySummary = (contact.memory?.summary || "").trim().slice(0, 200);
+  let conversationMemory = (conversation.memorySummary || "").trim().slice(0, 600);
+  if (!conversationMemory) {
+    try {
+      const { getConversationMemory } = await import("./conversation-memory");
+      const mem = await getConversationMemory(params.tenantId, conversation.id);
+      conversationMemory = (mem?.summary || "").trim().slice(0, 600);
+    } catch {
+      /* ignore */
+    }
+  }
+  const memorySummary = [contactMemorySummary, conversationMemory ? `Atendimento: ${conversationMemory}` : ""]
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 700);
   const profileBits = [
     contact.commercialStatus ? `Status: ${contact.commercialStatus}` : null,
     contact.priority ? `Prioridade: ${contact.priority}` : null,
@@ -757,11 +783,8 @@ export async function generateHumanWhatsAppReply(params: {
   const userInbound = (lastInbound?.content || "").slice(0, 500);
   const toolIntent = detectToolRequiredIntent(userInbound);
   const knowledgeRelevant = knowledgeLooksRelevantToIntent(toolIntent, knowledge);
-  const knowledgeBlock = knowledge.length
-    ? knowledge
-        .map((k) => `### ${k.title}\n${k.content.slice(0, 900)}`)
-        .join("\n\n")
-    : "(sem docs autorizados — NÃO invente preços/planos; diga que NÃO encontrou valor/fato confirmado; NÃO diga que vai verificar depois)";
+  const knowledgeBlock = wrapKnowledgeAsData(retrieval.chunks);
+  const knowledgeInsufficient = !retrieval.sufficient && retrieval.reason === "below_threshold";
 
   // Aprendizado via CSAT (notas dos clientes) — dica curta, sem estourar TPM
   let csatHint = "";
@@ -803,8 +826,8 @@ ${profileBits ? `Cliente: ${profileBits}` : ""}
 ${behavior ? `Instruções do agente:\n${behavior}` : ""}
 ${restrictions ? `Limites:\n${restrictions}` : ""}
 
-KNOWLEDGE (fonte factual autorizada — já consultada nesta rodada; ${knowledge.length} doc(s); relevante_ao_intent=${knowledgeRelevant}):
-${knowledgeBlock}
+KNOWLEDGE (fonte factual autorizada — já consultada nesta rodada; ${knowledge.length} trecho(s); relevante_ao_intent=${knowledgeRelevant}; suficiente=${retrieval.sufficient}):
+${knowledgeInsufficient ? "O retrieval não atingiu o limiar — NÃO invente. Diga que não encontrou informação confirmada e ofereça encaminhar.\n" : ""}${knowledgeBlock}
 
 Responda SÓ o texto da mensagem de WhatsApp (sem aspas, sem JSON, sem raciocínio interno).`;
 
@@ -840,6 +863,26 @@ Escreva a resposta completa de WhatsApp:`;
   const { isProviderRateLimitError, buildInstabilityClientMessage } = await import(
     "./platform-ai-degradation"
   );
+  const { randomUUID } = await import("crypto");
+  const correlationId = randomUUID();
+  let executionId: string | null = null;
+  try {
+    const { startAiExecution } = await import("./ai-execution");
+    const ex = await startAiExecution({
+      tenantId: params.tenantId,
+      agentId: agent?.id,
+      conversationId: conversation.id,
+      provider: env.aiProvider,
+      model: agent?.model,
+      mode: agent?.mode,
+      purpose: "whatsapp_auto_reply",
+      correlationId,
+      retrievalCount: retrieval.chunks.length,
+    });
+    executionId = ex.id;
+  } catch {
+    /* observability never blocks reply */
+  }
 
   // Até 2 tentativas em rate limit — backoff curto (antes: 4× até ~11s → IA “lenta”)
   let lastErr = "";
@@ -908,6 +951,28 @@ Escreva a resposta completa de WhatsApp:`;
         markPlatformAiHealthy()
       );
 
+      if (executionId) {
+        void import("./ai-execution")
+          .then(({ finishAiExecution }) =>
+            finishAiExecution({
+              id: executionId!,
+              status: "SUCCEEDED",
+              provider: generated.provider,
+              model: generated.model,
+              inputTokens: generated.usage?.inputTokens,
+              outputTokens: generated.usage?.outputTokens,
+              retrievalCount: retrieval.chunks.length,
+              metadata: { sources: knowledgeSources, sufficient: retrieval.sufficient },
+            })
+          )
+          .catch(() => null);
+      }
+      void import("./conversation-memory")
+        .then(({ rollConversationMemory }) =>
+          rollConversationMemory({ tenantId: params.tenantId, conversationId: conversation.id })
+        )
+        .catch(() => null);
+
       return {
         reply,
         provider: generated.provider || env.aiProvider || undefined,
@@ -916,6 +981,9 @@ Escreva a resposta completa de WhatsApp:`;
         needsHumanHandoff: grounded.needsHumanHandoff,
         tokensIn: generated.usage?.inputTokens,
         tokensOut: generated.usage?.outputTokens,
+        correlationId,
+        sources: knowledgeSources,
+        knowledgeInsufficient,
       };
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
