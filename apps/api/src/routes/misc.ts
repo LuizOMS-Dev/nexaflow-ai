@@ -572,14 +572,16 @@ export async function miscRoutes(app: FastifyInstance) {
             )
             .min(1)
             .max(40),
-          /** reservado: agentes da empresa (base continua company-wide) */
           agentIds: z.array(z.string()).optional(),
           general: z.boolean().optional().default(true),
         })
         .parse(request.body);
 
       const tenantId = request.user.tenantId!;
-      const { detectSensitive, chunkContent } = await import("../services/knowledge-import");
+      const { detectSensitive } = await import("../services/knowledge-import");
+      const { chunkKnowledgeContent } = await import("../services/knowledge-chunking");
+      const { createHash } = await import("crypto");
+      const { setKnowledgeAgentLinks } = await import("../services/knowledge");
 
       // Valida agentes do mesmo tenant (se enviados)
       if (body.agentIds?.length) {
@@ -591,6 +593,7 @@ export async function miscRoutes(app: FastifyInstance) {
         }
       }
 
+      const scope = body.general === false && body.agentIds?.length ? "agents" : "all";
       const created: Array<{ id: string; title: string }> = [];
       const updated: Array<{ id: string; title: string }> = [];
       const skipped: string[] = [];
@@ -607,15 +610,20 @@ export async function miscRoutes(app: FastifyInstance) {
           continue;
         }
 
-        const chunks = chunkContent(item.content);
+        const drafts = chunkKnowledgeContent(item.content);
+        const contentHash = createHash("sha256").update(item.content.trim()).digest("hex");
         const meta = {
           origin: "import",
           filename: body.filename,
           importedAt: new Date().toISOString(),
           importedBy: request.user.sub,
-          agentIds: body.agentIds?.length ? body.agentIds : "all",
-          general: body.general !== false,
         };
+        const chunkRows = drafts.map((c) => ({
+          content: c.content,
+          chunkIndex: c.chunkIndex,
+          tokenCount: c.tokenCount,
+          metadata: { ...meta, ...c.metadata },
+        }));
 
         if (item.action === "replace" && item.replaceId) {
           const existing = await prisma.knowledgeDoc.findFirst({
@@ -635,16 +643,24 @@ export async function miscRoutes(app: FastifyInstance) {
               sourceType: "import",
               sourceUrl: body.filename,
               status: "ready",
-              scope: "all",
+              scope,
+              contentHash,
+              mimeType: "text/plain",
+              byteSize: Buffer.byteLength(item.content, "utf8"),
+              fileName: body.filename,
+              processedAt: new Date(),
               version: existing.version + 1,
-              chunks: {
-                create: chunks.map((content) => ({
-                  content,
-                  metadata: meta,
-                })),
-              },
+              chunks: { create: chunkRows },
             },
           });
+          if (scope === "agents") {
+            await setKnowledgeAgentLinks({
+              tenantId,
+              knowledgeDocId: doc.id,
+              agentIds: body.agentIds || [],
+              scope: "agents",
+            });
+          }
           updated.push({ id: doc.id, title: doc.title });
           continue;
         }
@@ -659,15 +675,23 @@ export async function miscRoutes(app: FastifyInstance) {
             sourceType: "import",
             sourceUrl: body.filename,
             status: "ready",
-            scope: "all",
-            chunks: {
-              create: chunks.map((content) => ({
-                content,
-                metadata: meta,
-              })),
-            },
+            scope,
+            contentHash,
+            mimeType: "text/plain",
+            byteSize: Buffer.byteLength(item.content, "utf8"),
+            fileName: body.filename,
+            processedAt: new Date(),
+            chunks: { create: chunkRows },
           },
         });
+        if (scope === "agents") {
+          await setKnowledgeAgentLinks({
+            tenantId,
+            knowledgeDocId: doc.id,
+            agentIds: body.agentIds || [],
+            scope: "agents",
+          });
+        }
         created.push({ id: doc.id, title: doc.title });
       }
 
