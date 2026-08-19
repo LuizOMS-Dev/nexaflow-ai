@@ -660,6 +660,82 @@ async function resumeAiAfterCustomerReturn(params: {
   }
 }
 
+/** Revalida imediatamente antes de persistir/enviar — humano pode ter assumido durante a geração. */
+export async function autoReplyStillEligible(params: {
+  tenantId: string;
+  conversationId: string;
+  agentId: string;
+}): Promise<boolean> {
+  const conv = await prisma.conversation.findFirst({
+    where: { id: params.conversationId, tenantId: params.tenantId },
+    select: { assignedToId: true, status: true },
+  });
+  if (!conv || conv.status === "CLOSED" || conv.status === "ARCHIVED") return false;
+  if (conv.assignedToId) return false;
+
+  const waiting = await prisma.message.findFirst({
+    where: {
+      conversationId: params.conversationId,
+      metadata: { path: ["waitingHuman"], equals: true },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, metadata: true },
+  });
+  if (waiting) {
+    const meta = (waiting.metadata || {}) as { waitingHuman?: boolean; requiresAssume?: boolean };
+    if (meta.waitingHuman || meta.requiresAssume) return false;
+  }
+
+  const agent = await prisma.aiAgent.findFirst({
+    where: {
+      id: params.agentId,
+      tenantId: params.tenantId,
+      isActive: true,
+      mode: "AUTO",
+      publishStatus: "PUBLISHED",
+    },
+    select: { id: true },
+  });
+  if (!agent) return false;
+
+  const tenant = await prisma.tenant.findFirst({
+    where: { id: params.tenantId, status: { in: ["ACTIVE", "TRIAL"] } },
+    select: { id: true },
+  });
+  if (!tenant) return false;
+
+  const lastInbound = await prisma.message.findFirst({
+    where: { conversationId: params.conversationId, direction: "INBOUND" },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  if (lastInbound) {
+    const already = await prisma.message.findFirst({
+      where: {
+        conversationId: params.conversationId,
+        direction: "OUTBOUND",
+        isAiGenerated: true,
+        createdAt: { gte: lastInbound.createdAt },
+      },
+      select: { id: true },
+    });
+    if (already) return false;
+  }
+
+  const recentHuman = await prisma.message.findFirst({
+    where: {
+      conversationId: params.conversationId,
+      direction: "OUTBOUND",
+      isAiGenerated: false,
+      createdAt: { gte: new Date(Date.now() - 15_000) },
+    },
+    select: { id: true },
+  });
+  if (recentHuman) return false;
+
+  return true;
+}
+
 /**
  * Agente em modo AUTO responde no WhatsApp como se fosse um humano da equipe.
  * NÃO responde se um atendente humano já assumiu (assignedToId).
@@ -960,6 +1036,16 @@ async function maybeAutoReplyAi(params: {
     console.warn(
       "[whatsapp] auto-reply: créditos esgotados — handoff Assumir"
     );
+  }
+
+  const stillOk = await autoReplyStillEligible({
+    tenantId: params.tenantId,
+    conversationId: params.conversationId,
+    agentId: agent.id,
+  });
+  if (!stillOk) {
+    console.log("[whatsapp] auto-reply: estado mudou após geração (humano/handoff/agente) — descarta envio");
+    return;
   }
 
   console.log(
