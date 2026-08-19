@@ -116,6 +116,7 @@ type MessageMeta = {
   agentUserId?: string;
   pendingApproval?: boolean;
   originalReply?: string;
+  sources?: Array<{ title?: string; documentId?: string; score?: number; chunkIndex?: number }>;
   [key: string]: unknown;
 };
 
@@ -2296,6 +2297,20 @@ function InboxInner() {
                             </p>
                           ) : null}
                           <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          {origin === "AI" &&
+                          Array.isArray(messageMeta(m).sources) &&
+                          (messageMeta(m).sources || []).length > 0 ? (
+                            <p className="mt-1.5 text-[10.5px] leading-snug text-ink-faint dark:text-zinc-500">
+                              Fontes consultadas:{" "}
+                              {Array.from(
+                                new Set(
+                                  (messageMeta(m).sources || [])
+                                    .map((s) => s.title)
+                                    .filter(Boolean)
+                                )
+                              ).join(" · ")}
+                            </p>
+                          ) : null}
                           <p
                             className={cn(
                               "mt-1 text-right text-[10px] tabular-nums",
