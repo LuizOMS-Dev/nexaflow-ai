@@ -276,22 +276,23 @@ function usageLimitKind(
   max: number,
   opts?: { enterprise?: boolean }
 ): "fixed" | "unlimited" | "custom" {
-  if (Number.isFinite(max) && max > 0 && max < 999_999) return "fixed";
-  if (max >= 999_999) return "unlimited";
-  if (opts?.enterprise) return "custom";
-  if (!Number.isFinite(max) || max <= 0) return "custom";
-  return "unlimited";
+  if (!Number.isFinite(max) || max <= 0) return opts?.enterprise ? "custom" : "custom";
+  if (max === 999 || max >= 999_999) return opts?.enterprise ? "custom" : "unlimited";
+  return "fixed";
 }
 
 function formatUsageLimit(used: number, max: number, kind: "fixed" | "unlimited" | "custom") {
   const u = used.toLocaleString("pt-BR");
   if (kind === "fixed") return `${u} de ${max.toLocaleString("pt-BR")}`;
-  return u;
+  if (kind === "unlimited") return `${u} · Ilimitado`;
+  return `${u} · Personalizado`;
 }
 
 function usagePct(used: number, max: number, kind: "fixed" | "unlimited" | "custom") {
   if (kind !== "fixed") return null;
-  return Math.min(100, Math.round((used / max) * 100));
+  const raw = (used / max) * 100;
+  if (used > 0 && raw < 1) return 0.5;
+  return Math.min(100, Math.round(raw));
 }
 
 type UsageLevel = "normal" | "warn_light" | "warn" | "full";
@@ -307,9 +308,10 @@ function usageLevel(pct: number | null): UsageLevel | null {
 function usageLevelLabel(level: UsageLevel | null, pct: number | null): string | null {
   if (level == null || pct == null) return null;
   if (level === "full") return "Limite atingido";
-  if (level === "warn") return `${pct}% utilizado · Atenção`;
-  if (level === "warn_light") return `${pct}% utilizado · Atenção leve`;
-  return `${pct}% utilizado`;
+  const pctText = pct > 0 && pct < 1 ? "<1%" : `${Math.round(pct)}%`;
+  if (level === "warn") return `${pctText} utilizado · Atenção`;
+  if (level === "warn_light") return `${pctText} utilizado · Atenção leve`;
+  return `${pctText} utilizado`;
 }
 
 export default function AdminTenantPage() {
