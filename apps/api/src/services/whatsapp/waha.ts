@@ -14,7 +14,8 @@ import { resolveWhatsAppQr } from "./qr";
 export class WahaConnector implements WhatsAppConnector {
   private headers(apiKey?: string) {
     const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (apiKey) h["X-Api-Key"] = apiKey;
+    const key = (apiKey || "").trim();
+    if (key && !/^sha512:/i.test(key)) h["X-Api-Key"] = key;
     return h;
   }
 

@@ -55,3 +55,5 @@ Banco de produção: serviço nativo `postgres-main`, limpo. O boot aplica `pris
 ## Variáveis
 
 Ver [`.env.easypanel.example`](../.env.easypanel.example). Cadastrar só no EasyPanel.
+
+`WAHA_API_KEY` precisa ser a **mesma chave em texto plano** no serviço `waha` e na API (`WA_GATEWAY_API_KEY` herda esse valor no Compose). O WAHA autentica com o header `X-Api-Key`. Não use o formato `sha512:` na variável da API — se o container WAHA usar hash, defina `WAHA_API_KEY_PLAIN` com a chave original.

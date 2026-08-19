@@ -162,7 +162,8 @@ export async function downloadWahaMedia(opts: {
   if (!safeUrl) return null;
 
   const headers: Record<string, string> = {};
-  if (env.waGatewayApiKey) headers["X-Api-Key"] = env.waGatewayApiKey;
+  const key = (env.waGatewayApiKey || "").trim();
+  if (key && !/^sha512:/i.test(key)) headers["X-Api-Key"] = key;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 25_000);

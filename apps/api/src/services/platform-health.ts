@@ -297,31 +297,22 @@ async function checkWhatsAppGatewayHealth(): Promise<ServiceHealthResult> {
 
   const start = performance.now();
   try {
-    const cleanUrl = env.waGatewayUrl.replace(/\/+$/, "");
-    const healthUrl = `${cleanUrl}/health`;
+    const { probeWhatsAppGateway } = await import("./whatsapp/gateway-probe");
+    const probe = await probeWhatsAppGateway({
+      provider,
+      baseUrl: env.waGatewayUrl,
+      timeoutMs: 2500,
+    });
+    const latencyMs = probe.latencyMs || Math.max(1, Math.round(performance.now() - start));
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
-
-    const res = await fetch(healthUrl, {
-      method: "GET",
-      signal: controller.signal,
-      headers: {
-        ...(env.waGatewayApiKey ? { apikey: env.waGatewayApiKey } : {}),
-      },
-    }).finally(() => clearTimeout(timer));
-
-    const latencyMs = Math.max(1, Math.round(performance.now() - start));
-    const isAuthError = res.status === 401 || res.status === 403;
-
-    if (res.ok) {
+    if (probe.ok) {
       return {
         id: "whatsapp",
         name: "WhatsApp Gateway",
         criticality: "OPTIONAL",
         status: latencyMs > 1500 ? "degraded" : "operational",
         latencyMs,
-        message: `Gateway ${provider.toUpperCase()} conectado e respondendo.`,
+        message: `Gateway ${provider.toUpperCase()} conectado e autenticado.`,
         impact: "Canais WhatsApp dos tenants",
         checkedAt: now,
       };
@@ -331,11 +322,15 @@ async function checkWhatsAppGatewayHealth(): Promise<ServiceHealthResult> {
       id: "whatsapp",
       name: "WhatsApp Gateway",
       criticality: "OPTIONAL",
-      status: "degraded",
+      status: probe.reachable ? "degraded" : "down",
       latencyMs,
-      message: isAuthError
-        ? "Gateway acessível, mas a autenticação foi recusada (HTTP 401)."
-        : `Gateway respondeu com status HTTP ${res.status}.`,
+      message: probe.hashedKeyMisconfigured
+        ? "Gateway acessível, mas a API está enviando o hash sha512 da chave. Use a chave em texto plano."
+        : probe.authFailed
+          ? "Gateway acessível, mas a autenticação X-Api-Key foi recusada (HTTP 401)."
+          : probe.reachable
+            ? `Gateway respondeu com status HTTP ${probe.statusCode}.`
+            : `Servidor do gateway ${provider.toUpperCase()} inacessível.`,
       impact: "Canais WhatsApp dos tenants",
       checkedAt: now,
     };

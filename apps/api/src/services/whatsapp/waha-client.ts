@@ -60,9 +60,10 @@ export class WahaClient {
   }
 
   static fromEnv(overrides?: Partial<WahaClientOptions>) {
+    const hashed = /^sha512:/i.test((env.waGatewayApiKey || "").trim());
     return new WahaClient({
       baseUrl: overrides?.baseUrl || env.waGatewayUrl || "http://waha:3000",
-      apiKey: overrides?.apiKey || env.waGatewayApiKey,
+      apiKey: overrides?.apiKey || (hashed ? undefined : env.waGatewayApiKey),
       timeoutMs: overrides?.timeoutMs,
     });
   }
@@ -72,7 +73,8 @@ export class WahaClient {
       Accept: "application/json",
       ...(extra || {}),
     };
-    if (this.apiKey) h["X-Api-Key"] = this.apiKey;
+    const key = (this.apiKey || "").trim();
+    if (key && !/^sha512:/i.test(key)) h["X-Api-Key"] = key;
     return h;
   }
 

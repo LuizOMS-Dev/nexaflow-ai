@@ -34,6 +34,7 @@ services:
       WAHA_LOG_FORMAT: JSON
       WAHA_LOG_LEVEL: ${WAHA_LOG_LEVEL:-info}
       WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_API_KEY_EXCLUDE_PATH: ping,health
       WAHA_DASHBOARD_ENABLED: "false"
       WHATSAPP_SWAGGER_ENABLED: "false"
       WAHA_CLIENT_DEVICE_NAME: NexaFlow
@@ -96,8 +97,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       WA_GATEWAY_PROVIDER: waha
       WA_GATEWAY_URL: http://waha:3000
-      WA_GATEWAY_API_KEY: ${WAHA_API_KEY}
+      WA_GATEWAY_API_KEY: ${WA_GATEWAY_API_KEY:-${WAHA_API_KEY_PLAIN:-${WAHA_API_KEY}}}
       WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_API_KEY_PLAIN: ${WAHA_API_KEY_PLAIN:-}
       MAIL_PROVIDER: ${MAIL_PROVIDER:-log}
       MAIL_API_KEY: ${MAIL_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-NexaFlow <noreply@localhost>}

@@ -1012,58 +1012,75 @@ export async function runSystemDiagnostics(): Promise<SystemDiagnosticsDTO> {
       }
 
       try {
-        const cleanUrl = env.waGatewayUrl.replace(/\/+$/, "");
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 2500);
-
-        const res = await fetch(`${cleanUrl}/health`, {
-          method: "GET",
-          signal: controller.signal,
-          headers: env.waGatewayApiKey ? { apikey: env.waGatewayApiKey } : {},
-        }).finally(() => clearTimeout(timer));
-
-        const latencyMs = Math.max(1, Math.round(performance.now() - t0));
-        const isAuthError = res.status === 401 || res.status === 403;
+        const { probeWhatsAppGateway } = await import("./whatsapp/gateway-probe");
+        const probe = await probeWhatsAppGateway({
+          provider,
+          baseUrl: env.waGatewayUrl,
+          timeoutMs: 2500,
+        });
+        const latencyMs = probe.latencyMs || Math.max(1, Math.round(performance.now() - t0));
+        const isAuthError = probe.authFailed;
 
         return {
           id: "whatsapp_gateway",
           group: "communications",
           groupLabel: "Comunicação",
           title: "Gateway WhatsApp",
-          status: res.ok ? "OK" : "WARNING",
+          status: probe.ok ? "OK" : probe.reachable ? "WARNING" : "FAILURE",
           criticality: "IMPORTANT",
-          summary: res.ok
-            ? `Gateway ${provider.toUpperCase()} conectado e respondendo (${latencyMs}ms).`
+          summary: probe.ok
+            ? `Gateway ${provider.toUpperCase()} conectado e autenticado (${latencyMs}ms).`
+            : probe.hashedKeyMisconfigured
+            ? "O Gateway WhatsApp está acessível, mas a API está usando o hash sha512 da chave em vez da chave em texto plano."
             : isAuthError
             ? "O Gateway WhatsApp respondeu, mas recusou a autenticação configurada (HTTP 401)."
-            : `Gateway ${provider.toUpperCase()} retornou status HTTP ${res.status}.`,
-          evidence: isAuthError
+            : probe.reachable
+            ? `Gateway ${provider.toUpperCase()} retornou status HTTP ${probe.statusCode}.`
+            : `Servidor do gateway WhatsApp (${provider}) inacessível.`,
+          evidence: probe.ok
+            ? `Endpoint autenticado ${probe.path || "/api/sessions"} respondeu com HTTP ${probe.statusCode}. Header X-Api-Key aceito.`
+            : probe.hashedKeyMisconfigured
+            ? "WAHA_API_KEY está no formato sha512:... A API precisa enviar a chave original em X-Api-Key (WAHA_API_KEY_PLAIN ou WA_GATEWAY_API_KEY)."
+            : isAuthError
             ? "O servidor do gateway está acessível na rede, porém a credencial configurada foi recusada (HTTP 401 Unauthorized)."
-            : res.ok
-            ? `Endpoint /health do gateway respondeu com status HTTP ${res.status} OK.`
-            : `Endpoint /health do gateway retornou código HTTP ${res.status}.`,
+            : probe.reachable
+            ? `Endpoint ${probe.path || "/health"} retornou código HTTP ${probe.statusCode}.`
+            : "Não foi possível conectar ao servidor do gateway no tempo limite de 2.5s.",
           impact: "As operações que exigem comunicação com o gateway podem falhar até a correção da chave.",
           technical: {
             "Provedor": provider.toUpperCase(),
-            "Resposta HTTP": `${res.status} ${res.statusText || (isAuthError ? "Unauthorized" : "")}`.trim(),
-            "Conectividade de Rede": "Acessível (Servidor respondeu)",
-            "Status de Autenticação": isAuthError ? "Recusada" : res.ok ? "Aceita" : "Indefinida",
+            "Resposta HTTP": probe.statusCode
+              ? `${probe.statusCode}${isAuthError ? " Unauthorized" : ""}`
+              : "sem resposta",
+            "Conectividade de Rede": probe.reachable
+              ? "Acessível (Servidor respondeu)"
+              : "Inacessível / Timeout",
+            "Status de Autenticação": probe.ok
+              ? "Aceita (X-Api-Key)"
+              : isAuthError
+                ? "Recusada"
+                : "Indefinida",
             "Latência": `${latencyMs} ms`,
             "Timeout Aplicado": "2500 ms",
           },
           details: {
             provider,
-            statusCode: res.status,
+            statusCode: probe.statusCode,
             latencyMs,
             authFailed: isAuthError,
+            path: probe.path,
           },
           latencyMs,
           checkedAt,
-          recommendation: isAuthError
-            ? "Verifique a chave de autenticação ou as permissões de acesso nas configurações do gateway WhatsApp."
-            : !res.ok
-            ? "Verifique os logs do servidor de WhatsApp Gateway."
-            : null,
+          recommendation: probe.ok
+            ? null
+            : probe.hashedKeyMisconfigured
+              ? "Defina WAHA_API_KEY_PLAIN (ou WA_GATEWAY_API_KEY) com a chave em texto plano. Deixe o hash sha512: apenas no container WAHA."
+              : isAuthError
+                ? "Use a mesma chave em WAHA_API_KEY (serviço waha) e WA_GATEWAY_API_KEY (API). O WAHA autentica com o header X-Api-Key, não apikey."
+                : probe.reachable
+                  ? "Verifique os logs do servidor de WhatsApp Gateway."
+                  : "Verifique se o serviço waha está no ar e se WA_GATEWAY_URL=http://waha:3000.",
         };
       } catch {
         const latencyMs = Math.max(1, Math.round(performance.now() - t0));

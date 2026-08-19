@@ -124,8 +124,19 @@ export const env = {
     | "baileys"
     | "simulated",
   waGatewayUrl: process.env.WA_GATEWAY_URL || process.env.EVOLUTION_BASE_URL || "",
-  waGatewayApiKey:
-    process.env.WA_GATEWAY_API_KEY || process.env.EVOLUTION_API_KEY || "nexaflow-evolution-key",
+  waGatewayApiKey: (() => {
+    const raw = (
+      process.env.WA_GATEWAY_API_KEY ||
+      process.env.WAHA_API_KEY_PLAIN ||
+      process.env.WAHA_API_KEY ||
+      process.env.EVOLUTION_API_KEY ||
+      ""
+    ).trim();
+    if (!raw || /^sha512:/i.test(raw)) {
+      return nodeEnv === "production" ? "" : "nexaflow-evolution-key";
+    }
+    return raw;
+  })(),
   storagePath: process.env.STORAGE_LOCAL_PATH || "./uploads",
   storageDriver: (process.env.STORAGE_DRIVER || "local").toLowerCase(),
   /** Sessões Baileys (volume persistente em produção) */
