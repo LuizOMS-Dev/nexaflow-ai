@@ -279,7 +279,7 @@ export function Menu({
             aria-orientation="vertical"
             tabIndex={-1}
             className={cn(
-              "fixed z-[100] flex flex-col overflow-y-auto rounded-2xl",
+              "fixed z-[var(--z-popover)] flex flex-col overflow-y-auto rounded-2xl",
               "border border-black/[0.08] bg-white p-1.5 text-ink shadow-2xl shadow-black/15",
               "dark:border-white/[0.09] dark:bg-[#12141c] dark:text-zinc-200 dark:shadow-black/70",
               "backdrop-blur-md transition-all duration-150 ease-out",
@@ -646,7 +646,7 @@ export function Popover({
             ref={panelRef}
             tabIndex={-1}
             className={cn(
-              "fixed z-[100] flex flex-col overflow-y-auto rounded-2xl",
+              "fixed z-[var(--z-popover)] flex flex-col overflow-y-auto rounded-2xl",
               "border border-black/[0.08] bg-white p-3 text-ink shadow-2xl shadow-black/15",
               "dark:border-white/[0.09] dark:bg-[#12141c] dark:text-zinc-200 dark:shadow-black/70",
               "backdrop-blur-md transition-all duration-150 ease-out",

@@ -38,9 +38,15 @@ import {
 type MembershipRow = {
   id: string;
   role: string;
+  status?: string;
   isActive: boolean;
   tenant: { id: string; name: string; slug: string };
 };
+
+function membershipStatusLabel(m: MembershipRow): string {
+  if (m.status === "SUSPENDED" || m.isActive === false) return "Membership suspensa";
+  return "Membership ativa";
+}
 
 type AdminUser = {
   id: string;
@@ -118,6 +124,9 @@ type UsersListResponse = {
 type UsersKpis = {
   totalUsers: number;
   activeUsers: number;
+  companyUniqueUsers?: number;
+  companyActiveUsers?: number;
+  companyWithMfa?: number;
   superadmins: number;
   usersWithMfa: number;
   activeMemberships: number;
@@ -356,14 +365,19 @@ export default function AdminUsersPage() {
   );
   const filteredCompanyUsers = tab === "companies" ? listedUsers : [];
   const filteredPlatformAdmins = tab === "platform" ? listedUsers : [];
+  const companyUnique = stats?.companyUniqueUsers ?? 0;
   const metrics = {
-    companyUsers: stats?.totalUsers ?? 0,
+    companyUsers: companyUnique,
     tenantsWithUsers: stats?.tenantsWithUsers ?? 0,
     platformAdmins: stats?.superadmins ?? 0,
-    activeCompany: stats?.activeUsers ?? 0,
-    mfaOn: stats?.usersWithMfa ?? 0,
+    activeCompany: stats?.companyActiveUsers ?? 0,
+    mfaOn: stats?.companyWithMfa ?? 0,
     activeMemberships: stats?.activeMemberships ?? 0,
   };
+  const hasActiveFilters =
+    Boolean(debouncedSearch.trim()) ||
+    statusFilter !== "ALL" ||
+    (tab === "companies" && (tenantFilter !== "ALL" || roleFilter !== "ALL"));
 
   if (user?.platformRole !== "SUPERADMIN") return null;
 
@@ -432,7 +446,7 @@ export default function AdminUsersPage() {
       </MetricGrid>
 
       {/* Tabs: membership (tenant) × platformRole (global) */}
-      <div className="admin-tabs" role="tablist" aria-label="Escopo de usuários">
+      <div className="admin-tabs overflow-x-auto" role="tablist" aria-label="Escopo de usuários">
         <button
           type="button"
           role="tab"
@@ -458,7 +472,7 @@ export default function AdminUsersPage() {
                 : "bg-white/[0.05] text-gray-500"
             )}
           >
-            {stats?.totalUsers ?? listedUsers.length}
+            {companyUnique}
           </span>
         </button>
         <button
@@ -559,17 +573,44 @@ export default function AdminUsersPage() {
       {tab === "companies" && (
         <AdminSection flush>
           {filteredCompanyUsers.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400">
-                <Users className="h-5 w-5" strokeWidth={1.5} />
-              </div>
-              <p className="text-[13.5px] font-semibold text-white/85">Nenhum usuário de empresa</p>
+            <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
+              <p className="text-[13.5px] font-semibold text-white/85">
+                {hasActiveFilters ? "Nenhum usuário encontrado" : "Nenhum usuário de empresa"}
+              </p>
               <p className="mt-1 max-w-sm text-[12.5px] text-gray-500">
-                Ajuste os filtros ou aguarde novos cadastros em empresas clientes.
+                {hasActiveFilters
+                  ? "Ajuste os filtros para ampliar os resultados."
+                  : "Crie um novo usuário ou adicione alguém a uma empresa."}
               </p>
             </div>
           ) : (
-            <div className="admin-table-wrap overflow-x-auto">
+            <>
+            <div className="space-y-2 p-3 md:hidden">
+              {filteredCompanyUsers.map((u) => {
+                const memberships = u.memberships || [];
+                const st = resolveUserStatus(u);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="w-full rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left"
+                    onClick={() => setDetailUserId(u.id)}
+                  >
+                    <p className="font-medium text-white">{u.name}</p>
+                    <p className="text-[12px] text-gray-500">{u.email}</p>
+                    <p className="mt-1 text-[12px] text-gray-400">
+                      {memberships[0]?.tenant.name || "Sem vínculo"}
+                      {memberships.length > 1 ? ` +${memberships.length - 1}` : ""}
+                      {" · "}
+                      {st.label}
+                      {" · "}
+                      {u.twoFactorEnabled ? "MFA ativo" : "MFA não configurado"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="admin-table-wrap hidden overflow-x-auto md:block">
               <table className="admin-table w-full min-w-[760px] border-collapse text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-white/[0.06]">
@@ -656,7 +697,7 @@ export default function AdminUsersPage() {
                                   >
                                     <span className="block truncate font-medium">{m.tenant.name}</span>
                                     <span className="text-[11px] text-gray-500">
-                                      {tenantRoleLabel[m.role] || m.role}
+                                      {tenantRoleLabel[m.role] || m.role} · {membershipStatusLabel(m)}
                                     </span>
                                   </Link>
                                 ))}
@@ -680,7 +721,7 @@ export default function AdminUsersPage() {
                         </td>
                         <td className="hidden px-4 py-3 xl:table-cell">
                           <StatusBadge tone={u.twoFactorEnabled ? "success" : "neutral"} dot>
-                            {u.twoFactorEnabled ? "Ativo" : "Não"}
+                            {u.twoFactorEnabled ? "Ativo" : "Não configurado"}
                           </StatusBadge>
                         </td>
                         <td className="hidden whitespace-nowrap px-4 py-3 text-gray-400 lg:table-cell">
@@ -750,6 +791,7 @@ export default function AdminUsersPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </AdminSection>
       )}
@@ -757,19 +799,42 @@ export default function AdminUsersPage() {
       {tab === "platform" && (
         <AdminSection flush>
           {filteredPlatformAdmins.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-gray-400">
-                <Shield className="h-5 w-5" strokeWidth={1.5} />
-              </div>
+            <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
               <p className="text-[13.5px] font-semibold text-white/85">
-                Nenhum administrador da plataforma
+                {hasActiveFilters ? "Nenhum usuário encontrado" : "Nenhum administrador da plataforma"}
               </p>
               <p className="mt-1 max-w-sm text-[12.5px] text-gray-500">
-                Não há contas com papel global SUPERADMIN neste filtro.
+                {hasActiveFilters
+                  ? "Ajuste os filtros para ampliar os resultados."
+                  : "Crie um administrador da plataforma quando precisar de acesso global."}
               </p>
             </div>
           ) : (
-            <div className="admin-table-wrap overflow-x-auto">
+            <>
+            <div className="space-y-2 p-3 md:hidden">
+              {filteredPlatformAdmins.map((u) => {
+                const st = resolveUserStatus(u);
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="w-full rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-left"
+                    onClick={() => setDetailUserId(u.id)}
+                  >
+                    <p className="font-medium text-white">{u.name}</p>
+                    <p className="text-[12px] text-gray-500">{u.email}</p>
+                    <p className="mt-1 text-[12px] text-gray-400">
+                      {platformRoleLabel[u.platformRole || ""] || u.platformRole || "Administrador"}
+                      {" · "}
+                      {st.label}
+                      {" · "}
+                      {u.twoFactorEnabled ? "MFA ativo" : "MFA não configurado"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="admin-table-wrap hidden overflow-x-auto md:block">
               <table className="admin-table w-full min-w-[700px] border-collapse text-left text-[13px]">
                 <thead>
                   <tr className="border-b border-white/[0.06]">
@@ -823,8 +888,8 @@ export default function AdminUsersPage() {
                           </StatusBadge>
                         </td>
                         <td className="px-4 py-3">
-                          <StatusBadge tone={mfaOn ? "success" : "warning"} dot>
-                            {mfaOn ? "Ativo" : "Pendente"}
+                          <StatusBadge tone={mfaOn ? "success" : "neutral"} dot>
+                            {mfaOn ? "Ativo" : "Não configurado"}
                           </StatusBadge>
                         </td>
                         <td className="px-4 py-3">
@@ -883,6 +948,7 @@ export default function AdminUsersPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </AdminSection>
       )}

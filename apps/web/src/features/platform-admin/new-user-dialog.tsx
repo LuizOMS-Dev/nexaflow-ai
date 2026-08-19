@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Shield } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { Checkbox, Modal, useToast } from "@/components/ui";
+import { Checkbox, ConsequenceBanner, Modal, useToast } from "@/components/ui";
 import { Select } from "@/components/ui-select";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +24,7 @@ type Props = {
 };
 
 const inputClass =
-  "h-9 w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 text-[13px] text-white placeholder-white/35 focus:border-violet-500/60 focus:outline-none";
+  "h-9 w-full rounded-lg border border-white/[0.08] bg-[#0c0d12] px-3 text-[13px] text-white placeholder-white/35 focus:border-violet-500/60 focus:outline-none disabled:opacity-50";
 
 export function NewUserDialog({ open, onClose }: Props) {
   const qc = useQueryClient();
@@ -34,36 +34,49 @@ export function NewUserDialog({ open, onClose }: Props) {
   const [email, setEmail] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [role, setRole] = useState("AGENT");
-  const [tenantSearch, setTenantSearch] = useState("");
   const [ack, setAck] = useState(false);
-  const [inlineError, setInlineError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [existingHint, setExistingHint] = useState<string | null>(null);
 
   const tenantsQuery = useQuery({
     queryKey: ["admin-tenants", "user-create"],
     queryFn: () =>
-      api<{ items: Array<{ id: string; name: string; slug: string }> }>("/admin/tenants?page=1&limit=100"),
+      api<{ items: Array<{ id: string; name: string; slug: string }> }>("/admin/tenants?page=1&limit=200"),
     enabled: open,
   });
 
-  const tenantOptions = useMemo(() => {
-    const q = tenantSearch.trim().toLowerCase();
-    return (tenantsQuery.data?.items || [])
-      .filter((t) => !q || t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q))
-      .map((t) => ({ value: t.id, label: t.name, description: t.slug }));
-  }, [tenantsQuery.data, tenantSearch]);
+  const tenantOptions = useMemo(
+    () =>
+      (tenantsQuery.data?.items || []).map((t) => ({
+        value: t.id,
+        label: t.name,
+        description: t.slug,
+      })),
+    [tenantsQuery.data]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setKind("pick");
+    setInlineIdle();
+  }, [open]);
+
+  function setInlineIdle() {
+    setErrors({});
+    setExistingHint(null);
+  }
 
   const mut = useMutation({
     mutationFn: async () => {
       if (kind === "company") {
         return api<{ createdUser: boolean; reusedUser: boolean }>("/admin/users", {
           method: "POST",
-          json: { kind: "company", name, email, tenantId, role },
+          json: { kind: "company", name: name.trim(), email: email.trim(), tenantId, role },
         });
       }
       return api<{ createdUser: boolean; promoted: boolean }>("/admin/users", {
         method: "POST",
-        json: { kind: "platform", name, email },
+        json: { kind: "platform", name: name.trim(), email: email.trim() },
       });
     },
     onSuccess: (res) => {
@@ -83,7 +96,7 @@ export function NewUserDialog({ open, onClose }: Props) {
     },
     onError: (e: Error) => {
       const msg = e instanceof ApiError ? e.message : e.message;
-      setInlineError(msg);
+      setErrors({ form: msg });
     },
   });
 
@@ -93,29 +106,58 @@ export function NewUserDialog({ open, onClose }: Props) {
     setEmail("");
     setTenantId("");
     setRole("AGENT");
-    setTenantSearch("");
     setAck(false);
-    setInlineError(null);
-    setExistingHint(null);
+    setInlineIdle();
     onClose();
   }
 
-  function onEmailBlur() {
+  async function onEmailBlur() {
     const value = email.trim().toLowerCase();
-    if (!value || kind !== "company") {
+    if (!value || kind !== "company" || !value.includes("@")) {
       setExistingHint(null);
       return;
     }
-    setExistingHint("Se esta conta já existir, ela será apenas adicionada à empresa. Senha e MFA não mudam.");
+    try {
+      const res = await api<{ items: Array<{ email: string }> }>(
+        `/admin/users?search=${encodeURIComponent(value)}&limit=8`
+      );
+      const exists = (res.items || []).some((u) => u.email.toLowerCase() === value);
+      setExistingHint(
+        exists
+          ? "Este usuário já possui uma conta no NexaFlow. Será criado apenas o vínculo com esta empresa."
+          : null
+      );
+    } catch {
+      setExistingHint(null);
+    }
   }
 
-  const canSubmitCompany = name.trim().length >= 2 && email.includes("@") && Boolean(tenantId);
-  const canSubmitPlatform = name.trim().length >= 2 && email.includes("@") && ack;
+  function validate(): boolean {
+    const next: Record<string, string> = {};
+    if (name.trim().length < 2) next.name = "Informe o nome completo.";
+    if (name.trim().length > 120) next.name = "Nome muito longo.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().toLowerCase())) next.email = "Informe um e-mail válido.";
+    if (kind === "company" && !tenantId) next.tenantId = "Selecione a empresa.";
+    if (kind === "company" && !role) next.role = "Selecione o papel.";
+    if (kind === "platform" && !ack) next.ack = "Confirme o acesso administrativo global.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  }
+
+  const busy = mut.isPending;
+  const submitLabel =
+    busy
+      ? kind === "platform"
+        ? "Criando administrador..."
+        : "Salvando usuário..."
+      : kind === "platform"
+        ? "Criar administrador"
+        : "Salvar usuário";
 
   return (
     <Modal
       open={open}
-      onClose={() => !mut.isPending && resetAndClose()}
+      onClose={() => !busy && resetAndClose()}
       title="Novo usuário"
       description={
         kind === "pick"
@@ -125,17 +167,18 @@ export function NewUserDialog({ open, onClose }: Props) {
             : "Administradores da plataforma possuem acesso global às áreas administrativas do NexaFlow."
       }
       size="md"
-      preventClose={mut.isPending}
+      tone={kind === "platform" ? "warning" : undefined}
+      preventClose={busy}
       footer={
         kind === "pick" ? undefined : (
           <div className="flex justify-end gap-2">
             <button
               type="button"
               className="admin-btn-secondary h-9 px-4 text-[13px]"
-              disabled={mut.isPending}
+              disabled={busy}
               onClick={() => {
                 setKind("pick");
-                setInlineError(null);
+                setInlineIdle();
               }}
             >
               Voltar
@@ -143,17 +186,13 @@ export function NewUserDialog({ open, onClose }: Props) {
             <button
               type="button"
               className="admin-btn-primary h-9 px-4 text-[13px]"
-              disabled={mut.isPending || (kind === "company" ? !canSubmitCompany : !canSubmitPlatform)}
+              disabled={busy}
               onClick={() => {
-                setInlineError(null);
+                if (!validate()) return;
                 mut.mutate();
               }}
             >
-              {mut.isPending
-                ? "Salvando…"
-                : kind === "platform"
-                  ? "Criar administrador"
-                  : "Salvar usuário"}
+              {submitLabel}
             </button>
           </div>
         )
@@ -163,7 +202,7 @@ export function NewUserDialog({ open, onClose }: Props) {
         <div className="grid gap-2 sm:grid-cols-2">
           <button
             type="button"
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-left hover:bg-white/[0.04]"
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-left outline-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-violet-500/50"
             onClick={() => setKind("company")}
           >
             <Building2 className="mb-2 h-4 w-4 text-violet-300" />
@@ -174,7 +213,7 @@ export function NewUserDialog({ open, onClose }: Props) {
           </button>
           <button
             type="button"
-            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-left hover:bg-white/[0.04]"
+            className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-left outline-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-violet-500/50"
             onClick={() => setKind("platform")}
           >
             <Shield className="mb-2 h-4 w-4 text-amber-300" />
@@ -188,39 +227,47 @@ export function NewUserDialog({ open, onClose }: Props) {
         <div className="space-y-3">
           <label className="block">
             <span className="mb-1 block text-[12px] font-medium text-gray-300">Nome completo</span>
-            <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              className={cn(inputClass, errors.name && "border-rose-400/50")}
+              value={name}
+              disabled={busy}
+              autoComplete="name"
+              onChange={(e) => setName(e.target.value)}
+            />
+            {errors.name ? <p className="mt-1 text-[12px] text-rose-400">{errors.name}</p> : null}
           </label>
           <label className="block">
             <span className="mb-1 block text-[12px] font-medium text-gray-300">E-mail</span>
             <input
-              className={inputClass}
+              className={cn(inputClass, errors.email && "border-rose-400/50")}
               type="email"
               value={email}
+              disabled={busy}
+              autoComplete="email"
               onChange={(e) => setEmail(e.target.value)}
-              onBlur={onEmailBlur}
+              onBlur={() => void onEmailBlur()}
             />
+            {errors.email ? <p className="mt-1 text-[12px] text-rose-400">{errors.email}</p> : null}
           </label>
           {kind === "company" ? (
             <>
-              {existingHint ? (
-                <p className="text-[12px] text-amber-300/90">{existingHint}</p>
-              ) : null}
+              {existingHint ? <ConsequenceBanner tone="warning">{existingHint}</ConsequenceBanner> : null}
               <div>
                 <span className="mb-1 block text-[12px] font-medium text-gray-300">Empresa</span>
-                <input
-                  className={cn(inputClass, "mb-2")}
-                  placeholder="Buscar empresa…"
-                  value={tenantSearch}
-                  onChange={(e) => setTenantSearch(e.target.value)}
-                />
                 <Select
                   value={tenantId}
                   onChange={setTenantId}
                   options={tenantOptions}
-                  placeholder="Selecionar empresa"
+                  placeholder="Buscar ou selecionar empresa..."
+                  searchPlaceholder="Buscar por nome ou slug"
+                  searchable
                   matchTriggerWidth
+                  disabled={busy}
+                  error={Boolean(errors.tenantId)}
+                  required
                   aria-label="Empresa"
                 />
+                {errors.tenantId ? <p className="mt-1 text-[12px] text-rose-400">{errors.tenantId}</p> : null}
               </div>
               <div>
                 <span className="mb-1 block text-[12px] font-medium text-gray-300">Papel na empresa</span>
@@ -229,17 +276,25 @@ export function NewUserDialog({ open, onClose }: Props) {
                   onChange={setRole}
                   options={[...MEMBER_ROLES]}
                   matchTriggerWidth
+                  preferredPlacement="top"
+                  disabled={busy}
+                  error={Boolean(errors.role)}
+                  required
                   aria-label="Papel na empresa"
                 />
+                {errors.role ? <p className="mt-1 text-[12px] text-rose-400">{errors.role}</p> : null}
               </div>
             </>
           ) : (
-            <label className="flex items-start gap-2.5 text-[12.5px] text-gray-300">
-              <Checkbox checked={ack} onCheckedChange={setAck} className="mt-0.5" />
-              <span>Entendo que este usuário terá acesso administrativo global ao NexaFlow.</span>
-            </label>
+            <ConsequenceBanner tone="warning">
+              <label className="flex items-start gap-2.5">
+                <Checkbox checked={ack} onCheckedChange={setAck} disabled={busy} className="mt-0.5" />
+                <span>Entendo que este usuário terá acesso administrativo global ao NexaFlow.</span>
+              </label>
+            </ConsequenceBanner>
           )}
-          {inlineError ? <p className="text-[12.5px] text-rose-400">{inlineError}</p> : null}
+          {errors.ack ? <p className="text-[12px] text-rose-400">{errors.ack}</p> : null}
+          {errors.form ? <p className="text-[12.5px] text-rose-400">{errors.form}</p> : null}
         </div>
       )}
     </Modal>

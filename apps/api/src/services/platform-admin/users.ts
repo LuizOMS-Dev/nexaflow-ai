@@ -52,14 +52,44 @@ export type ListUsersQuery = {
   limit: number;
 };
 
+const companyUserWhere: Prisma.UserWhereInput = {
+  NOT: testUserEmailFilter(),
+  memberships: { some: { isActive: true } },
+};
+
+/** AuthSession válida agora: não revogada, não expirada, impersonação ainda vigente. */
+function activeAuthSessionWhere(
+  now: Date,
+  extra?: Prisma.AuthSessionWhereInput
+): Prisma.AuthSessionWhereInput {
+  return {
+    revokedAt: null,
+    expiresAt: { gt: now },
+    OR: [
+      { isImpersonation: false },
+      { impersonationExpiresAt: null },
+      { impersonationExpiresAt: { gt: now } },
+    ],
+    ...extra,
+  };
+}
+
 export async function getUsersKpis() {
+  const now = new Date();
   const baseWhere: Prisma.UserWhereInput = {
     NOT: testUserEmailFilter(),
+  };
+  const platformWhere: Prisma.UserWhereInput = {
+    ...baseWhere,
+    platformRole: "SUPERADMIN",
   };
 
   const [
     totalUsers,
     activeUsers,
+    companyUniqueUsers,
+    companyActiveUsers,
+    companyWithMfa,
     superadmins,
     usersWithMfa,
     activeMemberships,
@@ -71,7 +101,10 @@ export async function getUsersKpis() {
     await Promise.all([
       prisma.user.count({ where: baseWhere }),
       prisma.user.count({ where: { ...baseWhere, status: "ACTIVE" } }),
-      prisma.user.count({ where: { ...baseWhere, platformRole: "SUPERADMIN" } }),
+      prisma.user.count({ where: companyUserWhere }),
+      prisma.user.count({ where: { ...companyUserWhere, status: "ACTIVE" } }),
+      prisma.user.count({ where: { ...companyUserWhere, twoFactorEnabled: true } }),
+      prisma.user.count({ where: platformWhere }),
       prisma.user.count({ where: { ...baseWhere, twoFactorEnabled: true } }),
       prisma.membership.count({
         where: {
@@ -92,23 +125,22 @@ export async function getUsersKpis() {
         },
       }),
       prisma.user.count({
-        where: { ...baseWhere, platformRole: "SUPERADMIN", status: "ACTIVE" },
+        where: { ...platformWhere, status: "ACTIVE" },
       }),
       prisma.user.count({
-        where: { ...baseWhere, platformRole: "SUPERADMIN", twoFactorEnabled: true },
+        where: { ...platformWhere, twoFactorEnabled: true },
       }),
       prisma.authSession.count({
-        where: {
-          revokedAt: null,
-          expiresAt: { gt: new Date() },
-          user: { platformRole: "SUPERADMIN", NOT: testUserEmailFilter() },
-        },
+        where: activeAuthSessionWhere(now, { user: platformWhere }),
       }),
     ]);
 
   return {
     totalUsers,
     activeUsers,
+    companyUniqueUsers,
+    companyActiveUsers,
+    companyWithMfa,
     superadmins,
     usersWithMfa,
     activeMemberships,
@@ -147,10 +179,7 @@ export async function listUsers(q: ListUsersQuery) {
   if (q.scope === "platform") {
     where.platformRole = "SUPERADMIN";
   } else if (q.scope === "companies") {
-    where.AND = [
-      { memberships: { some: { isActive: true } } },
-      { NOT: { platformRole: "SUPERADMIN" } },
-    ];
+    where.memberships = { some: { isActive: true } };
   }
 
   const membershipSome: Prisma.MembershipWhereInput = { isActive: true };
@@ -268,7 +297,7 @@ export async function getUserDetail(id: string) {
   );
 
   const activeSessions = await prisma.authSession.count({
-    where: { userId: id, revokedAt: null, expiresAt: { gt: new Date() } },
+    where: activeAuthSessionWhere(new Date(), { userId: id }),
   });
 
   return { ...user, activeSessions };

@@ -49,7 +49,7 @@ describe("Platform admin user provisioning", () => {
 
   async function createTenant() {
     return prisma.tenant.create({
-      data: { name: `Co ${testId}`, slug: `co-${testId}-${randomBytes(2).toString("hex")}`, status: "ACTIVE" },
+      data: { name: `Co ${testId}`, slug: `co-${testId}-${randomBytes(4).toString("hex")}`, status: "ACTIVE" },
     });
   }
 

@@ -56,6 +56,9 @@ export type SelectProps = {
    * Se true, força a largura do menu a ser igual à largura do trigger (comum em formulários)
    */
   matchTriggerWidth?: boolean;
+  /** Combobox: filtra opções ao digitar. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 type MenuPos = {
@@ -121,14 +124,18 @@ export function Select({
   menuMinWidth,
   preferredPlacement = "auto",
   matchTriggerWidth = false,
+  searchable = false,
+  searchPlaceholder = "Buscar…",
 }: SelectProps) {
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos | null>(null);
   const [mounted, setMounted] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  const [query, setQuery] = useState("");
   const refinedWidthRef = useRef(false);
 
   useEffect(() => setMounted(true), []);
@@ -138,9 +145,20 @@ export function Select({
     [options, value]
   );
 
+  const visibleOptions = useMemo(() => {
+    if (!searchable || !query.trim()) return options;
+    const q = query.trim().toLowerCase();
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(q) ||
+        (o.description || "").toLowerCase().includes(q) ||
+        o.value.toLowerCase().includes(q)
+    );
+  }, [options, query, searchable]);
+
   const enabledIndexes = useMemo(
-    () => options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0),
-    [options]
+    () => visibleOptions.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0),
+    [visibleOptions]
   );
 
   const updatePosition = useCallback(() => {
@@ -163,13 +181,15 @@ export function Select({
 
     let placement: "bottom" | "top" = "bottom";
     if (preferredPlacement === "top") {
-      placement = "top";
+      placement = spaceAbove >= 120 || spaceAbove >= spaceBelow ? "top" : "bottom";
     } else if (preferredPlacement === "bottom") {
-      placement = "bottom";
+      placement = spaceBelow >= 120 || spaceBelow >= spaceAbove ? "bottom" : "top";
     } else {
-      // Auto: se o espaço abaixo for menor que o necessário (~210px) e houver mais espaço acima, abre para cima
-      const neededHeight = Math.min(MENU_MAX, options.length * 38 + 12);
-      if (spaceBelow < neededHeight && spaceAbove > spaceBelow) {
+      const neededHeight = Math.min(MENU_MAX, Math.max(visibleOptions.length, 1) * 38 + (searchable ? 52 : 12));
+      const nearBottom = r.bottom > vh * 0.58;
+      if (nearBottom && spaceAbove >= 120) {
+        placement = "top";
+      } else if (spaceBelow < neededHeight && spaceAbove > spaceBelow) {
         placement = "top";
       } else if (spaceBelow >= neededHeight) {
         placement = "bottom";
@@ -204,7 +224,7 @@ export function Select({
         placement: "top",
       });
     }
-  }, [matchTriggerWidth, menuMinWidth, options, preferredPlacement, size]);
+  }, [matchTriggerWidth, menuMinWidth, visibleOptions, preferredPlacement, size, searchable]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -247,8 +267,10 @@ export function Select({
   // Highlight inicial + close on outside click — só quando o menu abre
   useEffect(() => {
     if (!open) return;
-    const idx = options.findIndex((o) => o.value === value && !o.disabled);
+    const idx = visibleOptions.findIndex((o) => o.value === value && !o.disabled);
     setHighlight(idx >= 0 ? idx : enabledIndexes[0] ?? -1);
+    setQuery("");
+    requestAnimationFrame(() => searchRef.current?.focus());
 
     function onDoc(e: MouseEvent) {
       const t = e.target as Node;
@@ -266,6 +288,19 @@ export function Select({
     const node = listRef.current?.querySelector<HTMLElement>(`[data-idx="${highlight}"]`);
     node?.scrollIntoView({ block: "nearest" });
   }, [highlight, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onCaptureKey(e: globalThis.KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+    document.addEventListener("keydown", onCaptureKey, true);
+    return () => document.removeEventListener("keydown", onCaptureKey, true);
+  }, [open]);
 
   function commit(next: string) {
     onChange(next);
@@ -293,13 +328,14 @@ export function Select({
       if (e.key === "ArrowDown") moveHighlight(1);
       if (e.key === "ArrowUp") moveHighlight(-1);
       if (e.key === "Enter" || e.key === " ") {
-        if (highlight >= 0 && options[highlight] && !options[highlight].disabled) {
-          commit(options[highlight].value);
+        if (highlight >= 0 && visibleOptions[highlight] && !visibleOptions[highlight].disabled) {
+          commit(visibleOptions[highlight].value);
         }
       }
     }
     if (e.key === "Escape" && open) {
       e.preventDefault();
+      e.stopPropagation();
       setOpen(false);
     }
     if (e.key === "Home" && open) {
@@ -327,10 +363,12 @@ export function Select({
       if (enabledIndexes.length) setHighlight(enabledIndexes[enabledIndexes.length - 1]);
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      if (highlight >= 0 && options[highlight] && !options[highlight].disabled) {
-        commit(options[highlight].value);
+      if (highlight >= 0 && visibleOptions[highlight] && !visibleOptions[highlight].disabled) {
+        commit(visibleOptions[highlight].value);
       }
     } else if (e.key === "Escape" || e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
       setOpen(false);
       triggerRef.current?.focus();
     }
@@ -364,19 +402,47 @@ export function Select({
               minWidth: matchTriggerWidth ? undefined : pos.width,
               maxWidth: `min(${MENU_MAX_WIDTH}px, calc(100vw - 16px))`,
               maxHeight: pos.maxHeight,
-              zIndex: 99999,
+              zIndex: "var(--z-popover)",
             }}
             onKeyDown={onListKey}
           >
+            {searchable ? (
+              <div className="border-b border-white/[0.06] p-1.5">
+                <input
+                  ref={searchRef}
+                  className="h-8 w-full rounded-md border border-white/[0.08] bg-black/30 px-2.5 text-[13px] text-white placeholder-white/35 outline-none focus:border-violet-500/50"
+                  placeholder={searchPlaceholder}
+                  value={query}
+                  aria-label={searchPlaceholder}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setHighlight(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "ArrowDown" ||
+                      e.key === "ArrowUp" ||
+                      e.key === "Enter" ||
+                      e.key === "Escape" ||
+                      e.key === "Tab"
+                    ) {
+                      onListKey(e as unknown as KeyboardEvent<HTMLDivElement>);
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
             <div className="nf-select-menu-scroll">
-              {options.length === 0 ? (
-                <div className="px-3 py-2.5 text-xs text-ink-faint">Nenhuma opção</div>
+              {visibleOptions.length === 0 ? (
+                <div className="px-3 py-2.5 text-xs text-ink-faint">
+                  {query.trim() ? "Nenhuma opção encontrada" : "Nenhuma opção disponível"}
+                </div>
               ) : (
-                options.map((opt, i) => {
+                visibleOptions.map((opt, i) => {
                   const isSelected = opt.value === value;
                   const isActive = i === highlight;
                   const isGroupHeader = Boolean(
-                    opt.group && (i === 0 || options[i - 1]?.group !== opt.group)
+                    opt.group && (i === 0 || visibleOptions[i - 1]?.group !== opt.group)
                   );
                   return (
                     <div key={`${opt.value}-${i}`}>
@@ -448,6 +514,7 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-autocomplete={searchable ? "list" : undefined}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         data-required={required || undefined}

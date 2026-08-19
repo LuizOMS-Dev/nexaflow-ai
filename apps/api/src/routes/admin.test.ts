@@ -89,6 +89,9 @@ describe("platform admin — isolamento e contratos", () => {
             `super-admin-${suffix}@test.local`,
             `other-admin-${suffix}@test.local`,
             `visible-paginated-${suffix}@nexaflow.example`,
+            `co-user-${suffix}@nexaflow.example`,
+            `sa-only-${suffix}@nexaflow.example`,
+            `sa-sess-${suffix}@nexaflow.example`,
           ],
         },
       },
@@ -156,6 +159,144 @@ describe("platform admin — isolamento e contratos", () => {
     expect(Array.isArray(body.items)).toBe(true);
     expect(body.total).toBeGreaterThan(0);
     expect(body.totalPages).toBeGreaterThanOrEqual(1);
+  });
+
+  it("KPI de empresas e listagem usam a mesma semântica de Membership", async () => {
+    const before = await app.inject({
+      method: "GET",
+      url: "/admin/users/stats",
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    expect(before.statusCode).toBe(200);
+    const beforeKpi = before.json() as { companyUniqueUsers: number };
+
+    await prisma.user.create({
+      data: {
+        email: `sa-only-${suffix}@nexaflow.example`,
+        name: "SA Only",
+        passwordHash: await hashPassword("Test@Pass12345"),
+        platformRole: "SUPERADMIN",
+        status: "ACTIVE",
+      },
+    });
+    const afterSa = await app.inject({
+      method: "GET",
+      url: "/admin/users/stats",
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    const afterSaKpi = afterSa.json() as { companyUniqueUsers: number };
+    expect(afterSaKpi.companyUniqueUsers).toBe(beforeKpi.companyUniqueUsers);
+
+    await prisma.user.create({
+      data: {
+        email: `co-user-${suffix}@nexaflow.example`,
+        name: "Company User",
+        passwordHash: await hashPassword("Test@Pass12345"),
+        status: "ACTIVE",
+        memberships: { create: { tenantId, role: "AGENT", status: "ACTIVE", isActive: true } },
+      },
+    });
+
+    const statsRes = await app.inject({
+      method: "GET",
+      url: "/admin/users/stats",
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    const kpi = statsRes.json() as { companyUniqueUsers: number; platformActiveSessions: number };
+    expect(kpi.companyUniqueUsers).toBe(beforeKpi.companyUniqueUsers + 1);
+
+    const listCo = await app.inject({
+      method: "GET",
+      url: `/admin/users?scope=companies&search=co-user-${suffix}&limit=10`,
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    const coBody = listCo.json() as { total: number; items: Array<{ email: string }> };
+    expect(coBody.total).toBe(1);
+    expect(coBody.items[0].email).toBe(`co-user-${suffix}@nexaflow.example`);
+
+    const listSa = await app.inject({
+      method: "GET",
+      url: `/admin/users?scope=companies&search=sa-only-${suffix}&limit=10`,
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    expect((listSa.json() as { total: number }).total).toBe(0);
+
+    expect(typeof kpi.platformActiveSessions).toBe("number");
+    expect(kpi.platformActiveSessions).toBeGreaterThanOrEqual(0);
+
+    const unfiltered = await app.inject({
+      method: "GET",
+      url: "/admin/users?scope=companies&limit=30",
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    expect((unfiltered.json() as { total: number }).total).toBe(kpi.companyUniqueUsers);
+  });
+
+  it("KPI de sessões ativas ignora revogadas, expiradas e impersonação encerrada", async () => {
+    const passwordHash = await hashPassword("Test@Pass12345");
+    const sa = await prisma.user.create({
+      data: {
+        email: `sa-sess-${suffix}@nexaflow.example`,
+        name: "SA Sessions",
+        passwordHash,
+        platformRole: "SUPERADMIN",
+        status: "ACTIVE",
+      },
+    });
+    const before = await app.inject({
+      method: "GET",
+      url: "/admin/users/stats",
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    const beforeCount = (before.json() as { platformActiveSessions: number }).platformActiveSessions;
+    const now = Date.now();
+    await prisma.authSession.createMany({
+      data: [
+        {
+          userId: sa.id,
+          refreshTokenHash: `valid-${suffix}`,
+          familyId: `fam-valid-${suffix}`,
+          expiresAt: new Date(now + 3_600_000),
+        },
+        {
+          userId: sa.id,
+          refreshTokenHash: `revoked-${suffix}`,
+          familyId: `fam-revoked-${suffix}`,
+          expiresAt: new Date(now + 3_600_000),
+          revokedAt: new Date(now),
+        },
+        {
+          userId: sa.id,
+          refreshTokenHash: `expired-${suffix}`,
+          familyId: `fam-expired-${suffix}`,
+          expiresAt: new Date(now - 3_600_000),
+        },
+        {
+          userId: sa.id,
+          refreshTokenHash: `imp-end-${suffix}`,
+          familyId: `fam-impend-${suffix}`,
+          expiresAt: new Date(now + 3_600_000),
+          isImpersonation: true,
+          impersonationExpiresAt: new Date(now - 60_000),
+        },
+        {
+          userId: sa.id,
+          refreshTokenHash: `imp-ok-${suffix}`,
+          familyId: `fam-impok-${suffix}`,
+          expiresAt: new Date(now + 3_600_000),
+          isImpersonation: true,
+          impersonationExpiresAt: new Date(now + 3_600_000),
+        },
+      ],
+    });
+    const after = await app.inject({
+      method: "GET",
+      url: "/admin/users/stats",
+      headers: { authorization: `Bearer ${superToken}`, origin: "http://localhost:3000" },
+    });
+    expect((after.json() as { platformActiveSessions: number }).platformActiveSessions).toBe(
+      beforeCount + 2
+    );
   });
 
   it("superadmin não altera o próprio status", async () => {
