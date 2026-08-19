@@ -6,6 +6,7 @@ import {
   computeBillingSnapshot,
   computeNextDueDate,
   FINANCIAL_STATUS_LABEL,
+  toCivilDateUtc,
 } from "./billing";
 
 describe("billing helpers", () => {
@@ -75,5 +76,31 @@ describe("billing helpers", () => {
     const next = computeNextDueDate(10, from);
     expect(next.getUTCMonth()).toBe(8); // Sep
     expect(next.getUTCDate()).toBe(10);
+  });
+
+  it("civil date of due day 10 is never the 9th", () => {
+    const d = computeNextDueDate(10, new Date(Date.UTC(2026, 7, 19)));
+    expect(toCivilDateUtc(d)).toBe("2026-09-10");
+    expect(d.getUTCDate()).toBe(10);
+  });
+
+  it("clamps due day 31 in February and leap year", () => {
+    expect(computeNextDueDate(31, new Date(Date.UTC(2026, 1, 1))).getUTCDate()).toBe(28);
+    expect(computeNextDueDate(31, new Date(Date.UTC(2028, 1, 1))).getUTCDate()).toBe(29);
+    expect(computeNextDueDate(31, new Date(Date.UTC(2026, 3, 1))).getUTCDate()).toBe(30);
+    expect(computeNextDueDate(1, new Date(Date.UTC(2026, 0, 1))).getUTCDate()).toBe(1);
+  });
+
+  it("free / no-charge does not report in good standing", () => {
+    const snap = computeBillingSnapshot({
+      tenantStatus: "ACTIVE",
+      billingStatus: "ACTIVE",
+      billingDueDay: 10,
+      currentPeriodEnd: new Date(Date.UTC(2026, 8, 10)),
+      hasCharge: false,
+      now: new Date(Date.UTC(2026, 7, 19)),
+    });
+    expect(snap.financialStatus).toBe("UNKNOWN");
+    expect(snap.financialStatusLabel).toBe(FINANCIAL_STATUS_LABEL.UNKNOWN);
   });
 });

@@ -6,7 +6,7 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Eye, EyeOff, Plus, Search, X } from "lucide-react";
 import { ApiError, isSuperadminMfaRequiredError } from "@/lib/api";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatCivilDate } from "@/lib/utils";
 import { Modal, useToast } from "@/components/ui";
 import { Select, type SelectOption } from "@/components/ui-select";
 import { useAuth } from "@/store/auth";
@@ -73,16 +73,14 @@ function formatPlanPriceColumn(row: CompanyRow): { planName: string; priceText: 
 }
 
 function formatDueDate(row: CompanyRow): string {
-  const slug = (row.plan?.slug || "").toLowerCase();
-  if (slug === "free" || (row.contractedPrice === 0 && row.status !== "TRIAL")) {
+  const due = (row as { nextDueDate?: string | null }).nextDueDate || row.nextDueAt;
+  if (row.status === "TRIAL") {
+    return due ? `Trial até ${formatCivilDate(due)}` : "Trial ativo";
+  }
+  if ((row as { hasCharge?: boolean }).hasCharge === false) {
     return "Sem vencimento";
   }
-  if (row.status === "TRIAL") {
-    return row.nextDueAt ? `Trial até ${formatDate(row.nextDueAt)}` : "Trial ativo";
-  }
-  if (row.nextDueAt) {
-    return formatDate(row.nextDueAt);
-  }
+  if (due) return formatCivilDate(due);
   return "Não definido";
 }
 

@@ -102,7 +102,17 @@ export type BillingInput = {
   currentPeriodEnd?: Date | string | null;
   trialEndsAt?: Date | string | null;
   now?: Date;
+  /** false = plano gratuito / sob consulta sem valor contratado — não inventar "em dia" */
+  hasCharge?: boolean;
 };
+
+/** Data civil UTC (YYYY-MM-DD) — vencimento não deve sofrer shift de timezone. */
+export function toCivilDateUtc(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export type BillingSnapshot = {
   financialStatus: FinancialStatusCode;
@@ -129,8 +139,10 @@ export function computeBillingSnapshot(input: BillingInput): BillingSnapshot {
       ? Math.min(31, Math.max(1, Math.floor(Number(input.billingDueDay))))
       : null;
 
+  const hasCharge = input.hasCharge !== false;
+
   let nextDue = toDate(input.currentPeriodEnd);
-  if (!nextDue && billingDueDay) {
+  if (!nextDue && billingDueDay && hasCharge) {
     nextDue = computeNextDueDate(billingDueDay, now);
   }
 
@@ -169,6 +181,10 @@ export function computeBillingSnapshot(input: BillingInput): BillingSnapshot {
       daysUntilDue,
       needsAttention: daysUntilDue != null && daysUntilDue <= 3,
     };
+  }
+
+  if (!hasCharge && tenantStatus !== "TRIAL" && billingStatus !== "TRIAL") {
+    return empty("UNKNOWN", false);
   }
 
   if (!nextDue) {

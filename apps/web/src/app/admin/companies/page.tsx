@@ -22,14 +22,17 @@ import {
   isSuperadminMfaRequiredError,
 } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatCivilDate } from "@/lib/utils";
 import {
   defaultCompanyPlanId,
   planSelectLabel,
   selectablePlansForCompany,
 } from "@/lib/plan-price";
 import {
+  Checkbox,
+  ConsequenceBanner,
   Modal,
+  RadioGroup,
   useToast,
 } from "@/components/ui";
 import { Select as PortalSelect, type SelectOption } from "@/components/ui-select";
@@ -72,11 +75,14 @@ type TenantRow = {
   plan?: { id: string; name: string; slug?: string; priceMonthly?: number | string; priceOnRequest?: boolean } | null;
   _count?: { members: number; contacts: number; conversations: number };
   contractedPrice?: number | null;
+  priceKind?: "FREE" | "FIXED" | "CUSTOM_ZERO" | "ON_REQUEST";
+  hasCharge?: boolean;
   financialStatus?: string;
   financialStatusLabel?: string;
   billingDueDay?: number | null;
   billingDueDayLabel?: string | null;
   nextDueAt?: string | null;
+  nextDueDate?: string | null;
   daysOverdue?: number | null;
   daysOverdueLabel?: string | null;
   daysUntilDue?: number | null;
@@ -157,11 +163,14 @@ function formatPlanPriceColumn(t: TenantRow): { planName: string; priceText: str
     };
   }
 
-  if (slug === "enterprise" || t.plan?.priceOnRequest) {
+  if (slug === "enterprise" || t.plan?.priceOnRequest || t.priceKind === "ON_REQUEST") {
+    if (t.contractedPrice === 0 || t.priceKind === "CUSTOM_ZERO") {
+      return { planName, priceText: `${formatCurrency(0)}/mês` };
+    }
     return { planName, priceText: "Sob consulta" };
   }
 
-  if (t.contractedPrice === 0) {
+  if (t.contractedPrice === 0 || t.priceKind === "FREE") {
     return { planName, priceText: "Sem cobrança" };
   }
 
@@ -169,16 +178,15 @@ function formatPlanPriceColumn(t: TenantRow): { planName: string; priceText: str
 }
 
 function formatDueDate(t: TenantRow): string {
-  const slug = (t.plan?.slug || "").toLowerCase();
-  if (slug === "free" || (t.contractedPrice === 0 && t.status !== "TRIAL")) {
+  const due = t.nextDueDate || t.nextDueAt;
+  if (t.status === "TRIAL") {
+    return due ? `Trial até ${formatCivilDate(due)}` : "Trial ativo";
+  }
+  if (t.hasCharge === false || t.priceKind === "FREE" || t.priceKind === "ON_REQUEST") {
     return "Sem vencimento";
   }
-  if (t.status === "TRIAL") {
-    return t.nextDueAt ? `Trial até ${formatDate(t.nextDueAt)}` : "Trial ativo";
-  }
-  if (t.nextDueAt) {
-    return formatDate(t.nextDueAt);
-  }
+  if (due) return formatCivilDate(due);
+  if (t.billingDueDay) return t.billingDueDayLabel || `Todo dia ${t.billingDueDay}`;
   return "Não definido";
 }
 
@@ -779,7 +787,10 @@ function CreateCompanyModal({
 }) {
   const [force, setForce] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [accessMethod, setAccessMethod] = useState<"invite" | "temporary_password">("invite");
+  const [tempConfirm, setTempConfirm] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [existingUser, setExistingUser] = useState(false);
 
   const eligiblePlans = useMemo(() => selectablePlansForCompany(plans), [plans]);
   const defaultPlanId = useMemo(() => defaultCompanyPlanId(eligiblePlans), [eligiblePlans]);
@@ -789,7 +800,10 @@ function CreateCompanyModal({
     if (open) {
       setForce(false);
       setShowPassword(false);
+      setAccessMethod("invite");
+      setTempConfirm("");
       setFieldErrors({});
+      setExistingUser(false);
       setSelectedPlanId(defaultPlanId);
     }
   }, [open, defaultPlanId]);
@@ -809,6 +823,7 @@ function CreateCompanyModal({
       adminName: string;
       adminEmail: string;
       adminPassword?: string;
+      accessMethod?: "invite" | "temporary_password";
       planId?: string;
       forceSimilarName?: boolean;
     }) =>
@@ -858,8 +873,10 @@ function CreateCompanyModal({
     if (!adminName || adminName.length < 2)
       errs.adminName = "Nome do administrador deve ter pelo menos 2 caracteres.";
     if (!adminEmail || !adminEmail.includes("@")) errs.adminEmail = "E-mail inválido.";
-    if (adminPassword && adminPassword.length < 8)
-      errs.adminPassword = "A senha deve ter pelo menos 8 caracteres.";
+    if (!existingUser && accessMethod === "temporary_password") {
+      if (adminPassword.length < 10) errs.adminPassword = "A senha deve ter pelo menos 10 caracteres.";
+      if (adminPassword !== tempConfirm) errs.adminPassword = "As senhas não coincidem.";
+    }
 
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
@@ -870,7 +887,8 @@ function CreateCompanyModal({
       name,
       adminName,
       adminEmail,
-      adminPassword: adminPassword || undefined,
+      adminPassword: !existingUser && accessMethod === "temporary_password" ? adminPassword : undefined,
+      accessMethod: existingUser ? "invite" : accessMethod,
       planId: selectedPlanId || undefined,
       forceSimilarName: force,
     });
@@ -975,6 +993,23 @@ function CreateCompanyModal({
                     inputStyle,
                     fieldErrors.adminEmail && "border-rose-500/60 focus:border-rose-500"
                   )}
+                  onChange={() => {
+                    if (existingUser) setExistingUser(false);
+                  }}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim().toLowerCase();
+                    if (!value.includes("@")) {
+                      setExistingUser(false);
+                      return;
+                    }
+                    void api<{ items: Array<{ email: string }> }>(
+                      `/admin/users?search=${encodeURIComponent(value)}&limit=8`
+                    )
+                      .then((res) => {
+                        setExistingUser((res.items || []).some((u) => u.email.toLowerCase() === value));
+                      })
+                      .catch(() => setExistingUser(false));
+                  }}
                 />
                 {fieldErrors.adminEmail ? (
                   <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.adminEmail}</p>
@@ -982,39 +1017,74 @@ function CreateCompanyModal({
               </div>
             </div>
 
+            {existingUser ? (
+              <ConsequenceBanner tone="warning">
+                Este usuário já possui uma conta no NexaFlow e será apenas vinculado à nova empresa.
+              </ConsequenceBanner>
+            ) : (
             <div>
-              <label className="block text-[12px] font-medium text-gray-300 mb-0.5">
-                Senha inicial
-              </label>
-              <p className="text-[11px] text-gray-400 mb-1.5">
-                Opcional se o e-mail já possuir uma conta no NexaFlow.
-              </p>
-              <div className="relative">
-                <input
-                  name="adminPassword"
-                  type={showPassword ? "text" : "password"}
-                  minLength={8}
-                  autoComplete="new-password"
-                  placeholder="Mínimo de 8 caracteres"
-                  className={cn(
-                    inputStyle,
-                    "pr-9",
-                    fieldErrors.adminPassword && "border-rose-500/60 focus:border-rose-500"
-                  )}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
-                  aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {fieldErrors.adminPassword ? (
-                <p className="mt-1 text-[11.5px] text-rose-400">{fieldErrors.adminPassword}</p>
-              ) : null}
+              <span className="mb-1.5 block text-[12px] font-medium text-gray-300">Primeiro acesso</span>
+              <RadioGroup
+                aria-label="Primeiro acesso"
+                value={accessMethod}
+                onChange={(v) => setAccessMethod(v as "invite" | "temporary_password")}
+                options={[
+                  {
+                    value: "invite",
+                    label: "Enviar convite por e-mail",
+                    description: "O administrador receberá um link seguro para definir sua senha.",
+                  },
+                  {
+                    value: "temporary_password",
+                    label: "Definir senha temporária",
+                    description: "Você cria uma senha inicial e o usuário deverá alterá-la no primeiro acesso.",
+                  },
+                ]}
+              />
+              {accessMethod === "temporary_password" ? (
+                <div className="mt-3 space-y-3">
+                  <div className="relative">
+                    <input
+                      name="adminPassword"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      placeholder="Senha temporária"
+                      className={cn(
+                        inputStyle,
+                        "pr-9",
+                        fieldErrors.adminPassword && "border-rose-500/60 focus:border-rose-500"
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                      aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Confirmar senha"
+                    value={tempConfirm}
+                    onChange={(e) => setTempConfirm(e.target.value)}
+                    className={inputStyle}
+                  />
+                  <label className="flex items-start gap-2.5 text-[12.5px] text-gray-300">
+                    <Checkbox checked disabled onCheckedChange={() => undefined} className="mt-0.5" />
+                    <span>Exigir alteração da senha no primeiro acesso</span>
+                  </label>
+                  {fieldErrors.adminPassword ? (
+                    <p className="text-[11.5px] text-rose-400">{fieldErrors.adminPassword}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <input type="hidden" name="adminPassword" value="" />
+              )}
             </div>
+            )}
           </div>
         </div>
 

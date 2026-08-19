@@ -20,6 +20,42 @@ export function formatDate(value?: string | Date | null) {
   }).format(new Date(value));
 }
 
+/** Data civil (vencimento) — não converter timezone. Aceita YYYY-MM-DD ou ISO UTC. */
+export function formatCivilDate(value?: string | Date | null) {
+  if (!value) return "—";
+  if (typeof value === "string") {
+    const dayOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dayOnly) {
+      return `${dayOnly[3]}/${dayOnly[2]}/${dayOnly[1]}`;
+    }
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${day}/${m}/${y}`;
+}
+
+export function isUnlimitedCap(max?: number | null) {
+  if (max == null) return true;
+  return max === 999 || max >= 999_999;
+}
+
+export function formatQuota(used: number, max?: number | null) {
+  if (isUnlimitedCap(max)) {
+    return `${used.toLocaleString("pt-BR")} · Ilimitado`;
+  }
+  return `${used.toLocaleString("pt-BR")} de ${Number(max).toLocaleString("pt-BR")}`;
+}
+
+export function formatQuotaPercent(used: number, max?: number | null) {
+  if (isUnlimitedCap(max) || !max || max <= 0) return null;
+  const pct = (used / max) * 100;
+  if (used > 0 && pct < 1) return "<1% utilizado";
+  return `${Math.round(pct)}% utilizado`;
+}
+
 export function formatRelativeTime(date?: string | Date | null) {
   if (!date) return "—";
   const now = Date.now();

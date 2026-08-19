@@ -32,6 +32,7 @@ export const platformAdminApi = {
     adminName: string;
     adminEmail: string;
     adminPassword?: string;
+    accessMethod?: "invite" | "temporary_password";
     planId?: string;
     forceSimilarName?: boolean;
   }) => api<CompanyDetail>("/admin/tenants", { method: "POST", json: body }),

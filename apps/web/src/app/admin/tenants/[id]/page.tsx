@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { api, isStepUpRequiredError, isSuperadminMfaRequiredError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatCivilDate } from "@/lib/utils";
 import { planSelectLabel, selectablePlansForCompany } from "@/lib/plan-price";
 import { humanizeAuditAction } from "@/lib/audit-labels";
 import {
@@ -28,6 +28,7 @@ import {
   FormSection,
   Modal,
   MoneyInput,
+  RadioGroup,
   Select,
   useToast,
 } from "@/components/ui";
@@ -100,14 +101,25 @@ type TenantDetail = {
   planId?: string | null;
   plan?: Plan | null;
   profile: {
+    legalName?: string | null;
+    tradeName?: string | null;
+    cnpj?: string | null;
     segment?: string | null;
     phone?: string | null;
     website?: string | null;
+    email?: string | null;
     commercialEmail?: string | null;
     city?: string | null;
     state?: string | null;
     timezone?: string | null;
+    language?: string | null;
     onboardingCompleted?: boolean;
+  };
+  onboarding?: {
+    completed: boolean;
+    hasAdmin: boolean;
+    hasProfile: boolean;
+    hasChannel: boolean;
   };
   _count: {
     members: number;
@@ -146,6 +158,9 @@ type TenantDetail = {
   billingDueDay?: number | null;
   billingDueDayLabel?: string | null;
   nextDueAt?: string | null;
+  nextDueDate?: string | null;
+  hasCharge?: boolean;
+  priceKind?: "FREE" | "FIXED" | "CUSTOM_ZERO" | "ON_REQUEST";
   daysOverdue?: number | null;
   daysOverdueLabel?: string | null;
   needsAttention?: boolean;
@@ -168,6 +183,7 @@ type TenantDetail = {
     cancelReason?: string | null;
     deletionRequestedAt?: string | null;
   };
+  lastActivityAt?: string | null;
   auditLogs: Array<{
     id: string;
     action: string;
@@ -205,8 +221,27 @@ const statusLabel: Record<string, string> = {
 };
 
 function formatDateOnly(value?: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(value));
+  return formatCivilDate(value);
+}
+
+const BRAZIL_UFS = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
+  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
+  "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+];
+
+function contractedPriceLabel(t: {
+  priceKind?: string;
+  contractedPrice?: number | null;
+}): string {
+  if (t.priceKind === "ON_REQUEST" || (t.contractedPrice == null && t.priceKind !== "FREE" && t.priceKind !== "CUSTOM_ZERO")) {
+    return "Sob consulta";
+  }
+  if (t.priceKind === "FREE" || t.contractedPrice === 0) {
+    return t.priceKind === "CUSTOM_ZERO" ? "R$ 0,00/mês" : "Gratuito";
+  }
+  if (t.contractedPrice != null) return `${formatCurrency(t.contractedPrice)}/mês`;
+  return "—";
 }
 
 function displayOrDash(value?: string | null) {
@@ -305,6 +340,9 @@ export default function AdminTenantPage() {
 
   const [editForm, setEditForm] = useState({
     name: "",
+    legalName: "",
+    tradeName: "",
+    cnpj: "",
     primaryColor: "#6366f1",
     segment: "",
     phone: "",
@@ -312,7 +350,10 @@ export default function AdminTenantPage() {
     commercialEmail: "",
     city: "",
     state: "",
+    timezone: "America/Sao_Paulo",
   });
+  const [impReason, setImpReason] = useState("Suporte solicitado");
+  const [impNote, setImpNote] = useState("");
   const [planId, setPlanId] = useState("");
   const [suspendOpen, setSuspendOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
@@ -375,13 +416,17 @@ export default function AdminTenantPage() {
     const t = detail.data;
     setEditForm({
       name: t.name,
+      legalName: t.profile?.legalName || "",
+      tradeName: t.profile?.tradeName || "",
+      cnpj: t.profile?.cnpj || "",
       primaryColor: t.primaryColor || "#6366f1",
       segment: t.profile?.segment || "",
       phone: t.profile?.phone || "",
       website: t.profile?.website || "",
-      commercialEmail: t.profile?.commercialEmail || "",
+      commercialEmail: t.profile?.commercialEmail || t.profile?.email || "",
       city: t.profile?.city || "",
       state: t.profile?.state || "",
+      timezone: t.profile?.timezone || "America/Sao_Paulo",
     });
     setPlanId(t.planId || t.plan?.id || "");
     setDueDayEdit(String(t.billingDueDay || t.subscription?.billingDueDay || 10));
@@ -406,12 +451,16 @@ export default function AdminTenantPage() {
         json: {
           name: editForm.name.trim(),
           primaryColor: editForm.primaryColor,
+          legalName: editForm.legalName.trim() || null,
+          tradeName: editForm.tradeName.trim() || null,
+          cnpj: editForm.cnpj.trim() || null,
           segment: editForm.segment || null,
           phone: editForm.phone || null,
           website: editForm.website || null,
           commercialEmail: editForm.commercialEmail || null,
           city: editForm.city || null,
           state: editForm.state || null,
+          timezone: editForm.timezone || "America/Sao_Paulo",
         },
       }),
     onSuccess: () => {
@@ -545,8 +594,18 @@ export default function AdminTenantPage() {
   });
 
   const impersonate = useMutation({
-    mutationFn: () =>
-      api<{
+    mutationFn: () => {
+      const extra = impNote.trim();
+      const reason =
+        impReason === "Outro"
+          ? extra
+          : extra
+            ? `${impReason}. ${extra}`
+            : impReason;
+      if (reason.trim().length < 8) {
+        throw new Error("Informe o motivo do acesso (mínimo 8 caracteres).");
+      }
+      return api<{
         token: string;
         accessToken?: string;
         tenant: { id: string; name: string; slug: string };
@@ -555,9 +614,10 @@ export default function AdminTenantPage() {
         method: "POST",
         json: {
           tenantId: id,
-          reason: "Suporte operacional via gestão da empresa",
+          reason: reason.trim(),
         },
-      }),
+      });
+    },
     onSuccess: (data) => {
       try {
         sessionStorage.setItem("nexaflow_impersonating", "1");
@@ -672,16 +732,19 @@ export default function AdminTenantPage() {
   }
 
   function openEditInfo() {
-    // ressincroniza form a partir do detail (evita editar estado stale)
     setEditForm({
       name: t.name,
+      legalName: t.profile?.legalName || "",
+      tradeName: t.profile?.tradeName || "",
+      cnpj: t.profile?.cnpj || "",
       primaryColor: t.primaryColor || "#6366f1",
       segment: t.profile?.segment || "",
       phone: t.profile?.phone || "",
       website: t.profile?.website || "",
-      commercialEmail: t.profile?.commercialEmail || "",
+      commercialEmail: t.profile?.commercialEmail || t.profile?.email || "",
       city: t.profile?.city || "",
       state: t.profile?.state || "",
+      timezone: t.profile?.timezone || "America/Sao_Paulo",
     });
     setEditInfoOpen(true);
   }
@@ -692,11 +755,12 @@ export default function AdminTenantPage() {
     t.status !== "CANCELLED" &&
     t.status !== "BLOCKED" &&
     t.status !== "PENDING_DELETION";
+  const canRegisterPayment = t.hasCharge !== false && t.priceKind !== "ON_REQUEST" && t.priceKind !== "FREE";
   const isOverdue =
     t.financialStatus === "OVERDUE" ||
     (t.daysOverdue != null && t.daysOverdue > 0);
   const recentActivity = (t.auditLogs || []).slice(0, 5);
-  const lastActivityAt = recentActivity[0]?.createdAt ?? null;
+  const lastActivityAt = t.lastActivityAt ?? recentActivity[0]?.createdAt ?? null;
 
   const maxUsers = t.limits?.maxUsers ?? t.plan?.maxUsers;
   const maxAgents = t.limits?.maxAgents;
@@ -704,10 +768,11 @@ export default function AdminTenantPage() {
   const agentsUsed = t.usage?.agents ?? 0;
 
   function formatQuota(used: number, max?: number | null) {
-    if (max != null && max > 0 && max < 999_999) {
-      return `${used} de ${max.toLocaleString("pt-BR")}`;
-    }
-    return String(used);
+    const unlimited = max == null || max === 999 || max >= 999_999;
+    if (unlimited) return `${used.toLocaleString("pt-BR")} · Ilimitado`;
+    const pct = (used / max) * 100;
+    const pctLabel = used > 0 && pct < 1 ? " · <1% utilizado" : ` · ${Math.round(pct)}% utilizado`;
+    return `${used.toLocaleString("pt-BR")} de ${max.toLocaleString("pt-BR")}${pctLabel}`;
   }
 
   return (
@@ -723,17 +788,19 @@ export default function AdminTenantPage() {
         badge={{ label: statusText, tone: statusToTone(t.status) }}
         actions={
           <>
-            <button
-              type="button"
-              className={isOverdue ? "admin-btn-primary" : "admin-btn-secondary"}
-              onClick={() => {
-                selectTab("plan");
-                setPayOpen(true);
-              }}
-            >
-              <Wallet className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Registrar pagamento
-            </button>
+            {canRegisterPayment ? (
+              <button
+                type="button"
+                className={isOverdue ? "admin-btn-primary" : "admin-btn-secondary"}
+                onClick={() => {
+                  selectTab("plan");
+                  setPayOpen(true);
+                }}
+              >
+                <Wallet className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Registrar pagamento
+              </button>
+            ) : null}
             <button
               type="button"
               className="admin-btn-ghost"
@@ -782,11 +849,7 @@ export default function AdminTenantPage() {
             />
             <MetricCard
               label="Valor contratado"
-              value={
-                t.contractedPrice != null
-                  ? `${formatCurrency(t.contractedPrice)}/mês`
-                  : "—"
-              }
+              value={contractedPriceLabel(t)}
               compact
             />
             <MetricCard
@@ -844,11 +907,14 @@ export default function AdminTenantPage() {
                 {(
                   [
                     ["Nome", t.name],
+                    ["Razão social", displayOrDash(t.profile?.legalName)],
+                    ["CNPJ", displayOrDash(t.profile?.cnpj)],
                     ["Segmento", displayOrDash(t.profile?.segment)],
                     ["Telefone", formatPhoneBR(t.profile?.phone)],
-                    ["E-mail comercial", displayOrDash(t.profile?.commercialEmail)],
+                    ["E-mail comercial", displayOrDash(t.profile?.commercialEmail || t.profile?.email)],
                     ["Cidade", displayOrDash(t.profile?.city)],
                     ["Estado", displayOrDash(t.profile?.state)],
+                    ["Fuso", displayOrDash(t.profile?.timezone)],
                     ["Site", displayOrDash(t.profile?.website)],
                   ] as const
                 ).map(([label, value]) => (
@@ -875,13 +941,14 @@ export default function AdminTenantPage() {
                 <div className="flex justify-between gap-3">
                   <dt className="text-gray-500">Onboarding</dt>
                   <dd className="font-medium text-gray-200">
-                    {t.profile?.onboardingCompleted ? "Concluído" : "Pendente"}
+                    {(t.onboarding?.completed ?? t.profile?.onboardingCompleted) ? "Concluído" : "Pendente"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-gray-500">Canais</dt>
                   <dd className="tabular-nums font-medium text-gray-200">
-                    {t._count?.channels ?? 0}
+                      {t._count?.channels ?? 0}
+                    <span className="ml-1 text-[11px] font-normal text-gray-500">cadastrados</span>
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -909,7 +976,7 @@ export default function AdminTenantPage() {
                     {t.nextDueAt ? (
                       <span className="text-gray-500">
                         {" "}
-                        · próx. {formatDateOnly(t.nextDueAt)}
+                        · próx. {formatDateOnly(t.nextDueDate || t.nextDueAt)}
                       </span>
                     ) : null}
                   </dd>
@@ -918,18 +985,24 @@ export default function AdminTenantPage() {
               {isOverdue ? (
                 <p className="mt-3 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
                   Pagamento em atraso
-                  {t.daysOverdueLabel ? ` (${t.daysOverdueLabel})` : ""}. Use{" "}
-                  <button
-                    type="button"
-                    className="font-semibold text-white underline"
-                    onClick={() => {
-                      selectTab("plan");
-                      setPayOpen(true);
-                    }}
-                  >
-                    Registrar pagamento
-                  </button>
-                  .
+                  {t.daysOverdueLabel ? ` (${t.daysOverdueLabel})` : ""}.
+                  {canRegisterPayment ? (
+                    <>
+                      {" "}
+                      Use{" "}
+                      <button
+                        type="button"
+                        className="font-semibold text-white underline"
+                        onClick={() => {
+                          selectTab("plan");
+                          setPayOpen(true);
+                        }}
+                      >
+                        Registrar pagamento
+                      </button>
+                      .
+                    </>
+                  ) : null}
                 </p>
               ) : null}
             </AdminSection>
@@ -1069,15 +1142,8 @@ export default function AdminTenantPage() {
           <AdminSection title="Plano e valor">
             <p className="mb-4 text-[13px] text-gray-400">
               <strong className="text-white">{t.plan?.name || "Sem plano"}</strong>
-              {t.contractedPrice != null && (
-                <>
-                  {" "}
-                  ·{" "}
-                  <strong className="text-white">
-                    {formatCurrency(t.contractedPrice)}/mês
-                  </strong>
-                </>
-              )}
+              {" · "}
+              <strong className="text-white">{contractedPriceLabel(t)}</strong>
             </p>
             <div className="space-y-3">
               <div>
@@ -1139,7 +1205,7 @@ export default function AdminTenantPage() {
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-gray-500">Próximo vencimento</dt>
-                <dd className="tabular-nums text-gray-200">{formatDateOnly(t.nextDueAt)}</dd>
+                <dd className="tabular-nums text-gray-200">{formatDateOnly(t.nextDueDate || t.nextDueAt)}</dd>
               </div>
               {t.daysOverdue != null && t.daysOverdue > 0 ? (
                 <div className="rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
@@ -1170,9 +1236,11 @@ export default function AdminTenantPage() {
                 >
                   Salvar vencimento
                 </button>
-                <button type="button" className="admin-btn-primary" onClick={() => setPayOpen(true)}>
-                  Registrar pagamento
-                </button>
+                {canRegisterPayment ? (
+                  <button type="button" className="admin-btn-primary" onClick={() => setPayOpen(true)}>
+                    Registrar pagamento
+                  </button>
+                ) : null}
               </div>
             </div>
           </AdminSection>
@@ -1559,6 +1627,31 @@ export default function AdminTenantPage() {
               />
             </FormField>
             <FieldGrid>
+              <FormField label="Razão social">
+                <input
+                  className="input"
+                  value={editForm.legalName}
+                  onChange={(e) => setEditForm({ ...editForm, legalName: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Nome fantasia">
+                <input
+                  className="input"
+                  value={editForm.tradeName}
+                  onChange={(e) => setEditForm({ ...editForm, tradeName: e.target.value })}
+                />
+              </FormField>
+            </FieldGrid>
+            <FormField label="CNPJ">
+              <input
+                className="input"
+                value={editForm.cnpj}
+                onChange={(e) => setEditForm({ ...editForm, cnpj: e.target.value })}
+                placeholder="00.000.000/0000-00"
+                inputMode="numeric"
+              />
+            </FormField>
+            <FieldGrid>
               <FormField label="Segmento">
                 <input
                   className="input"
@@ -1572,7 +1665,11 @@ export default function AdminTenantPage() {
                   <input
                     type="color"
                     className="h-9 w-12 cursor-pointer rounded-lg border border-black/[0.08] bg-transparent p-1 dark:border-white/[0.1]"
-                    value={editForm.primaryColor || "#6366f1"}
+                    value={
+                      /^#[0-9A-Fa-f]{6}$/.test(editForm.primaryColor)
+                        ? editForm.primaryColor
+                        : "#6366f1"
+                    }
                     onChange={(e) =>
                       setEditForm({ ...editForm, primaryColor: e.target.value })
                     }
@@ -1638,21 +1735,34 @@ export default function AdminTenantPage() {
                 />
               </FormField>
               <FormField label="UF">
-                <input
-                  className="input"
+                <Select
                   value={editForm.state}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      state: e.target.value.toUpperCase().slice(0, 2),
-                    })
-                  }
-                  placeholder="MG"
-                  maxLength={2}
-                  autoComplete="address-level1"
+                  onChange={(state) => setEditForm({ ...editForm, state })}
+                  options={[
+                    { value: "", label: "—" },
+                    ...BRAZIL_UFS.map((uf) => ({ value: uf, label: uf })),
+                  ]}
+                  aria-label="UF"
                 />
               </FormField>
             </FieldGrid>
+            <FormField label="Fuso horário">
+              <Select
+                value={editForm.timezone}
+                onChange={(timezone) => setEditForm({ ...editForm, timezone })}
+                options={[
+                  { value: "America/Sao_Paulo", label: "America/Sao_Paulo" },
+                  { value: "America/Manaus", label: "America/Manaus" },
+                  { value: "America/Fortaleza", label: "America/Fortaleza" },
+                  { value: "America/Recife", label: "America/Recife" },
+                  { value: "America/Belem", label: "America/Belem" },
+                  { value: "America/Cuiaba", label: "America/Cuiaba" },
+                  { value: "America/Porto_Velho", label: "America/Porto_Velho" },
+                  { value: "America/Noronha", label: "America/Noronha" },
+                ]}
+                aria-label="Fuso horário"
+              />
+            </FormField>
           </FormSection>
         </form>
       </Modal>
@@ -1847,9 +1957,13 @@ export default function AdminTenantPage() {
               {
                 label: "Valor contratado",
                 value:
-                  t.contractedPrice != null
-                    ? `${formatCurrency(t.contractedPrice)}/mês`
-                    : "—",
+                  t.priceKind === "ON_REQUEST"
+                    ? "Sob consulta"
+                    : t.priceKind === "FREE"
+                      ? "Sem cobrança"
+                      : t.contractedPrice != null
+                        ? `${formatCurrency(t.contractedPrice)}/mês`
+                        : "—",
               },
               {
                 label: "Vencimento",
@@ -1861,7 +1975,7 @@ export default function AdminTenantPage() {
               },
               {
                 label: "Próx. vencimento",
-                value: formatDateOnly(t.nextDueAt),
+                value: formatDateOnly(t.nextDueDate || t.nextDueAt),
               },
             ]}
           />
@@ -1931,6 +2045,7 @@ export default function AdminTenantPage() {
                     { value: "TRANSFER", label: "Transferência" },
                     { value: "BOLETO", label: "Boleto" },
                     { value: "CARD", label: "Cartão" },
+                    { value: "CASH", label: "Dinheiro" },
                     { value: "OTHER", label: "Outro" },
                   ]}
                   aria-label="Método"
@@ -1968,7 +2083,10 @@ export default function AdminTenantPage() {
             <button
               type="button"
               className="admin-btn-primary"
-              disabled={impersonate.isPending}
+              disabled={
+                impersonate.isPending ||
+                (impReason === "Outro" && impNote.trim().length < 8)
+              }
               onClick={() => impersonate.mutate()}
             >
               {impersonate.isPending ? "Acessando…" : "Acessar empresa"}
@@ -1976,10 +2094,33 @@ export default function AdminTenantPage() {
           </DialogFooter>
         }
       >
-        <p className="text-sm text-ink-secondary dark:text-gray-300">
-          Você visualizará a plataforma como um usuário de{" "}
-          <strong className="text-ink dark:text-white">{t.name}</strong>.
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-ink-secondary dark:text-gray-300">
+            Você visualizará a plataforma como um usuário de{" "}
+            <strong className="text-ink dark:text-white">{t.name}</strong>.
+          </p>
+          <FormField label="Motivo do acesso" required>
+            <RadioGroup
+              aria-label="Motivo do acesso"
+              value={impReason}
+              onChange={setImpReason}
+              options={[
+                { value: "Suporte solicitado", label: "Suporte solicitado" },
+                { value: "Diagnóstico", label: "Diagnóstico" },
+                { value: "Configuração", label: "Configuração" },
+                { value: "Outro", label: "Outro" },
+              ]}
+            />
+          </FormField>
+          <FormField label={impReason === "Outro" ? "Descreva o motivo" : "Complemento (opcional)"}>
+            <textarea
+              className="input min-h-[72px]"
+              value={impNote}
+              onChange={(e) => setImpNote(e.target.value)}
+              placeholder={impReason === "Outro" ? "Mínimo 8 caracteres" : "Detalhe se necessário"}
+            />
+          </FormField>
+        </div>
       </Modal>
 
       {/* Step-up: reconfirmação para impersonar */}

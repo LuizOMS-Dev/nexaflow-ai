@@ -305,7 +305,7 @@ export async function getUserDetail(id: string) {
 
 export type FirstAccessMethod = "invite" | "temporary_password";
 
-async function credentialsForNewUser(
+export async function credentialsForNewUser(
   accessMethod: FirstAccessMethod | undefined,
   temporaryPassword?: string
 ): Promise<{ passwordHash: string; mustChangePassword: boolean; method: FirstAccessMethod }> {
@@ -327,7 +327,7 @@ async function credentialsForNewUser(
   };
 }
 
-async function sendFirstAccessMail(email: string, userId: string, kind: "company" | "platform") {
+export async function sendFirstAccessMail(email: string, userId: string, kind: "company" | "platform") {
   const raw = randomBytes(32).toString("base64url");
   await prisma.passwordResetToken.create({
     data: {

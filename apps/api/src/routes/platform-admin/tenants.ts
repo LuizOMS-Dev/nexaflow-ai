@@ -4,6 +4,7 @@ import {
   listCompanies,
   getCompanyOverview,
   createCompany,
+  updateCompany,
   updateCompanyProfile,
   updateTenantStatus,
   requestCompanyDeletion,
@@ -51,7 +52,8 @@ export async function adminTenantsRoutes(app: FastifyInstance) {
         planId: z.string().optional(),
         adminEmail: z.string().email("E-mail inválido"),
         adminName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
-        adminPassword: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").optional(),
+        adminPassword: z.string().max(128).optional(),
+        accessMethod: z.enum(["invite", "temporary_password"]).optional(),
         forceSimilarName: z.boolean().optional(),
         legalName: z.string().max(160).optional(),
         tradeName: z.string().max(160).optional(),
@@ -102,6 +104,44 @@ export async function adminTenantsRoutes(app: FastifyInstance) {
 
   app.patch("/admin/tenants/:id/profile", profileHandler);
   app.patch("/admin/companies/:id/profile", profileHandler);
+
+  const updateHandler = async (request: any) => {
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        name: z.string().min(2).max(120).optional(),
+        primaryColor: z.string().max(16).optional().nullable(),
+        legalName: z.string().max(160).optional().nullable(),
+        tradeName: z.string().max(160).optional().nullable(),
+        cnpj: z.string().max(30).optional().nullable(),
+        email: z.string().max(160).optional().nullable(),
+        commercialEmail: z.string().max(160).optional().nullable(),
+        phone: z.string().max(40).optional().nullable(),
+        website: z.string().max(200).optional().nullable(),
+        segment: z.string().max(80).optional().nullable(),
+        city: z.string().max(80).optional().nullable(),
+        state: z.string().max(40).optional().nullable(),
+        timezone: z.string().max(60).optional().nullable(),
+        language: z.string().max(20).optional().nullable(),
+        planId: z.string().optional().nullable(),
+        billingDueDay: z.number().int().min(1).max(31).optional().nullable(),
+        priceMonthly: z.number().min(0).optional().nullable(),
+        status: z.enum(["ACTIVE", "SUSPENDED", "BLOCKED"]).optional(),
+        reason: z.string().max(500).optional(),
+      })
+      .parse(request.body);
+
+    if (body.status) {
+      return updateTenantStatus(id, { status: body.status, reason: body.reason }, {
+        sub: request.user.sub,
+        ip: request.ip,
+      });
+    }
+    return updateCompany(id, body, { sub: request.user.sub, ip: request.ip });
+  };
+
+  app.patch("/admin/tenants/:id", updateHandler);
+  app.patch("/admin/companies/:id", updateHandler);
 
   const statusHandler = async (request: any) => {
     const { id } = request.params as { id: string };
