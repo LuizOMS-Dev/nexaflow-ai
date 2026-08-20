@@ -96,6 +96,18 @@ async function main() {
     } catch {}
   });
 
+  // Documentos de knowledge presos em queued/processing (processo anterior morreu)
+  setImmediate(() => {
+    void import("./services/knowledge-pipeline")
+      .then(({ failStuckKnowledgeJobs }) => failStuckKnowledgeJobs())
+      .catch((err) => {
+        console.warn(
+          "[knowledge] stuck-job sweeper on boot failed:",
+          err instanceof Error ? err.message : err
+        );
+      });
+  });
+
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;

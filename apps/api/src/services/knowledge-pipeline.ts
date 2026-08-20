@@ -233,17 +233,21 @@ export function enqueueKnowledgeProcess(docId: string, buffer?: Buffer) {
 
 export async function failStuckKnowledgeJobs(tenantId?: string) {
   const cutoff = new Date(Date.now() - STUCK_MS);
-  await prisma.knowledgeDoc.updateMany({
+  const result = await prisma.knowledgeDoc.updateMany({
     where: {
       ...(tenantId ? { tenantId } : {}),
-      status: "processing",
-      processedAt: { lt: cutoff },
+      status: { in: ["processing", "queued"] },
+      OR: [
+        { processedAt: { lt: cutoff } },
+        { AND: [{ processedAt: null }, { updatedAt: { lt: cutoff } }] },
+      ],
     },
     data: {
       status: "failed",
       errorMessage: "A indexação falhou. Tente reprocessar.",
     },
   });
+  return result.count;
 }
 
 export async function createKnowledgeFromUpload(params: {

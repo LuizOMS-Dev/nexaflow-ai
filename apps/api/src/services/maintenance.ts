@@ -76,6 +76,17 @@ export function startMaintenanceScheduler(opts?: { intervalMs?: number; log?: (m
           err instanceof Error ? err.message : err
         );
       });
+    void import("./knowledge-pipeline")
+      .then(({ failStuckKnowledgeJobs }) => failStuckKnowledgeJobs())
+      .then((n) => {
+        if (n) log(`[maintenance] knowledge stuck jobs failed=${n}`);
+      })
+      .catch((err) => {
+        console.warn(
+          "[maintenance] knowledge sweeper failed:",
+          err instanceof Error ? err.message : err
+        );
+      });
   };
 
   // primeira execução após 45s (não atrasa boot)
