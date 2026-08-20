@@ -7,8 +7,11 @@ import {
   updateCompany,
   updateCompanyProfile,
   updateTenantStatus,
-  requestCompanyDeletion,
 } from "../../services/platform-admin/companies";
+import {
+  cancelScheduledCompanyDeletion,
+  executeCompanyDeletion,
+} from "../../services/platform-admin/tenant-deletion";
 
 export async function adminTenantsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.requireSuperadmin);
@@ -163,17 +166,24 @@ export async function adminTenantsRoutes(app: FastifyInstance) {
     const body = z
       .object({
         confirmName: z.string().min(1, "Confirmação de nome obrigatória"),
+        acknowledged: z.boolean(),
+        mode: z.enum(["now", "schedule"]).default("now"),
         reason: z.string().max(500).optional(),
       })
       .parse(request.body);
 
-    return requestCompanyDeletion(id, body, { sub: request.user.sub, ip: request.ip });
+    return executeCompanyDeletion(id, body, { sub: request.user.sub, ip: request.ip });
   };
 
   app.post("/admin/tenants/:id/request-deletion", deletionHandler);
   app.post("/admin/companies/:id/request-deletion", deletionHandler);
-
-  // Backward compatibility DELETE endpoints -> direciona para requestCompanyDeletion
   app.delete("/admin/tenants/:id", deletionHandler);
   app.delete("/admin/companies/:id", deletionHandler);
+
+  const cancelDeletionHandler = async (request: any) => {
+    const { id } = request.params as { id: string };
+    return cancelScheduledCompanyDeletion(id, { sub: request.user.sub, ip: request.ip });
+  };
+  app.post("/admin/tenants/:id/cancel-deletion", cancelDeletionHandler);
+  app.post("/admin/companies/:id/cancel-deletion", cancelDeletionHandler);
 }

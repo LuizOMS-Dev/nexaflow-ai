@@ -203,7 +203,7 @@ export function resolveFinancialAccess(params: {
   const bs = (params.billingStatus || "").toUpperCase();
   const ts = params.tenantStatus;
 
-  if (ts === "CANCELLED" || ts === "PENDING_DELETION" || bs === "CANCELLED" || bs === "EXPIRED") {
+  if (ts === "CANCELLED" || bs === "CANCELLED" || bs === "EXPIRED") {
     return {
       code: "CANCELED",
       label: "Cancelada",
@@ -331,6 +331,8 @@ export type EvaluateAccessInput = {
   tenant?: {
     status: string;
     settings?: unknown;
+    scheduledDeletionAt?: Date | string | null;
+    deletionPreviousStatus?: string | null;
   } | null;
   subscription?: {
     billingStatus: string;
@@ -461,7 +463,12 @@ export async function evaluateAccessGate(
     input.tenant ||
     (await prisma.tenant.findUnique({
       where: { id: input.tenantId },
-      select: { status: true, settings: true },
+      select: {
+        status: true,
+        settings: true,
+        scheduledDeletionAt: true,
+        deletionPreviousStatus: true,
+      },
     }));
 
   if (!tenant) {
@@ -508,9 +515,13 @@ export async function evaluateAccessGate(
     (input.platformRole === "SUPERADMIN" && impersonating);
 
   const pubReason = publicCompanyReason(tenant.settings);
+  const gateStatus =
+    tenant.status === "PENDING_DELETION" && tenant.scheduledDeletionAt
+      ? tenant.deletionPreviousStatus || "ACTIVE"
+      : tenant.status;
 
   // ── Empresa BLOCKED ──
-  if (tenant.status === "BLOCKED") {
+  if (gateStatus === "BLOCKED") {
     if (impersonating) {
       return makeDecision({
         level: "RESTRICTED",
@@ -546,7 +557,8 @@ export async function evaluateAccessGate(
   }
 
   // ── PENDING_DELETION ──
-  if (tenant.status === "PENDING_DELETION") {
+  // Com data agendada a empresa continua operando até o job executar.
+  if (tenant.status === "PENDING_DELETION" && !tenant.scheduledDeletionAt) {
     if (impersonating) {
       return makeDecision({
         level: "RESTRICTED",
@@ -579,7 +591,7 @@ export async function evaluateAccessGate(
   }
 
   // ── SUSPENDED operacional ──
-  if (tenant.status === "SUSPENDED") {
+  if (gateStatus === "SUSPENDED") {
     if (impersonating || (policy.companySuspendMode === "LIMITED" && isAdmin)) {
       return makeDecision({
         level: "RESTRICTED",
@@ -614,7 +626,7 @@ export async function evaluateAccessGate(
   }
 
   // ── CANCELLED ──
-  if (tenant.status === "CANCELLED") {
+  if (gateStatus === "CANCELLED") {
     if (impersonating || isAdmin) {
       return makeDecision({
         level: "RESTRICTED",

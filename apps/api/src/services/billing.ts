@@ -104,6 +104,8 @@ export type BillingInput = {
   now?: Date;
   /** false = plano gratuito / sob consulta sem valor contratado — não inventar "em dia" */
   hasCharge?: boolean;
+  /** Exclusão agendada: a empresa continua operando até a data */
+  scheduledDeletionAt?: Date | string | null;
 };
 
 /** Data civil UTC (YYYY-MM-DD) — vencimento não deve sofrer shift de timezone. */
@@ -156,12 +158,11 @@ export function computeBillingSnapshot(input: BillingInput): BillingSnapshot {
     needsAttention: attention,
   });
 
-  if (
-    tenantStatus === "CANCELLED" ||
-    tenantStatus === "PENDING_DELETION" ||
-    billingStatus === "CANCELLED"
-  ) {
-    return empty("CANCELLED", tenantStatus === "PENDING_DELETION");
+  if (tenantStatus === "CANCELLED" || billingStatus === "CANCELLED") {
+    return empty("CANCELLED", false);
+  }
+  if (tenantStatus === "PENDING_DELETION" && !input.scheduledDeletionAt) {
+    return empty("CANCELLED", true);
   }
 
   if (tenantStatus === "SUSPENDED" || billingStatus === "SUSPENDED") {

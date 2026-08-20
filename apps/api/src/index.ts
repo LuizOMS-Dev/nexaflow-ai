@@ -108,6 +108,20 @@ async function main() {
       });
   });
 
+  // Exclusão agendada de empresas (lê scheduledDeletionAt no banco)
+  setImmediate(() => {
+    void import("./services/platform-admin/tenant-deletion")
+      .then(({ startScheduledDeletionScheduler }) => {
+        startScheduledDeletionScheduler({ log: (m) => console.info(m) });
+      })
+      .catch((err) => {
+        console.warn(
+          "[tenant-deletion] scheduler failed:",
+          err instanceof Error ? err.message : err
+        );
+      });
+  });
+
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;

@@ -83,6 +83,7 @@ export function enrichTenantBilling(
   tenant: {
     id: string;
     status: string;
+    scheduledDeletionAt?: Date | string | null;
     planId?: string | null;
     plan?: {
       id: string;
@@ -121,6 +122,7 @@ export function enrichTenantBilling(
     currentPeriodEnd: sub?.currentPeriodEnd,
     trialEndsAt: sub?.trialEndsAt,
     hasCharge,
+    scheduledDeletionAt: tenant.scheduledDeletionAt,
   });
 
   const nextDueAt = snap.nextDueAt;

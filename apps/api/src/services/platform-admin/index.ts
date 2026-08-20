@@ -9,6 +9,14 @@ export {
   type ListCompaniesQuery,
 } from "./companies";
 export {
+  executeCompanyDeletion,
+  scheduleCompanyDeletion,
+  deleteCompanyNow,
+  cancelScheduledCompanyDeletion,
+  runScheduledTenantDeletions,
+  resolveScheduleEligibility,
+} from "./tenant-deletion";
+export {
   listUsers,
   getUsersKpis,
   getUserDetail,

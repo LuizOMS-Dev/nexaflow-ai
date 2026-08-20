@@ -366,11 +366,15 @@ describe("Platform Admin Domain & Invariants Suite", () => {
       expect(userAfter!.passwordHash).toBe(existingUser.passwordHash);
     });
 
-    it("solicitar exclusão (request-deletion) deve marcar PENDING_DELETION sem apagar os dados", async () => {
+    it("solicitar exclusão imediata apaga o tenant e preserva o User", async () => {
       const tenant = await prisma.tenant.findUnique({
         where: { slug: `atom-${testId}` },
       });
       expect(tenant).toBeTruthy();
+      const members = await prisma.membership.findMany({
+        where: { tenantId: tenant!.id },
+        select: { userId: true },
+      });
 
       const res = await app.inject({
         method: "POST",
@@ -378,22 +382,17 @@ describe("Platform Admin Domain & Invariants Suite", () => {
         headers: { authorization: `Bearer ${superadminToken}` },
         payload: {
           confirmName: tenant!.name,
+          acknowledged: true,
+          mode: "now",
           reason: "Encerramento de contrato",
         },
       });
 
       expect(res.statusCode).toBe(200);
-
-      const tenantAfter = await prisma.tenant.findUnique({
-        where: { id: tenant!.id },
-      });
-      expect(tenantAfter!.status).toBe("PENDING_DELETION");
-
-      // Subscription marcada como CANCELLED sem apagar registros
-      const subAfter = await prisma.subscription.findUnique({
-        where: { tenantId: tenant!.id },
-      });
-      expect(subAfter!.billingStatus).toBe("CANCELLED");
+      expect(await prisma.tenant.findUnique({ where: { id: tenant!.id } })).toBeNull();
+      for (const m of members) {
+        expect(await prisma.user.findUnique({ where: { id: m.userId } })).toBeTruthy();
+      }
     });
   });
 

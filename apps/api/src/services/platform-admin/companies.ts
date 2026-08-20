@@ -249,6 +249,13 @@ export async function getCompanyOverview(id: string) {
   ]);
 
   const billing = enrichTenantBilling(tenant, subscription as SubscriptionRow | null);
+  const { resolveScheduleEligibility } = await import("./tenant-deletion");
+  const scheduleEligibility = resolveScheduleEligibility({
+    hasCharge: Boolean(
+      billing.priceKind === "FIXED" && billing.contractedPrice != null && billing.contractedPrice > 0
+    ),
+    currentPeriodEnd: subscription?.currentPeriodEnd,
+  });
   const { getUsageSnapshot } = await import("../entitlements");
   const { tenantNeedsOnboarding } = await import("../onboarding/company-onboarding");
   const usageSnapshot = await getUsageSnapshot(id);
@@ -314,6 +321,9 @@ export async function getCompanyOverview(id: string) {
     },
     limits: usageSnapshot.limits,
     usage: usageSnapshot.usage,
+    scheduledDeletionAt: tenant.scheduledDeletionAt,
+    deletionPreviousStatus: tenant.deletionPreviousStatus,
+    scheduleEligibility,
   };
 }
 
@@ -813,69 +823,21 @@ export async function updateTenantStatus(
   return updated;
 }
 
+/** @deprecated Use executeCompanyDeletion — exclusão real (now | schedule). */
 export async function requestCompanyDeletion(
   id: string,
-  body: { confirmName: string; reason?: string },
+  body: { confirmName: string; acknowledged?: boolean; mode?: "now" | "schedule"; reason?: string },
   actor: { sub: string; ip?: string }
 ) {
-  const tenant = assertFound(await prisma.tenant.findUnique({ where: { id } }));
-  if (body.confirmName.trim() !== tenant.name.trim()) {
-    throw new AppError(
-      "Digite o nome exato da empresa para confirmar a solicitação de exclusão.",
-      400,
-      "CONFIRM_NAME_MISMATCH"
-    );
-  }
-
-  const prev = tenantSettings(tenant.settings);
-  const now = new Date().toISOString();
-
-  const updated = await prisma.tenant.update({
-    where: { id },
-    data: {
-      status: "PENDING_DELETION",
-      settings: {
-        ...prev,
-        deletionRequestedAt: now,
-        deletionRequestedBy: actor.sub,
-        deletionReason: body.reason || null,
-      } as Prisma.InputJsonValue,
+  const { executeCompanyDeletion } = await import("./tenant-deletion");
+  return executeCompanyDeletion(
+    id,
+    {
+      confirmName: body.confirmName,
+      acknowledged: Boolean(body.acknowledged),
+      mode: body.mode === "schedule" ? "schedule" : "now",
+      reason: body.reason,
     },
-  });
-
-  // Marca assinatura como cancelada sem apagar histórico financeiro
-  await prisma.subscription
-    .updateMany({
-      where: { tenantId: id },
-      data: { billingStatus: "CANCELLED", cancelAt: new Date() },
-    })
-    .catch(() => null);
-
-  await audit({
-    userId: actor.sub,
-    tenantId: id,
-    action: "company.deletion_requested",
-    entity: "tenant",
-    entityId: id,
-    metadata: {
-      reason: body.reason || null,
-      hardDelete: false,
-      note: "Exclusão solicitada (PENDING_DELETION). Dados e histórico preservados.",
-    },
-    ip: actor.ip,
-  });
-
-  await recordSecurityEvent({
-    type: "TENANT_ARCHIVED",
-    userId: actor.sub,
-    tenantId: id,
-    ip: actor.ip,
-    metadata: { name: tenant.name, status: "PENDING_DELETION" },
-  });
-
-  return {
-    ok: true,
-    tenant: updated,
-    message: "Exclusão solicitada com sucesso. O acesso foi bloqueado e os dados estão preservados.",
-  };
+    actor
+  );
 }
