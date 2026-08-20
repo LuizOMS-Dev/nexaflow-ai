@@ -203,11 +203,11 @@ export async function aiAgentRoutes(app: FastifyInstance) {
         objective: z.string().optional(),
         personality: z.string().optional(),
         tone: z.string().optional(),
-        instructions: z.string().default(""),
+        instructions: z.string().optional(),
         restrictions: z.string().optional(),
-        mode: z.enum(["SUGGEST", "APPROVE", "AUTO"]).default("SUGGEST"),
+        mode: z.enum(["SUGGEST", "APPROVE", "AUTO"]).default("AUTO"),
         model: z.string().default("openai/gpt-oss-20b"),
-        temperature: z.number().min(0).max(2).default(0.4),
+        temperature: z.number().min(0).max(2).default(0.45),
         greeting: z.string().optional(),
         farewell: z.string().optional(),
         transferRules: z.record(z.unknown()).optional(),
@@ -215,23 +215,45 @@ export async function aiAgentRoutes(app: FastifyInstance) {
       })
       .parse(request.body);
 
-    // Contexto off-topic é sempre bloqueado no system prompt da plataforma;
-    // aqui só reforçamos o padrão no cadastro de qualquer agente novo.
+    const defaultInstructions = `DIRETRIZES DE ATENDIMENTO EXCELENTE NO WHATSAPP:
+- Atenda como uma pessoa real da equipe: use linguagem calorosa, fluida e amigável em português brasileiro.
+- Use mensagens curtas, organizadas e com parágrafos bem espaçados, facilitando a leitura rápida no celular.
+- Sempre chame o cliente pelo primeiro nome quando disponível.
+- Responda prontamente e com clareza as dúvidas sobre os produtos, serviços, planos e diferenciais da empresa.
+- Use apenas informações confirmadas da Base de Conhecimento oficial. Se não souber de algo específico, seja honesta e ofereça encaminhar para a equipe.
+- Ao qualificar o cliente, faça perguntas de forma leve e uma por vez para manter uma conversa agradável.
+- Se o cliente pedir para falar com atendente humano ou expressar insatisfação, faça a transferência imediatamente com empatia e carinho.`;
+
+    const defaultRole = "Consultor(a) de Atendimento";
+    const defaultObjective =
+      "Atender com excelência, compreender a necessidade do cliente, apresentar soluções com clareza e conduzir para o próximo passo comercial com agilidade e empatia";
+    const defaultPersonality = "Acolhedor(a), comunicativo(a), profissional, ágil e muito atencioso(a)";
+    const defaultTone = "natural, caloroso e profissional de WhatsApp";
+    const defaultGreeting = "Oi! Tudo bem? Seja muito bem-vindo(a) 😊 Como posso te ajudar hoje?";
+    const defaultFarewell = "Qualquer dúvida que tiver, é só me chamar por aqui! Tenha um excelente dia ✨";
     const defaultRestrictions =
-      "Não oferecer desconto sem autorização. Não prometer prazos ou condições não cadastradas. Não confirmar pagamento sem validação. Não sair do contexto do negócio.";
+      "Não inventar preços ou informações não confirmadas. Não conceder descontos sem autorização. Manter o foco no atendimento da empresa com discrição e respeito.";
+
     const { asInputJson } = await import("../lib/json");
     const { transferRules, tools, ...rest } = body;
     const agent = await prisma.aiAgent.create({
       data: {
         tenantId: request.user.tenantId!,
         ...rest,
+        role: body.role?.trim() ? body.role : defaultRole,
+        objective: body.objective?.trim() ? body.objective : defaultObjective,
+        personality: body.personality?.trim() ? body.personality : defaultPersonality,
+        tone: body.tone?.trim() ? body.tone : defaultTone,
+        greeting: body.greeting?.trim() ? body.greeting : defaultGreeting,
+        farewell: body.farewell?.trim() ? body.farewell : defaultFarewell,
+        publishStatus: "PUBLISHED",
         // Blindagem de plataforma: limpa instruções + não há flag para desligar segurança
         instructions: sanitizeAgentInstructions(
-          body.instructions || "",
+          body.instructions?.trim() ? body.instructions : defaultInstructions,
           body.name
         ),
         restrictions:
-          sanitizeAgentSecurityFromConfig(body.restrictions || "") ||
+          sanitizeAgentSecurityFromConfig(body.restrictions?.trim() ? body.restrictions : "") ||
           defaultRestrictions,
         transferRules: transferRules
           ? asInputJson(transferRules)
