@@ -107,6 +107,26 @@ describe("1. WhatsApp Webhook Parser — Todos os Formatos Reais", () => {
     expect(result.messages[0].content).toBe("Preciso de suporte com minha conta");
   });
 
+  it("Evolution API: processa áudios e imagens com legenda", () => {
+    const audioPayload = {
+      event: "messages.upsert",
+      instance: "empresa_whatsapp",
+      data: {
+        key: { remoteJid: "5511944443333@s.whatsapp.net", fromMe: false, id: "AUDIO_01" },
+        pushName: "Marcos",
+        message: {
+          audioMessage: { url: "https://evo.local/audio.ogg", mimetype: "audio/ogg; codecs=opus" },
+        },
+      },
+    };
+
+    const result = parseWahaWebhook(audioPayload);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].phone).toBe("5511944443333");
+    expect(result.messages[0].mediaUrl).toBe("https://evo.local/audio.ogg");
+    expect(result.messages[0].mediaMime).toBe("audio/ogg; codecs=opus");
+  });
+
   it("Descarta mensagens de grupos, status e transmissões", () => {
     const groupPayload = {
       event: "message",

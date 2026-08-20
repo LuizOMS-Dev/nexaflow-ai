@@ -770,29 +770,54 @@ export async function whatsappRoutes(app: FastifyInstance) {
       (typeof payload.instanceName === "string" ? payload.instanceName : "");
 
     let channel = null;
+    const idTrim = (identifier || "").trim();
 
-    if (identifier) {
+    if (idTrim) {
       channel = await prisma.channel.findFirst({
         where: {
           OR: [
-            { id: identifier },
-            { externalId: identifier },
-            { config: { path: ["instanceName"], equals: identifier } },
-            { config: { path: ["session"], equals: identifier } },
+            { id: idTrim },
+            { externalId: idTrim },
+            { config: { path: ["instanceName"], equals: idTrim } },
+            { config: { path: ["session"], equals: idTrim } },
+            { config: { path: ["phone"], equals: idTrim.replace(/\D/g, "") } },
           ],
         },
       });
     }
 
     if (!channel) {
-      // Se há apenas um canal de WhatsApp ativo na plataforma, associa diretamente
       const activeChannels = await prisma.channel.findMany({
-        where: { type: "WHATSAPP", isActive: true },
-        orderBy: { updatedAt: "desc" },
-        take: 2,
+        where: { type: "WHATSAPP" },
+        orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+        take: 50,
       });
-      if (activeChannels.length === 1) {
-        channel = activeChannels[0];
+
+      if (idTrim) {
+        const target = idTrim.toLowerCase();
+        for (const ch of activeChannels) {
+          const cfg = asConfig(ch.config);
+          const cfgInst = (cfg.instanceName || cfg.session || "")?.toString().trim().toLowerCase();
+          const extId = (ch.externalId || "")?.toString().trim().toLowerCase();
+          if (
+            cfgInst === target ||
+            extId === target ||
+            (cfgInst && target.includes(cfgInst)) ||
+            (extId && target.includes(extId))
+          ) {
+            channel = ch;
+            break;
+          }
+        }
+      }
+
+      if (!channel) {
+        const strictlyActive = activeChannels.filter((c) => c.isActive);
+        if (strictlyActive.length === 1) {
+          channel = strictlyActive[0];
+        } else if (activeChannels.length === 1) {
+          channel = activeChannels[0];
+        }
       }
     }
 
