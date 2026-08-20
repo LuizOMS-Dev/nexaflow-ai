@@ -367,14 +367,31 @@ export async function startBaileysSession(instanceName: string): Promise<Session
             .replace(/@c\.us$/i, "")
             .replace(/@lid$/i, "")
             .replace(/:\d+$/, "");
+          let rawMessage = m.message;
+          if (rawMessage?.ephemeralMessage?.message) rawMessage = rawMessage.ephemeralMessage.message;
+          if (rawMessage?.viewOnceMessage?.message) rawMessage = rawMessage.viewOnceMessage.message;
+          if (rawMessage?.viewOnceMessageV2?.message) rawMessage = rawMessage.viewOnceMessageV2.message;
+          if (rawMessage?.documentWithCaptionMessage?.message) rawMessage = rawMessage.documentWithCaptionMessage.message;
+
           const content =
-            m.message?.conversation ||
-            m.message?.extendedTextMessage?.text ||
-            m.message?.imageMessage?.caption ||
-            m.message?.videoMessage?.caption ||
-            (m.message?.imageMessage ? "[imagem]" : null) ||
-            (m.message?.audioMessage ? "[áudio]" : null) ||
-            (m.message?.documentMessage ? "[documento]" : "[mensagem]");
+            rawMessage?.conversation ||
+            rawMessage?.extendedTextMessage?.text ||
+            rawMessage?.imageMessage?.caption ||
+            rawMessage?.videoMessage?.caption ||
+            rawMessage?.buttonsResponseMessage?.selectedDisplayText ||
+            rawMessage?.buttonsResponseMessage?.selectedButtonId ||
+            rawMessage?.listResponseMessage?.title ||
+            rawMessage?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+            rawMessage?.templateButtonReplyMessage?.selectedId ||
+            (rawMessage?.imageMessage ? "[imagem]" : null) ||
+            (rawMessage?.audioMessage || rawMessage?.pttMessage ? "[áudio]" : null) ||
+            (rawMessage?.documentMessage
+              ? `[documento: ${rawMessage.documentMessage.fileName || "arquivo"}]`
+              : null) ||
+            (rawMessage?.stickerMessage ? "[figurinha]" : null) ||
+            (rawMessage?.contactMessage ? "[contato]" : null) ||
+            (rawMessage?.locationMessage ? "[localização]" : null) ||
+            "[mensagem]";
 
           if (!content) continue;
 

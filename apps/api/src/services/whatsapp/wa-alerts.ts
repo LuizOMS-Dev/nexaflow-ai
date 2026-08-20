@@ -24,22 +24,51 @@ export function getWhatsAppSessionMeta(instanceName: string) {
 }
 
 export async function resolveSessionMeta(instanceName: string) {
+  if (!instanceName) return null;
   const cached = META.get(instanceName);
   if (cached) return cached;
 
+  const target = instanceName.trim().toLowerCase();
+
   const channels = await prisma.channel.findMany({
     where: { type: "WHATSAPP" },
-    select: { id: true, tenantId: true, name: true, config: true },
+    select: { id: true, tenantId: true, name: true, config: true, externalId: true, isActive: true },
+    orderBy: { updatedAt: "desc" },
     take: 200,
   });
+
+  // 1) Match exato por instanceName, session ou externalId
   for (const ch of channels) {
     const cfg = asConfig(ch.config);
-    if (cfg.instanceName === instanceName || cfg.session === instanceName) {
+    const cfgInst = (cfg.instanceName || cfg.session || "")?.toString().trim().toLowerCase();
+    const extId = (ch.externalId || "")?.toString().trim().toLowerCase();
+
+    if (cfgInst === target || extId === target) {
       const meta = { tenantId: ch.tenantId, channelId: ch.id, channelName: ch.name };
       META.set(instanceName, meta);
       return meta;
     }
   }
+
+  // 2) Match parcial se instanceName contiver externalId ou vice-versa
+  for (const ch of channels) {
+    const extId = (ch.externalId || "")?.toString().trim().toLowerCase();
+    if (extId && (target.includes(extId) || extId.includes(target))) {
+      const meta = { tenantId: ch.tenantId, channelId: ch.id, channelName: ch.name };
+      META.set(instanceName, meta);
+      return meta;
+    }
+  }
+
+  // 3) Fallback se houver 1 canal WhatsApp ativo no banco
+  const activeChannels = channels.filter((c) => c.isActive);
+  if (activeChannels.length === 1) {
+    const ch = activeChannels[0];
+    const meta = { tenantId: ch.tenantId, channelId: ch.id, channelName: ch.name };
+    META.set(instanceName, meta);
+    return meta;
+  }
+
   return null;
 }
 
