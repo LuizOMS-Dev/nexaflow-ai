@@ -22,7 +22,7 @@ enum TenantStatus {
   BLOCKED
   SUSPENDED
   CANCELLED
-  /// Soft-delete: exclusão solicitada; dados ainda preservados
+  /// Exclusão agendada (scheduledDeletionAt). Empresa opera até a data; o job remove os dados.
   PENDING_DELETION
 }
 
@@ -233,6 +233,10 @@ model Tenant {
   plan         Plan?        @relation(fields: [planId], references: [id])
   trialEndsAt  DateTime?
   settings     Json?
+  /// Exclusão definitiva agendada (job persistente). Empresa opera até esta data.
+  scheduledDeletionAt    DateTime?
+  /// Status operacional vigente enquanto a exclusão está agendada
+  deletionPreviousStatus TenantStatus?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -268,6 +272,9 @@ model Tenant {
   companyProfile      CompanyProfile?
   subscription        Subscription?
   aiExecutions        AiExecution[]
+
+  @@index([scheduledDeletionAt])
+  @@index([status, scheduledDeletionAt])
 }
 
 /// Configuração de provedor de IA por empresa (BYOK).
