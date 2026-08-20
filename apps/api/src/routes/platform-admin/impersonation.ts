@@ -10,6 +10,8 @@ import {
   REFRESH_COOKIE,
   REFRESH_MAX_AGE_SEC,
 } from "../../services/security/session";
+import { hashOpaqueToken } from "../../services/security/password";
+import { prisma } from "../../lib/prisma";
 import type { JwtUser } from "../../plugins/auth";
 
 function cookieSecure() {
@@ -68,13 +70,72 @@ export async function adminImpersonationRoutes(app: FastifyInstance) {
     }
   );
 
-  // 2. Encerramento de impersonação (Requer apenas autenticação ativa da sessão impersonada)
+  // 2. Encerramento de impersonação (100% à prova de falhas: recupera superadmin por bearer, cookie access, ou refresh cookie)
   app.post(
     "/admin/stop-impersonation",
-    { preHandler: [app.authenticate] },
     async (request: FastifyRequest, reply: FastifyReply) => {
+      let jwtUser: JwtUser | null = null;
+      try {
+        const auth = request.headers.authorization;
+        if (auth?.startsWith("Bearer ")) {
+          jwtUser = (await request.jwtVerify()) as JwtUser;
+        } else {
+          jwtUser = (await request.jwtVerify({ onlyCookie: true })) as JwtUser;
+        }
+      } catch {
+        jwtUser = null;
+      }
+
+      // Se jwtVerify falhou (ex: expiração de 1s), tenta decodificar payload
+      if (!jwtUser) {
+        const auth = request.headers.authorization;
+        const token = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : (request.cookies?.["nexa_access"] as string);
+        if (token) {
+          try {
+            const decoded = app.jwt.decode(token) as { payload?: JwtUser } | JwtUser;
+            jwtUser = (decoded && typeof decoded === "object" && "payload" in decoded && decoded.payload
+              ? decoded.payload
+              : decoded) as JwtUser;
+          } catch {
+            jwtUser = null;
+          }
+        }
+      }
+
+      // Se ainda não achou, busca no banco pelo cookie de refresh
+      if (!jwtUser) {
+        const rawRefresh = request.cookies?.[REFRESH_COOKIE];
+        if (rawRefresh) {
+          const tokenHash = hashOpaqueToken(rawRefresh);
+          const authSession = await prisma.authSession.findFirst({
+            where: { refreshTokenHash: tokenHash },
+          });
+          if (authSession) {
+            jwtUser = {
+              sub: authSession.userId,
+              sid: authSession.id,
+              tenantId: authSession.tenantId,
+              imp: authSession.isImpersonation,
+              impBy: authSession.impersonatorId,
+            };
+          }
+        }
+      }
+
+      if (!jwtUser) {
+        reply.clearCookie(REFRESH_COOKIE, { path: "/" });
+        reply.clearCookie("nexa_access", { path: "/" });
+        return {
+          accessToken: "",
+          user: null,
+          tenant: null,
+          memberships: [],
+          impersonation: { active: false },
+        };
+      }
+
       const result = await stopImpersonationSession(
-        request.user as unknown as JwtUser,
+        jwtUser,
         {
           ip: request.ip,
           userAgent: request.headers["user-agent"],

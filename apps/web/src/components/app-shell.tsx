@@ -1327,18 +1327,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <aside
           role="status"
           aria-label="Sessão de suporte administrativo"
-          className="relative z-[var(--z-banner)] flex shrink-0 items-center justify-between gap-3 border-b border-amber-500/25 bg-gradient-to-r from-[#141006]/95 via-[#1a1406]/95 to-[#141006]/95 px-4 py-2 text-[12px] text-amber-200 shadow-[0_4px_24px_-4px_rgba(245,158,11,0.15)] backdrop-blur-md transition-all sm:px-6"
+          className="relative z-[var(--z-banner)] flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.08] bg-[#0c0d12]/95 px-4 py-1.5 text-[12px] text-zinc-300 shadow-sm backdrop-blur-xl transition-all sm:px-6"
         >
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30">
-              <ShieldAlert className="h-3.5 w-3.5" />
+            <span className="relative flex h-2 w-2 shrink-0 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-60" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-400" />
             </span>
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="inline-flex items-center rounded-md bg-amber-500/20 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-amber-300 ring-1 ring-amber-400/30">
-                Acesso Superadmin
-              </span>
-              <span className="truncate text-amber-100/80">
-                Você está acessando <strong className="font-semibold text-white">{tenant?.name || "esta empresa"}</strong> em modo administrativo.
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-[11px] font-medium text-zinc-400">Modo Suporte:</span>
+              <span className="truncate text-zinc-200">
+                Visualizando <strong className="font-medium text-white">{tenant?.name || "esta empresa"}</strong>
               </span>
             </div>
           </div>
@@ -1347,17 +1346,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
             disabled={endingImpersonation}
             onClick={() => void endImpersonation()}
-            className="inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/15 px-3 py-1 text-[11.5px] font-semibold text-amber-200 shadow-sm transition-all hover:border-amber-400/60 hover:bg-amber-500/25 hover:text-white active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+            className="inline-flex h-6.5 shrink-0 items-center gap-1.5 rounded-md border border-white/[0.12] bg-white/[0.05] px-2.5 text-[11px] font-medium text-zinc-200 shadow-sm transition-all hover:border-white/25 hover:bg-white/[0.10] hover:text-white active:scale-[0.98] disabled:opacity-50 cursor-pointer"
           >
             {endingImpersonation ? (
               <>
                 <Spinner className="h-3 w-3" />
-                <span>Encerrando…</span>
+                <span>Saindo…</span>
               </>
             ) : (
               <>
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Encerrar acesso e voltar</span>
+                <ArrowLeft className="h-3 w-3 text-zinc-400" />
+                <span>Sair do suporte</span>
               </>
             )}
           </button>

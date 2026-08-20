@@ -110,6 +110,7 @@ type AuthState = {
     user: UserInfo;
     tenant?: TenantInfo | null;
     memberships?: MembershipEntry[];
+    impersonating?: boolean;
   }) => void;
   hydrate: () => Promise<void>;
   logout: () => Promise<void>;
@@ -125,14 +126,17 @@ export const useAuth = create<AuthState>((set, get) => ({
   memberships: [],
   hydrated: false,
 
-  setSession: ({ token, user, tenant, memberships }) => {
+  setSession: ({ token, user, tenant, memberships, impersonating }) => {
     setAccessToken(token);
-    let imp = false;
-    try {
-      imp = sessionStorage.getItem("nexaflow_impersonating") === "1";
-    } catch {
-      /* ignore */
-    }
+    const imp =
+      impersonating !== undefined
+        ? impersonating
+        : typeof window !== "undefined"
+          ? sessionStorage.getItem("nexaflow_impersonating") === "1"
+          : false;
+
+    syncImpersonationFlag(imp, user.platformRole, tenant);
+
     set({
       token,
       user,

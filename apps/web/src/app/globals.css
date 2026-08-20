@@ -2608,7 +2608,7 @@ html.nf-panel-lock body {
 }
 
 .nf-app-shell[data-impersonating="true"] {
-  --nf-banner-height: 2.5rem;
+  --nf-banner-height: 2.35rem;
 }
 
 .nf-shell-banner {
@@ -2619,18 +2619,19 @@ html.nf-panel-lock body {
   justify-content: space-between;
   gap: 0.75rem;
   min-height: var(--nf-banner-height);
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
-  background: rgba(245, 158, 11, 0.1);
-  color: #78350f;
+  padding: 0.35rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(11, 12, 16, 0.95);
+  backdrop-filter: blur(12px);
+  color: #d4d4d8;
   font-size: 0.75rem;
   line-height: 1.35;
   animation: nf-banner-in 0.2s var(--nf-ease) both;
 }
 
 .dark .nf-shell-banner {
-  color: #fef3c7;
-  background: rgba(245, 158, 11, 0.12);
+  color: #e4e4e7;
+  background: rgba(11, 12, 16, 0.95);
 }
 
 @keyframes nf-banner-in {
