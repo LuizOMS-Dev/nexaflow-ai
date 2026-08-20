@@ -39,6 +39,19 @@ async function main() {
   console.log(`✉️  Mail: ${env.mailProvider}`);
   console.log(`📦 Architecture: single-node (replicas=1)`);
 
+  // Liga Baileys → inbox ANTES de restaurar sockets (senão inbound some no vazio)
+  try {
+    const { registerBaileysInboundIngest } = await import(
+      "./services/whatsapp/baileys-inbound"
+    );
+    registerBaileysInboundIngest();
+  } catch (err) {
+    console.error(
+      "[baileys] inbound handler register failed:",
+      err instanceof Error ? err.message : err
+    );
+  }
+
   // Restaura sessões Baileys com credenciais válidas (sem pedir QR de novo)
   setImmediate(() => {
     void import("./services/whatsapp/restore-sessions")

@@ -362,7 +362,11 @@ export async function startBaileysSession(instanceName: string): Promise<Session
           const jid = m.key?.remoteJid || "";
           if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") continue;
 
-          const phone = jid.replace("@s.whatsapp.net", "").replace("@c.us", "");
+          const phone = jid
+            .replace(/@s\.whatsapp\.net$/i, "")
+            .replace(/@c\.us$/i, "")
+            .replace(/@lid$/i, "")
+            .replace(/:\d+$/, "");
           const content =
             m.message?.conversation ||
             m.message?.extendedTextMessage?.text ||

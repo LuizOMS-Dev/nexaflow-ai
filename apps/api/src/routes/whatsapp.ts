@@ -13,6 +13,7 @@ import {
 import { normalizeQrInput } from "../services/qrcode";
 import { resolveWhatsAppQr } from "../services/whatsapp/qr";
 import { isTrueSuperadmin } from "../services/security/rbac";
+import { registerBaileysInboundIngest } from "../services/whatsapp/baileys-inbound";
 
 /** URL que o browser usa (localhost / domínio público) */
 function publicApiUrl() {
@@ -66,6 +67,7 @@ function sanitizeChannel(ch: {
 }
 
 export async function whatsappRoutes(app: FastifyInstance) {
+  registerBaileysInboundIngest();
   /**
    * Fonte única de verdade — status operacional do WhatsApp do tenant.
    * Não expõe credenciais / session keys.

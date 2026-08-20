@@ -28,6 +28,7 @@ export type {
 export { dispatchWhatsAppText, getDispatchMetrics } from "./message-dispatch";
 export type { DispatchParams, DispatchPurpose, DispatchResult } from "./message-dispatch";
 export { restoreBaileysSessionsOnBoot } from "./restore-sessions";
+export { registerBaileysInboundIngest, handleBaileysInbound } from "./baileys-inbound";
 export {
   createMultiFileAuthStore,
   listAuthNamespaces,
