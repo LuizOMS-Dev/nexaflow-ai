@@ -76,4 +76,35 @@ describe("dispatchWhatsAppText", () => {
     expect(b.skipped).toBe(true);
     expect(sendWhatsAppText).toHaveBeenCalledTimes(1);
   });
+
+  it("idempotência concorrente: Promise.all com a mesma key envia uma vez", async () => {
+    const key = `idem-par-${Date.now()}`;
+    vi.mocked(sendWhatsAppText).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ ok: true, externalId: "ext-par" }), 40);
+        })
+    );
+
+    const [a, b] = await Promise.all([
+      dispatchWhatsAppText({
+        channelId: "ch-par",
+        to: "+5511777777777",
+        text: "Hi concurrent",
+        purpose: "reply",
+        idempotencyKey: key,
+      }),
+      dispatchWhatsAppText({
+        channelId: "ch-par",
+        to: "+5511777777777",
+        text: "Hi concurrent",
+        purpose: "reply",
+        idempotencyKey: key,
+      }),
+    ]);
+
+    expect(sendWhatsAppText).toHaveBeenCalledTimes(1);
+    expect([a, b].filter((r) => r.ok).length).toBe(2);
+    expect([a, b].filter((r) => r.skipped).length).toBe(1);
+  });
 });

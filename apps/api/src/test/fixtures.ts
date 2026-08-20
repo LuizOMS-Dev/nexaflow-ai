@@ -33,6 +33,8 @@ export async function cleanupTestTenant(tenantId: string) {
     where: { tenantId },
     select: { userId: true },
   });
+  await prisma.payment.deleteMany({ where: { tenantId } }).catch(() => null);
+  await prisma.subscription.deleteMany({ where: { tenantId } }).catch(() => null);
   await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => null);
   for (const m of memberships) {
     const left = await prisma.membership.count({ where: { userId: m.userId } });

@@ -40,6 +40,7 @@ export type DispatchResult = {
 
 const IDEMPOTENCY_TTL_MS = 15 * 60_000;
 const idempotencyCache = new Map<string, { at: number; result: DispatchResult }>();
+const inflight = new Map<string, Promise<DispatchResult>>();
 
 // Rate limits leves (proteção operacional — não “máximo até ban”)
 const channelWindow = new Map<string, number[]>();
@@ -84,7 +85,27 @@ export async function dispatchWhatsAppText(params: DispatchParams): Promise<Disp
     cleanIdempotency();
     const hit = idempotencyCache.get(params.idempotencyKey);
     if (hit) return { ...hit.result, skipped: true, reason: "idempotent" };
+    const pending = inflight.get(params.idempotencyKey);
+    if (pending) {
+      const result = await pending;
+      return { ...result, skipped: true, reason: "idempotent" };
+    }
   }
+
+  const run = dispatchWhatsAppTextOnce(params, purpose, text);
+  if (params.idempotencyKey) inflight.set(params.idempotencyKey, run);
+  try {
+    return await run;
+  } finally {
+    if (params.idempotencyKey) inflight.delete(params.idempotencyKey);
+  }
+}
+
+async function dispatchWhatsAppTextOnce(
+  params: DispatchParams,
+  purpose: DispatchPurpose,
+  text: string
+): Promise<DispatchResult> {
 
   if (!allowRate(params.channelId, channelWindow, MAX_PER_CHANNEL_PER_MIN)) {
     return {
