@@ -792,7 +792,9 @@ function CreateCompanyModal({
 }) {
   const [force, setForce] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [accessMethod, setAccessMethod] = useState<"invite" | "temporary_password">("invite");
+  const [accessMethod, setAccessMethod] = useState<"invite" | "temporary_password">(
+    "temporary_password"
+  );
   const [tempConfirm, setTempConfirm] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [existingUser, setExistingUser] = useState(false);
@@ -805,7 +807,7 @@ function CreateCompanyModal({
     if (open) {
       setForce(false);
       setShowPassword(false);
-      setAccessMethod("invite");
+      setAccessMethod("temporary_password");
       setTempConfirm("");
       setFieldErrors({});
       setExistingUser(false);
@@ -891,12 +893,13 @@ function CreateCompanyModal({
       return;
     }
 
+    const useTempPassword = !existingUser && (accessMethod === "temporary_password" || adminPassword.length > 0);
     mut.mutate({
       name,
       adminName,
       adminEmail,
-      adminPassword: !existingUser && accessMethod === "temporary_password" ? adminPassword : undefined,
-      accessMethod: existingUser ? "invite" : accessMethod,
+      adminPassword: useTempPassword ? adminPassword : undefined,
+      accessMethod: existingUser ? "invite" : useTempPassword ? "temporary_password" : "invite",
       planId: selectedPlanId || undefined,
       forceSimilarName: force,
     });
@@ -1038,14 +1041,14 @@ function CreateCompanyModal({
                 onChange={(v) => setAccessMethod(v as "invite" | "temporary_password")}
                 options={[
                   {
-                    value: "invite",
-                    label: "Enviar convite por e-mail",
-                    description: "O administrador receberá um link seguro para definir sua senha.",
-                  },
-                  {
                     value: "temporary_password",
                     label: "Definir senha temporária",
-                    description: "Você cria uma senha inicial e o usuário deverá alterá-la no primeiro acesso.",
+                    description: "Você cria a senha inicial. O administrador entra com ela e troca no primeiro acesso.",
+                  },
+                  {
+                    value: "invite",
+                    label: "Enviar convite por e-mail",
+                    description: "O administrador recebe um link para definir a senha. Não dá para entrar com senha até isso.",
                   },
                 ]}
               />

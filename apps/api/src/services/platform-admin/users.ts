@@ -305,12 +305,22 @@ export async function getUserDetail(id: string) {
 
 export type FirstAccessMethod = "invite" | "temporary_password";
 
+/** Senha preenchida sempre vence o rádio "convite" — senão o hash aleatório impede o login. */
+export function resolveFirstAccessMethod(
+  accessMethod: FirstAccessMethod | undefined,
+  password?: string | null
+): FirstAccessMethod {
+  if (typeof password === "string" && password.trim().length > 0) {
+    return "temporary_password";
+  }
+  return accessMethod === "temporary_password" ? "temporary_password" : "invite";
+}
+
 export async function credentialsForNewUser(
   accessMethod: FirstAccessMethod | undefined,
   temporaryPassword?: string
 ): Promise<{ passwordHash: string; mustChangePassword: boolean; method: FirstAccessMethod }> {
-  const method: FirstAccessMethod =
-    accessMethod === "temporary_password" ? "temporary_password" : "invite";
+  const method = resolveFirstAccessMethod(accessMethod, temporaryPassword);
   if (method === "temporary_password") {
     const policy = validatePasswordPolicy(temporaryPassword || "");
     if (policy) throw new AppError(policy, 400, "WEAK_PASSWORD");

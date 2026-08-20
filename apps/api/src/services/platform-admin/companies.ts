@@ -3,7 +3,12 @@ import type { Prisma, TenantStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { AppError, assertFound } from "../../lib/errors";
 import { audit } from "../audit";
-import { credentialsForNewUser, sendFirstAccessMail, type FirstAccessMethod } from "./users";
+import {
+  credentialsForNewUser,
+  resolveFirstAccessMethod,
+  sendFirstAccessMail,
+  type FirstAccessMethod,
+} from "./users";
 import { recordSecurityEvent } from "../security/security-event";
 import { computeNextDueDate } from "../billing";
 import { enrichTenantBilling, type SubscriptionRow } from "./billing-view";
@@ -376,12 +381,10 @@ export async function createCompany(
     throw new AppError("Nome do administrador deve ter pelo menos 2 caracteres.", 400, "INVALID_ADMIN_NAME");
   }
 
-  const accessMethod: FirstAccessMethod =
-    input.accessMethod === "invite"
-      ? "invite"
-      : input.accessMethod === "temporary_password" || Boolean(input.adminPassword)
-        ? "temporary_password"
-        : "invite";
+  const accessMethod: FirstAccessMethod = resolveFirstAccessMethod(
+    input.accessMethod,
+    input.adminPassword
+  );
 
   const preexistingAdmin = await prisma.user.findUnique({ where: { email } });
   if (preexistingAdmin && accessMethod === "temporary_password") {

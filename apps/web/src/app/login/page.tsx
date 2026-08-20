@@ -128,12 +128,17 @@ export default function LoginPage() {
     return email.trim().length > 3 && password.length >= 6;
   }, [email, password, password2, loading, inFlow, mfaCode, mfaRecovery, view]);
 
-  function humanLoginError(msg: string, context?: View) {
+  function humanLoginError(msg: string, context?: View, code?: string) {
+    if (code === "AUTH_FIRST_ACCESS_REQUIRED") {
+      return "Esta conta ainda precisa definir a senha. Use o link enviado por e-mail ou clique em Esqueci minha senha.";
+    }
     const m = msg.toLowerCase();
     if (m.includes("origin") || m.includes("csrf"))
       return "Não foi possível validar a sessão. Recarregue a página e tente de novo.";
     if (context === "mfa" || m.includes("código") || m.includes("code"))
       return "Código inválido. Tente novamente.";
+    if (m.includes("definir a senha") || m.includes("primeiro acesso") || m.includes("esqueci minha senha"))
+      return "Esta conta ainda precisa definir a senha. Use o link enviado por e-mail ou clique em Esqueci minha senha.";
     if (m.includes("credencial") || m.includes("senha") || m.includes("inválid") || m.includes("invalid"))
       return "E-mail ou senha incorretos.";
     if (m.includes("network") || m.includes("fetch") || m.includes("failed"))
@@ -234,7 +239,7 @@ export default function LoginPage() {
     window.setTimeout(() => router.replace(dest), T_CONFIRM_MS + overlayMs + exitMs);
   }
 
-  function flashError(message: string, context?: View) {
+  function flashError(message: string, context?: View, code?: string) {
     const m = message.toLowerCase();
     if (
       (context === "reset" || view === "reset") &&
@@ -245,7 +250,7 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    setError(humanLoginError(message, context || view));
+    setError(humanLoginError(message, context || view, code));
     setShake(true);
     setTimeout(() => setShake(false), 450);
     setLoading(false);
@@ -441,7 +446,7 @@ export default function LoginPage() {
           : err instanceof Error
             ? err.message
             : "Não foi possível entrar";
-      flashError(message);
+      flashError(message, view, err instanceof ApiError ? err.code : undefined);
     }
   }
 

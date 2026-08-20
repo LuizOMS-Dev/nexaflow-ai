@@ -348,6 +348,77 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
     expect(body.resetToken).toBeTruthy();
   });
 
+  it("5d. Senha preenchida vence accessMethod=invite e permite login", async () => {
+    const email = `admin-invite-pw-${suffix}@test.nexaflow.local`;
+    const password = "SenhaDoAdmin123!";
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Invite Pw ${suffix}`,
+        adminEmail: email,
+        adminName: "Admin Invite Pw",
+        adminPassword: password,
+        accessMethod: "invite",
+        planId: createdPlanIds[0],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().firstAccess).toBe("temporary_password");
+    createdTenantIds.push(res.json().id);
+    const adminUser = await prisma.user.findUnique({ where: { email } });
+    expect(adminUser?.mustChangePassword).toBe(true);
+    if (adminUser) createdUserIds.push(adminUser.id);
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email, password },
+    });
+    expect(login.statusCode).toBe(200);
+    const body = login.json() as { mustChangePassword?: boolean; resetToken?: string; error?: string };
+    expect(body.error).toBeUndefined();
+    expect(body.mustChangePassword).toBe(true);
+    expect(body.resetToken).toBeTruthy();
+  });
+
+  it("5e. Convite sem senha não autentica — pede primeiro acesso", async () => {
+    const email = `admin-invite-only-${suffix}@test.nexaflow.local`;
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Invite Only ${suffix}`,
+        adminEmail: email,
+        adminName: "Admin Invite Only",
+        accessMethod: "invite",
+        planId: createdPlanIds[0],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().firstAccess).toBe("invite");
+    createdTenantIds.push(res.json().id);
+    const adminUser = await prisma.user.findUnique({ where: { email } });
+    expect(adminUser?.mustChangePassword).toBe(false);
+    if (adminUser) createdUserIds.push(adminUser.id);
+    const inviteTokens = await prisma.passwordResetToken.findMany({
+      where: { userId: adminUser!.id, usedAt: null },
+    });
+    expect(inviteTokens.length).toBeGreaterThan(0);
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email, password: "QualquerSenha123!" },
+    });
+    expect(login.statusCode).toBe(403);
+    expect(login.json().error).toBe("AUTH_FIRST_ACCESS_REQUIRED");
+  });
+
   it("5c. Senha temporária em e-mail já existente não substitui a senha da conta", async () => {
     const existingEmail = `keep-pass-${suffix}@test.nexaflow.local`;
     const hash = await hashPassword("SenhaQueJaExiste1");

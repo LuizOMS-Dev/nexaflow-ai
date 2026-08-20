@@ -254,6 +254,39 @@ export async function authRoutes(app: FastifyInstance) {
 
     const verified = await verifyPassword(user.passwordHash, body.password);
     if (!verified.ok) {
+      if (!user.mustChangePassword) {
+        const pendingFirstAccess = await prisma.passwordResetToken.findFirst({
+          where: {
+            userId: user.id,
+            usedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true },
+        });
+        if (pendingFirstAccess) {
+          await recordLoginFailure(email, ip);
+          await recordLoginAttempt({
+            email,
+            userId: user.id,
+            ip,
+            userAgent,
+            success: false,
+            reason: "first_access_required",
+          });
+          await recordSecurityEvent({
+            type: "LOGIN_FAILED",
+            userId: user.id,
+            ip,
+            userAgent,
+            metadata: { reason: "first_access_required", email },
+          });
+          throw new AppError(
+            "Esta conta ainda precisa definir a senha. Use o link enviado por e-mail ou clique em Esqueci minha senha.",
+            403,
+            "AUTH_FIRST_ACCESS_REQUIRED"
+          );
+        }
+      }
       await fail("bad_password");
       return;
     }
