@@ -216,8 +216,11 @@ export function createOpenAICompatibleAdapter(providerId: AiProviderId): AIProvi
             return { id: tc.id, name: tc.function.name, arguments: args };
           }) || undefined;
 
+        const rawContent = (choice?.content || "").trim();
+        const content = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
         return {
-          content: (choice?.content || "").trim(),
+          content,
           provider: providerId,
           model: params.model,
           usage: {
