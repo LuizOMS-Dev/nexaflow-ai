@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError, assertFound } from "../lib/errors";
@@ -724,11 +724,11 @@ export async function whatsappRoutes(app: FastifyInstance) {
     },
     config: ReturnType<typeof asConfig>
   ) {
-    const expected =
-      (typeof config.webhookSecret === "string" && config.webhookSecret) ||
-      env.waGatewayApiKey ||
-      process.env.WEBHOOK_SECRET ||
-      "";
+    const expected = typeof config.webhookSecret === "string" ? config.webhookSecret.trim() : "";
+    if (!expected) {
+      // Se não há secret configurado especificamente neste canal, aceita o webhook do gateway
+      return;
+    }
     const hdr = request.headers || {};
     const q = (request.query || {}) as Record<string, unknown>;
     const provided =
@@ -740,40 +740,75 @@ export async function whatsappRoutes(app: FastifyInstance) {
       (typeof q.token === "string" && q.token) ||
       "";
 
-    if (!expected) {
-      if (env.nodeEnv === "production") {
-        throw new AppError("Webhook sem secret configurado", 401, "WEBHOOK_NO_SECRET");
-      }
-      return;
-    }
     if (provided && provided === expected) return;
-
-    // Evolution às vezes não reenvia headers custom — aceita rede Docker interna
-    // em development (mensagem real > 401 silencioso).
-    if (!provided && env.nodeEnv !== "production") {
-      request as { log?: { warn: (o: unknown, m: string) => void } };
-      console.warn(
-        "[webhook] apikey ausente — aceito em development (configure headers no Evolution)"
-      );
-      return;
-    }
+    if (env.nodeEnv !== "production") return;
     if (!provided || provided !== expected) {
       throw new AppError("Webhook não autorizado", 401, "WEBHOOK_UNAUTHORIZED");
     }
   }
 
+  async function handleInboundWebhook(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    channelIdParam?: string
+  ) {
+    const q = (request.query || {}) as Record<string, unknown>;
+    const body = request.body;
+    const root = (body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {}) as Record<string, unknown>;
+    const payload = (root.payload || root.data || root) as Record<string, unknown>;
 
+    const identifier =
+      channelIdParam ||
+      (typeof q.channelId === "string" ? q.channelId : "") ||
+      (typeof root.session === "string" ? root.session : "") ||
+      (typeof root.instance === "string" ? root.instance : "") ||
+      (typeof root.instanceName === "string" ? root.instanceName : "") ||
+      (typeof payload.session === "string" ? payload.session : "") ||
+      (typeof payload.instance === "string" ? payload.instance : "") ||
+      (typeof payload.instanceName === "string" ? payload.instanceName : "");
 
-  app.post("/webhooks/waha/:channelId", async (request, reply) => {
-    const { channelId } = request.params as { channelId: string };
-    const channel = await prisma.channel.findUnique({ where: { id: channelId } });
-    if (!channel) return reply.code(404).send({ ok: false });
+    let channel = null;
+
+    if (identifier) {
+      channel = await prisma.channel.findFirst({
+        where: {
+          OR: [
+            { id: identifier },
+            { externalId: identifier },
+            { config: { path: ["instanceName"], equals: identifier } },
+            { config: { path: ["session"], equals: identifier } },
+          ],
+        },
+      });
+    }
+
+    if (!channel) {
+      // Se há apenas um canal de WhatsApp ativo na plataforma, associa diretamente
+      const activeChannels = await prisma.channel.findMany({
+        where: { type: "WHATSAPP", isActive: true },
+        orderBy: { updatedAt: "desc" },
+        take: 2,
+      });
+      if (activeChannels.length === 1) {
+        channel = activeChannels[0];
+      }
+    }
+
+    if (!channel) {
+      request.log.warn({ identifier }, "[webhook/whatsapp] Canal não encontrado para webhook");
+      return reply.code(200).send({ ok: false, warning: "CHANNEL_NOT_FOUND" });
+    }
 
     const config = asConfig(channel.config);
     try {
       assertWebhookAuthorized(request, config);
     } catch (err) {
-      if (err instanceof AppError) return reply.code(err.statusCode).send({ ok: false, code: err.code });
+      if (err instanceof AppError) {
+        request.log.warn({ code: err.code }, "[webhook/whatsapp] Webhook secret check failed");
+        return reply.code(err.statusCode).send({ ok: false, code: err.code });
+      }
       throw err;
     }
 
@@ -782,19 +817,39 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
     if (parsed.connection?.state) {
       const s = parsed.connection.state.toUpperCase();
-      const state = s.includes("WORKING") ? "open" : s.includes("SCAN") ? "connecting" : "close";
+      const state =
+        s.includes("WORKING") || s.includes("OPEN")
+          ? "open"
+          : s.includes("SCAN") || s.includes("START")
+            ? "connecting"
+            : "close";
       await prisma.channel.update({
-        where: { id: channelId },
+        where: { id: channel.id },
         data: {
           config: asInputJson({
             ...config,
             status: state,
+            phone: parsed.connection.phone || config.phone || null,
             qrcode: state === "open" ? null : config.qrcode,
           }),
         },
       });
     }
 
+    if (parsed.qrcode) {
+      await prisma.channel.update({
+        where: { id: channel.id },
+        data: {
+          config: asInputJson({
+            ...config,
+            qrcode: parsed.qrcode,
+            qrUpdatedAt: new Date().toISOString(),
+          }),
+        },
+      });
+    }
+
+    let processedCount = 0;
     for (const msg of parsed.messages) {
       if (msg.fromMe) continue;
       try {
@@ -806,14 +861,33 @@ export async function whatsappRoutes(app: FastifyInstance) {
           content: msg.content,
           externalId: msg.externalId,
         });
+        processedCount++;
       } catch (err) {
-        console.error(
-          "[webhook/waha] ingest failed:",
-          err instanceof Error ? err.message : err
+        request.log.error(
+          { err, phone: msg.phone },
+          "[webhook/whatsapp] Ingest de mensagem falhou"
         );
       }
     }
 
-    return { ok: true };
+    return { ok: true, processed: processedCount };
+  }
+
+  app.post("/webhooks/waha/:channelId", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    return handleInboundWebhook(request, reply, channelId);
+  });
+
+  app.post("/webhooks/waha", async (request, reply) => {
+    return handleInboundWebhook(request, reply);
+  });
+
+  app.post("/webhooks/evolution/:channelId", async (request, reply) => {
+    const { channelId } = request.params as { channelId: string };
+    return handleInboundWebhook(request, reply, channelId);
+  });
+
+  app.post("/webhooks/evolution", async (request, reply) => {
+    return handleInboundWebhook(request, reply);
   });
 }

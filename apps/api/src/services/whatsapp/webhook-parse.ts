@@ -95,8 +95,101 @@ function extractText(message: unknown): string {
   return "";
 }
 
+function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
+  const p = asRecord(item);
+  if (!p) return null;
+
+  const key = asRecord(p.key) || asRecord(dig(p, "_data", "key")) || asRecord(p);
+  const from =
+    (typeof p.from === "string" && p.from) ||
+    (typeof key?.remoteJid === "string" && key.remoteJid) ||
+    (typeof p.remoteJid === "string" && p.remoteJid) ||
+    (typeof p.sender === "string" && p.sender) ||
+    (typeof p.phone === "string" && p.phone) ||
+    (typeof dig(p, "_data", "id", "remote") === "string" ? (dig(p, "_data", "id", "remote") as string) : "") ||
+    "";
+
+  if (
+    typeof from === "string" &&
+    (from.endsWith("@g.us") ||
+      from.includes("broadcast") ||
+      from.includes("newsletter") ||
+      from.includes("status@"))
+  ) {
+    return null;
+  }
+
+  const fromMe = Boolean(
+    p.fromMe ??
+    key?.fromMe ??
+    dig(p, "_data", "key", "fromMe") ??
+    dig(p, "key", "fromMe")
+  );
+
+  const rawMsg =
+    asRecord(p.message) ||
+    asRecord(dig(p, "data", "message")) ||
+    asRecord(dig(p, "_data", "message")) ||
+    p;
+
+  const bodyText =
+    (typeof p.body === "string" && p.body) ||
+    (typeof p.text === "string" && p.text) ||
+    (typeof p.content === "string" && p.content) ||
+    (typeof rawMsg?.conversation === "string" && rawMsg.conversation) ||
+    extractText(rawMsg) ||
+    "";
+
+  const media =
+    asRecord(p.media) ||
+    asRecord(dig(p, "message", "imageMessage")) ||
+    asRecord(dig(p, "message", "documentMessage")) ||
+    asRecord(dig(p, "message", "audioMessage")) ||
+    asRecord(dig(p, "message", "videoMessage"));
+
+  const mediaUrl =
+    media && typeof media.url === "string"
+      ? media.url
+      : typeof p.mediaUrl === "string"
+        ? p.mediaUrl
+        : undefined;
+
+  const mediaMime =
+    media && typeof media.mimetype === "string"
+      ? media.mimetype
+      : typeof p.mimetype === "string"
+        ? p.mimetype
+        : undefined;
+
+  const rawId =
+    (typeof p.id === "string" && p.id) ||
+    (typeof key?.id === "string" && key.id) ||
+    (typeof dig(p, "id", "_serialized") === "string"
+      ? (dig(p, "id", "_serialized") as string)
+      : undefined);
+
+  const phone = jidToPhone(from) || String(from).replace(/\D/g, "");
+  if (!phone) return null;
+
+  const name =
+    (typeof p.pushName === "string" && p.pushName) ||
+    (typeof p.notifyName === "string" && p.notifyName) ||
+    (typeof p.name === "string" && p.name) ||
+    undefined;
+
+  return {
+    phone,
+    name,
+    content: bodyText || (mediaUrl ? "[mídia]" : "[mensagem]"),
+    externalId: rawId ? (rawId.startsWith("waha:") ? rawId : `waha:${rawId}`) : undefined,
+    fromMe,
+    mediaUrl,
+    mediaMime,
+  };
+}
+
 /**
- * WAHA — message / session.status
+ * WAHA / Evolution / Baileys — message / session.status / messages.upsert
  */
 export function parseWahaWebhook(body: unknown): ParsedWebhook {
   const root = asRecord(body) || {};
@@ -105,11 +198,27 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
 
   const result: ParsedWebhook = { messages: [] };
 
-  if (event.includes("session") || event.includes("status") || payload.status) {
-    const status = String(payload.status || dig(payload, "session", "status") || "");
+  // Status / Conexão
+  if (
+    event.includes("session") ||
+    event.includes("status") ||
+    event.includes("connection") ||
+    payload.status ||
+    payload.state
+  ) {
+    const status = String(
+      payload.status ||
+      payload.state ||
+      dig(payload, "session", "status") ||
+      dig(payload, "connection", "state") ||
+      ""
+    );
     if (status) {
       const runtime = wahaStatusToRuntime(status);
-      const meId = dig(payload, "me", "id") || dig(root, "me", "id");
+      const meId =
+        dig(payload, "me", "id") ||
+        dig(root, "me", "id") ||
+        dig(payload, "user", "id");
       result.connection = {
         state: runtime.state,
         phone: jidToPhone(meId) || null,
@@ -117,48 +226,48 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
     }
   }
 
-  // message event
-  const from =
-    (payload.from as string) ||
-    (dig(payload, "from") as string) ||
-    (dig(payload, "_data", "id", "remote") as string) ||
-    "";
-  if (typeof from === "string" && from.endsWith("@g.us")) {
-    return result;
+  // QR Code
+  const qr =
+    (typeof payload.qrcode === "string" && payload.qrcode) ||
+    (typeof root.qrcode === "string" && root.qrcode) ||
+    (typeof payload.qr === "string" && payload.qr) ||
+    (typeof dig(payload, "qrcode", "base64") === "string"
+      ? (dig(payload, "qrcode", "base64") as string)
+      : null);
+  if (qr) {
+    result.qrcode = qr;
   }
-  const fromMe = Boolean(payload.fromMe ?? dig(payload, "fromMe"));
-  const bodyText =
-    (typeof payload.body === "string" && payload.body) ||
-    (typeof payload.text === "string" && payload.text) ||
-    (typeof dig(payload, "message", "text") === "string"
-      ? (dig(payload, "message", "text") as string)
-      : "") ||
-    extractText(payload.message) ||
-    "";
 
-  const media = asRecord(payload.media);
-  const mediaUrl = media && typeof media.url === "string" ? media.url : undefined;
-  const mediaMime = media && typeof media.mimetype === "string" ? media.mimetype : undefined;
-  const rawId =
-    (typeof payload.id === "string" && payload.id) ||
-    (typeof dig(payload, "id", "_serialized") === "string"
-      ? (dig(payload, "id", "_serialized") as string)
-      : undefined);
+  // Mensagens em lote/array
+  const candidateLists = [
+    Array.isArray(payload.messages) ? payload.messages : null,
+    Array.isArray(root.messages) ? root.messages : null,
+    Array.isArray(dig(payload, "data", "messages"))
+      ? (dig(payload, "data", "messages") as unknown[])
+      : null,
+    Array.isArray(dig(root, "data", "messages"))
+      ? (dig(root, "data", "messages") as unknown[])
+      : null,
+  ];
 
-  const phone = jidToPhone(from) || String(from).replace(/\D/g, "");
-  if (phone && (bodyText || event.includes("message") || mediaUrl)) {
-    result.messages.push({
-      phone,
-      name:
-        (typeof payload.notifyName === "string" && payload.notifyName) ||
-        (typeof payload.pushName === "string" && payload.pushName) ||
-        undefined,
-      content: bodyText || "[mensagem]",
-      externalId: rawId ? `waha:${rawId}` : undefined,
-      fromMe,
-      mediaUrl,
-      mediaMime,
-    });
+  let foundArray = false;
+  for (const list of candidateLists) {
+    if (list && list.length > 0) {
+      foundArray = true;
+      for (const item of list) {
+        const parsed = parseSingleMessage(item);
+        if (parsed) result.messages.push(parsed);
+      }
+      break;
+    }
+  }
+
+  // Mensagem única
+  if (!foundArray) {
+    const single = parseSingleMessage(payload) || parseSingleMessage(root);
+    if (single) {
+      result.messages.push(single);
+    }
   }
 
   return result;

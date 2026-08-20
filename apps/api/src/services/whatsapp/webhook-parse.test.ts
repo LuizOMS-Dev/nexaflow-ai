@@ -110,4 +110,61 @@ describe("parseWahaWebhook", () => {
     expect(parsed.connection).toBeDefined();
     expect(parsed.connection?.state).toBe("close");
   });
+
+  it("processa mensagens no formato Evolution API (messages.upsert com key.remoteJid)", () => {
+    const payload = {
+      event: "messages.upsert",
+      instance: "company-instance",
+      data: {
+        key: {
+          remoteJid: "5511988776655@s.whatsapp.net",
+          fromMe: false,
+          id: "3EB0ABC123",
+        },
+        pushName: "Maria Souza",
+        message: {
+          conversation: "Olá, quero fazer um orçamento",
+        },
+        messageType: "conversation",
+      },
+    };
+
+    const parsed = parseWahaWebhook(payload);
+    expect(parsed.messages).toHaveLength(1);
+    expect(parsed.messages[0]).toEqual({
+      phone: "5511988776655",
+      name: "Maria Souza",
+      content: "Olá, quero fazer um orçamento",
+      externalId: "waha:3EB0ABC123",
+      fromMe: false,
+      mediaUrl: undefined,
+      mediaMime: undefined,
+    });
+  });
+
+  it("processa lote de mensagens em array (data.messages)", () => {
+    const payload = {
+      event: "messages.upsert",
+      data: {
+        messages: [
+          {
+            key: {
+              remoteJid: "5511911112222@s.whatsapp.net",
+              fromMe: false,
+              id: "msg-batch-1",
+            },
+            pushName: "Carlos",
+            message: {
+              extendedTextMessage: { text: "Mensagem 1" },
+            },
+          },
+        ],
+      },
+    };
+
+    const parsed = parseWahaWebhook(payload);
+    expect(parsed.messages).toHaveLength(1);
+    expect(parsed.messages[0].phone).toBe("5511911112222");
+    expect(parsed.messages[0].content).toBe("Mensagem 1");
+  });
 });
