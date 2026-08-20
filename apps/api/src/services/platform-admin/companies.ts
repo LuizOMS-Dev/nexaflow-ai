@@ -388,27 +388,18 @@ export async function createCompany(
 
   const preexistingAdmin = await prisma.user.findUnique({
     where: { email },
-    include: { memberships: { select: { id: true } } },
+    include: { memberships: { select: { id: true, isActive: true } } },
   });
   if (
     preexistingAdmin &&
     preexistingAdmin.platformRole !== "SUPERADMIN" &&
-    preexistingAdmin.memberships.length === 0
+    !preexistingAdmin.memberships.some((m) => m.isActive)
   ) {
     const { recycleOrphanCompanyUser } = await import("./tenant-deletion");
     await recycleOrphanCompanyUser(preexistingAdmin.id);
   }
   const liveAdmin = await prisma.user.findUnique({ where: { email } });
-  if (liveAdmin && accessMethod === "temporary_password") {
-    throw new AppError(
-      "Este e-mail já possui uma conta no NexaFlow. A senha não foi alterada. Peça para a pessoa entrar com a senha que já usa.",
-      409,
-      "ADMIN_USER_EXISTS"
-    );
-  }
-  const newAdminCreds = liveAdmin
-    ? null
-    : await credentialsForNewUser(accessMethod, input.adminPassword);
+  const newAdminCreds = await credentialsForNewUser(accessMethod, input.adminPassword);
 
   let created;
   try {
@@ -449,13 +440,13 @@ export async function createCompany(
           (await tx.plan.findFirst({ where: { isActive: true }, orderBy: { priceMonthly: "asc" } }));
       }
 
-      // 3. Usuário Administrador (reutiliza existente sem sobrescrever senha/MFA/status)
+      // 3. Usuário Administrador (cria novo ou atualiza existente)
       let user = await tx.user.findUnique({ where: { email } });
       let isNewUser = false;
       let firstAccess: FirstAccessMethod | "existing" = "existing";
       if (!user) {
         isNewUser = true;
-        const creds = newAdminCreds ?? (await credentialsForNewUser(accessMethod, input.adminPassword));
+        const creds = newAdminCreds;
         firstAccess = creds.method;
         user = await tx.user.create({
           data: {
@@ -467,12 +458,20 @@ export async function createCompany(
             mustChangePassword: creds.mustChangePassword,
           },
         });
-      } else if (accessMethod === "temporary_password") {
-        throw new AppError(
-          "Este e-mail já possui uma conta no NexaFlow. A senha não foi alterada. Peça para a pessoa entrar com a senha que já usa.",
-          409,
-          "ADMIN_USER_EXISTS"
-        );
+      } else {
+        // Usuário existente: se nova senha foi fornecida, atualiza com a nova senha
+        if (input.adminPassword?.trim() && accessMethod === "temporary_password") {
+          const creds = await credentialsForNewUser(accessMethod, input.adminPassword);
+          await tx.user.update({
+            where: { id: user.id },
+            data: {
+              passwordHash: creds.passwordHash,
+              mustChangePassword: creds.mustChangePassword,
+              status: "ACTIVE",
+              isActive: true,
+            },
+          });
+        }
       }
 
       // 4. Criação do Tenant

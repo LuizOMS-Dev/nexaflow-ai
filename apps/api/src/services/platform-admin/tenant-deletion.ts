@@ -156,22 +156,24 @@ async function deleteExclusiveCompanyUsers(
     select: {
       id: true,
       platformRole: true,
-      memberships: { select: { id: true } },
+      memberships: { select: { id: true, isActive: true } },
     },
   });
 
   const deletedUserIds: string[] = [];
   const preservedUserIds: string[] = [];
   for (const u of users) {
+    const hasActiveMemberships = u.memberships.some((m) => m.isActive);
     const keep =
       u.id === actorSub ||
       u.platformRole === "SUPERADMIN" ||
-      u.memberships.length > 0;
+      hasActiveMemberships;
     if (keep) preservedUserIds.push(u.id);
     else deletedUserIds.push(u.id);
   }
   if (!deletedUserIds.length) return { deletedUserIds, preservedUserIds };
 
+  await tx.membership.deleteMany({ where: { userId: { in: deletedUserIds } } });
   await tx.note.deleteMany({ where: { authorId: { in: deletedUserIds } } });
   await tx.message.updateMany({
     where: { authorId: { in: deletedUserIds } },
@@ -191,16 +193,68 @@ async function deleteExclusiveCompanyUsers(
   });
   await tx.notification.deleteMany({ where: { userId: { in: deletedUserIds } } });
   await tx.helpAssistantThread.deleteMany({ where: { userId: { in: deletedUserIds } } });
+  await tx.contact.updateMany({
+    where: { responsibleUserId: { in: deletedUserIds } },
+    data: { responsibleUserId: null },
+  });
   await tx.user.deleteMany({ where: { id: { in: deletedUserIds } } });
 
   return { deletedUserIds, preservedUserIds };
 }
 
-/** Conta sem membership (empresa já apagada): libera o e-mail para novo cadastro. */
+/** Conta sem membership ativo (empresa já apagada): libera o e-mail para novo cadastro. */
 export async function recycleOrphanCompanyUser(userId: string) {
   await prisma.$transaction(async (tx) => {
+    await tx.membership.deleteMany({ where: { userId } });
     await deleteExclusiveCompanyUsers(tx, [userId], "system");
   });
+}
+
+/** Varre e remove todos os usuários sem empresas associadas (exceto SUPERADMIN). */
+export async function purgeAllOrphanUsers(tx?: Prisma.TransactionClient) {
+  const client = tx || prisma;
+  const orphans = await client.user.findMany({
+    where: {
+      platformRole: null,
+      OR: [
+        { memberships: { none: {} } },
+        { memberships: { every: { isActive: false } } },
+      ],
+    },
+    select: { id: true, email: true },
+  });
+
+  if (!orphans.length) return { count: 0, ids: [] };
+
+  const orphanIds = orphans.map((o) => o.id);
+
+  await client.membership.deleteMany({ where: { userId: { in: orphanIds } } });
+  await client.note.deleteMany({ where: { authorId: { in: orphanIds } } });
+  await client.message.updateMany({
+    where: { authorId: { in: orphanIds } },
+    data: { authorId: null },
+  });
+  await client.conversation.updateMany({
+    where: { assignedToId: { in: orphanIds } },
+    data: { assignedToId: null },
+  });
+  await client.task.updateMany({
+    where: { assigneeId: { in: orphanIds } },
+    data: { assigneeId: null },
+  });
+  await client.task.updateMany({
+    where: { creatorId: { in: orphanIds } },
+    data: { creatorId: null },
+  });
+  await client.notification.deleteMany({ where: { userId: { in: orphanIds } } });
+  await client.helpAssistantThread.deleteMany({ where: { userId: { in: orphanIds } } });
+  await client.contact.updateMany({
+    where: { responsibleUserId: { in: orphanIds } },
+    data: { responsibleUserId: null },
+  });
+  await client.user.deleteMany({ where: { id: { in: orphanIds } } });
+
+  return { count: orphanIds.length, ids: orphanIds };
 }
 
 async function cleanupSideEffects(side: {

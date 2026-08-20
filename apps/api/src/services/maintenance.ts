@@ -44,6 +44,14 @@ export async function runMaintenanceCleanup(): Promise<MaintenanceResult> {
     }),
   ]);
 
+  // Purga usuários de empresas apagadas que ficaram sem membership
+  try {
+    const { purgeAllOrphanUsers } = await import("./platform-admin/tenant-deletion");
+    await purgeAllOrphanUsers();
+  } catch {
+    /* best-effort */
+  }
+
   return {
     passwordResets: passwordResets.count,
     mfaChallenges: mfaChallenges.count,

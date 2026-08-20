@@ -1029,10 +1029,11 @@ function CreateCompanyModal({
             </div>
 
             {existingUser ? (
-              <ConsequenceBanner tone="warning">
-                Este usuário já possui uma conta no NexaFlow e será apenas vinculado à nova empresa.
+              <ConsequenceBanner tone="info">
+                Este e-mail já possui conta em outra empresa no NexaFlow. Ele será vinculado como administrador desta nova empresa.
               </ConsequenceBanner>
-            ) : (
+            ) : null}
+
             <div>
               <span className="mb-1.5 block text-[12px] font-medium text-gray-300">Primeiro acesso</span>
               <RadioGroup
@@ -1095,7 +1096,6 @@ function CreateCompanyModal({
                 <input type="hidden" name="adminPassword" value="" />
               )}
             </div>
-            )}
           </div>
         </div>
 
