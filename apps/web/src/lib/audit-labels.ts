@@ -144,6 +144,8 @@ const EXACT_TITLES: Record<string, string> = {
   "company.plan_changed": "Plano da empresa alterado",
   "company.deletion_requested": "Exclusão de empresa solicitada",
   "company.deletion_canceled": "Exclusão de empresa cancelada",
+  "company.deletion_cancelled": "Exclusão de empresa cancelada",
+  "company.deletion_scheduled": "Exclusão de empresa agendada",
   "company.deleted": "Empresa excluída",
 
   // Usuários

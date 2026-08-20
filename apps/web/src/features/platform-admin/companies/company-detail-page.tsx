@@ -352,7 +352,12 @@ export function CompanyDetailPage({ id }: { id: string }) {
         onClose={() => setDelOpen(false)}
         onConfirm={async (confirmName, reason) => {
           try {
-            await platformAdminApi.deleteCompany(c.id, { confirmName, reason });
+            await platformAdminApi.deleteCompany(c.id, {
+              confirmName,
+              acknowledged: true,
+              mode: "now",
+              reason,
+            });
             toast({
               title: "Exclusão solicitada",
               description: "O pedido de exclusão foi registrado e os dados foram preservados.",

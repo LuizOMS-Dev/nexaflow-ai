@@ -30,6 +30,7 @@ import {
   MoneyInput,
   RadioGroup,
   Select,
+  Checkbox,
   useToast,
 } from "@/components/ui";
 import { UserAvatar } from "@/components/user-avatar";
@@ -182,6 +183,14 @@ type TenantDetail = {
     cancelledAt?: string | null;
     cancelReason?: string | null;
     deletionRequestedAt?: string | null;
+  };
+  scheduledDeletionAt?: string | null;
+  deletionPreviousStatus?: string | null;
+  scheduleEligibility?: {
+    canSchedule: boolean;
+    at?: string | null;
+    civilDate?: string | null;
+    reason?: string | null;
   };
   lastActivityAt?: string | null;
   auditLogs: Array<{
@@ -361,6 +370,8 @@ export default function AdminTenantPage() {
   const [suspendReason, setSuspendReason] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [deleteAck, setDeleteAck] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"now" | "schedule">("now");
   const [impOpen, setImpOpen] = useState(false);
   const [stepUpOpen, setStepUpOpen] = useState(false);
   const [stepUpForm, setStepUpForm] = useState({ password: "", code: "" });
@@ -539,23 +550,55 @@ export default function AdminTenantPage() {
 
   const archive = useMutation({
     mutationFn: () =>
-      api(`/admin/tenants/${id}`, {
+      api<{
+        deleted?: boolean;
+        scheduled?: boolean;
+        civilDate?: string | null;
+        message?: string;
+      }>(`/admin/tenants/${id}`, {
         method: "DELETE",
-        json: { confirmName: deleteConfirm, mode: "soft" },
+        json: {
+          confirmName: deleteConfirm,
+          acknowledged: deleteAck,
+          mode: deleteMode,
+        },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setDeleteOpen(false);
+      setDeleteConfirm("");
+      setDeleteAck(false);
+      qc.invalidateQueries({ queryKey: ["admin-tenant", id] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
       qc.invalidateQueries({ queryKey: ["admin-tenants"] });
+      if (res.deleted) {
+        toast({
+          kind: "success",
+          title: "Empresa excluída",
+          description: "A exclusão é definitiva. Usuários globais foram preservados.",
+        });
+        router.push("/admin/companies");
+        return;
+      }
       toast({
         kind: "success",
-        title: "Exclusão solicitada",
-        description: "Dados preservados. Acesso bloqueado.",
+        title: "Exclusão agendada",
+        description: res.message || "A empresa segue operando até a data.",
       });
-      router.push("/admin/companies");
     },
     onError: (e: Error) =>
-      toast({ kind: "error", title: "Não foi possível solicitar exclusão", description: e.message }),
+      toast({ kind: "error", title: "Não foi possível excluir", description: e.message }),
+  });
+
+  const cancelDeletion = useMutation({
+    mutationFn: () => api(`/admin/tenants/${id}/cancel-deletion`, { method: "POST", json: {} }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-tenant", id] });
+      qc.invalidateQueries({ queryKey: ["admin-overview"] });
+      qc.invalidateQueries({ queryKey: ["admin-tenants"] });
+      toast({ kind: "success", title: "Exclusão agendada cancelada" });
+    },
+    onError: (e: Error) =>
+      toast({ kind: "error", title: "Não foi possível cancelar", description: e.message }),
   });
 
   const updateMember = useMutation({
@@ -756,7 +799,7 @@ export default function AdminTenantPage() {
     t.status !== "SUSPENDED" &&
     t.status !== "CANCELLED" &&
     t.status !== "BLOCKED" &&
-    t.status !== "PENDING_DELETION";
+    !(t.status === "PENDING_DELETION" && !t.scheduledDeletionAt);
   const canRegisterPayment = t.hasCharge !== false && t.priceKind !== "ON_REQUEST" && t.priceKind !== "FREE";
   const isOverdue =
     t.financialStatus === "OVERDUE" ||
@@ -1487,24 +1530,14 @@ export default function AdminTenantPage() {
                   Desbloquear
                 </button>
               )}
-              {(t.status === "SUSPENDED" ||
-                t.status === "CANCELLED" ||
-                t.status === "PENDING_DELETION") && (
+              {(t.status === "SUSPENDED" || t.status === "CANCELLED") && (
                 <button
                   type="button"
                   className="admin-btn-primary"
                   disabled={setStatus.isPending}
-                  onClick={() =>
-                    setStatus.mutate(
-                      t.status === "PENDING_DELETION"
-                        ? { action: "cancel_deletion" }
-                        : { action: "reactivate" }
-                    )
-                  }
+                  onClick={() => setStatus.mutate({ action: "reactivate" })}
                 >
-                  {t.status === "PENDING_DELETION"
-                    ? "Cancelar exclusão"
-                    : "Reativar empresa"}
+                  Reativar empresa
                 </button>
               )}
               {t.status !== "CANCELLED" && t.status !== "PENDING_DELETION" && (
@@ -1529,17 +1562,44 @@ export default function AdminTenantPage() {
             title="Zona de perigo"
             className="border-red-400/20"
           >
-            <p className="mb-4 text-[13px] leading-relaxed text-gray-400">
-              Agenda a exclusão. Dados e WhatsApp não são apagados automaticamente.
-            </p>
-            <button
-              type="button"
-              className="admin-btn-danger"
-              disabled={t.status === "PENDING_DELETION"}
-              onClick={() => setDeleteOpen(true)}
-            >
-              Excluir empresa…
-            </button>
+            {t.status === "PENDING_DELETION" && t.scheduledDeletionAt ? (
+              <div className="space-y-3">
+                <p className="text-[13px] font-medium text-amber-200">
+                  Exclusão agendada para {formatCivilDate(t.scheduledDeletionAt)}
+                </p>
+                <p className="text-[13px] leading-relaxed text-gray-400">
+                  A empresa continua operando até essa data. Depois disso os dados do tenant
+                  são removidos. Usuários globais não são apagados.
+                </p>
+                <button
+                  type="button"
+                  className="admin-btn-secondary"
+                  disabled={cancelDeletion.isPending}
+                  onClick={() => cancelDeletion.mutate()}
+                >
+                  {cancelDeletion.isPending ? "Cancelando…" : "Cancelar exclusão"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="mb-4 text-[13px] leading-relaxed text-gray-400">
+                  Exclusão definitiva remove dados da empresa (WhatsApp, conversas, knowledge,
+                  cobrança). Usuários da plataforma não são apagados.
+                </p>
+                <button
+                  type="button"
+                  className="admin-btn-danger"
+                  onClick={() => {
+                    setDeleteConfirm("");
+                    setDeleteAck(false);
+                    setDeleteMode("now");
+                    setDeleteOpen(true);
+                  }}
+                >
+                  Excluir empresa…
+                </button>
+              </>
+            )}
           </AdminSection>
         </div>
       )}
@@ -1825,17 +1885,22 @@ export default function AdminTenantPage() {
 
       <Modal
         open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        onClose={() => {
+          if (archive.isPending) return;
+          setDeleteOpen(false);
+        }}
         title={`Excluir ${t.name}?`}
-        description="Digite o nome da empresa para confirmar."
+        description="A exclusão é definitiva. Escolha quando executar."
         variant="danger"
         tone="danger"
-        size="sm"
+        size="md"
+        preventClose={archive.isPending}
         footer={
           <DialogFooter>
             <button
               type="button"
               className="admin-btn-secondary"
+              disabled={archive.isPending}
               onClick={() => setDeleteOpen(false)}
             >
               Cancelar
@@ -1843,22 +1908,72 @@ export default function AdminTenantPage() {
             <button
               type="button"
               className="admin-btn-danger"
-              disabled={deleteConfirm.trim() !== t.name || archive.isPending}
+              disabled={
+                archive.isPending ||
+                !deleteAck ||
+                deleteConfirm.trim() !== t.name ||
+                (deleteMode === "schedule" && !t.scheduleEligibility?.canSchedule)
+              }
               onClick={() => archive.mutate()}
             >
-              {archive.isPending ? "Processando…" : "Excluir empresa"}
+              {archive.isPending
+                ? "Processando…"
+                : deleteMode === "schedule"
+                  ? "Agendar para o vencimento"
+                  : "Excluir agora"}
             </button>
           </DialogFooter>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           <EntitySummary
             title={t.name}
             subtitle={t.plan?.name ? `Plano ${t.plan.name}` : undefined}
             meta={[
-              { label: "Impacto", value: "Acesso bloqueado · dados preservados" },
+              {
+                label: "Impacto",
+                value:
+                  deleteMode === "now"
+                    ? "Remove dados do tenant agora · usuários globais preservados"
+                    : "Empresa opera até o vencimento · exclusão automática na data",
+              },
             ]}
           />
+          <RadioGroup
+            aria-label="Quando excluir"
+            value={deleteMode}
+            onChange={(v) => setDeleteMode(v as "now" | "schedule")}
+            disabled={archive.isPending}
+            options={[
+              {
+                value: "now",
+                label: "Excluir agora",
+                description: "Exclusão imediata e definitiva de todos os dados da empresa.",
+              },
+              {
+                value: "schedule",
+                label: t.scheduleEligibility?.civilDate
+                  ? `Agendar para o vencimento (${formatCivilDate(t.scheduleEligibility.civilDate)})`
+                  : "Agendar para o vencimento",
+                description: t.scheduleEligibility?.canSchedule
+                  ? `A empresa segue operando até ${formatCivilDate(t.scheduleEligibility.civilDate)}.`
+                  : t.scheduleEligibility?.reason || "Não há próximo vencimento válido.",
+                disabled: !t.scheduleEligibility?.canSchedule,
+              },
+            ]}
+          />
+          <label className="flex cursor-pointer items-start gap-3 text-[13px] text-gray-300">
+            <Checkbox
+              checked={deleteAck}
+              onCheckedChange={setDeleteAck}
+              disabled={archive.isPending}
+              aria-label="Confirmar que a exclusão é definitiva"
+            />
+            <span>
+              Entendo que a exclusão é definitiva e que os dados desta empresa serão
+              removidos. Usuários globais não serão apagados.
+            </span>
+          </label>
           <FormField label={`Digite "${t.name}"`} required>
             <input
               className="input"
@@ -1867,6 +1982,7 @@ export default function AdminTenantPage() {
               placeholder={t.name}
               aria-label="Confirmar nome da empresa"
               autoComplete="off"
+              disabled={archive.isPending}
             />
           </FormField>
         </div>

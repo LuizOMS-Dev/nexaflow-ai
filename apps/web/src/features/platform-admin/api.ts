@@ -45,8 +45,18 @@ export const platformAdminApi = {
     body: { amount: number; method?: string; notes?: string; referencePeriod?: string }
   ) => api(`/admin/tenants/${id}/payments`, { method: "POST", json: body }),
 
-  deleteCompany: (id: string, body: { confirmName: string; reason?: string }) =>
-    api(`/admin/tenants/${id}`, { method: "DELETE", json: body }),
+  deleteCompany: (
+    id: string,
+    body: {
+      confirmName: string;
+      acknowledged: boolean;
+      mode: "now" | "schedule";
+      reason?: string;
+    }
+  ) => api(`/admin/tenants/${id}`, { method: "DELETE", json: body }),
+
+  cancelCompanyDeletion: (id: string) =>
+    api(`/admin/tenants/${id}/cancel-deletion`, { method: "POST", json: {} }),
 
   impersonate: (body: { tenantId: string; reason: string; userId?: string }) =>
     api<{
