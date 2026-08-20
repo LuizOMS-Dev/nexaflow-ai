@@ -1230,6 +1230,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (endingImpersonation) return;
     setEndingImpersonation(true);
     try {
+      sessionStorage.removeItem("nexaflow_impersonating");
+    } catch {
+      /* ignore */
+    }
+    try {
       const data = await import("@/lib/api").then(({ api }) =>
         api<{
           accessToken: string;
@@ -1257,15 +1262,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         user: data.user,
         tenant: null,
         memberships: data.memberships || [],
+        impersonating: false,
       });
-      window.location.href = "/admin/companies";
-    } catch {
+      window.location.replace("/admin/companies");
+    } catch (err) {
       try {
         sessionStorage.removeItem("nexaflow_impersonating");
       } catch {
         /* ignore */
       }
-      window.location.href = "/admin/companies";
+      window.location.replace("/admin/companies");
     }
   }
 

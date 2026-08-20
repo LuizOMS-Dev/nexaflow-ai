@@ -46,6 +46,8 @@ export function useRealtime() {
       const p = pendingRef.current;
       if (p.conversations) {
         void qc.invalidateQueries({ queryKey: ["conversations"] });
+        void qc.invalidateQueries({ queryKey: ["conversation-nav-counts"] });
+        void qc.refetchQueries({ queryKey: ["conversations"], type: "active" });
       }
       if (p.dashboard) {
         void qc.invalidateQueries({ queryKey: ["dashboard"] });

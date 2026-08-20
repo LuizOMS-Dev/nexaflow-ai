@@ -87,16 +87,11 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   const hydrated = useAuth((s) => s.hydrated);
   const hydrate = useAuth((s) => s.hydrate);
   const logout = useAuth((s) => s.logout);
-  const [impersonating, setImpersonating] = useState(false);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
-
-  useEffect(() => {
-    setImpersonating(readImp());
-  }, []);
 
   useEffect(() => {
     document.documentElement.classList.add("nf-panel-lock");
@@ -111,16 +106,22 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
-    if (impersonating) {
+    if (user.platformRole !== "SUPERADMIN") {
       router.replace("/app");
+    } else {
+      try {
+        sessionStorage.removeItem("nexaflow_impersonating");
+      } catch {
+        /* ignore */
+      }
     }
-  }, [hydrated, user, impersonating, router]);
+  }, [hydrated, user, router]);
 
   const mfa = useQuery({
     queryKey: ["mfa-status"],
     queryFn: () =>
       api<{ enabled: boolean; requiredForAdmin?: boolean }>("/auth/mfa/status"),
-    enabled: hydrated && user?.platformRole === "SUPERADMIN" && !impersonating,
+    enabled: hydrated && user?.platformRole === "SUPERADMIN",
     staleTime: 60_000,
     retry: false,
   });
@@ -148,14 +149,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             Ir para o login
           </Link>
         </div>
-      </div>
-    );
-  }
-
-  if (impersonating) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#07080c]">
-        <Spinner />
       </div>
     );
   }

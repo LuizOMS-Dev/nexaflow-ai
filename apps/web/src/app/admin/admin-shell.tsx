@@ -25,18 +25,23 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const user = useAuth((s) => s.user);
   const hydrated = useAuth((s) => s.hydrated);
-  const [impersonating, setImpersonating] = useState(false);
-
-  useEffect(() => {
-    setImpersonating(isClientImpersonating());
-  }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    if (user?.platformRole !== "SUPERADMIN" || impersonating) {
-      if (impersonating) router.replace("/app");
+    if (!user) {
+      router.replace("/login");
+      return;
     }
-  }, [hydrated, user, impersonating, router]);
+    if (user.platformRole !== "SUPERADMIN") {
+      router.replace("/app");
+    } else {
+      try {
+        sessionStorage.removeItem("nexaflow_impersonating");
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [hydrated, user, router]);
 
   const mfaStatus = useQuery({
     queryKey: ["mfa-status"],
@@ -48,7 +53,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         policyRequired?: boolean;
         exempt?: boolean;
       }>("/auth/mfa/status"),
-    enabled: hydrated && user?.platformRole === "SUPERADMIN" && !impersonating,
+    enabled: hydrated && user?.platformRole === "SUPERADMIN",
     staleTime: 60_000,
     retry: false,
     refetchOnWindowFocus: false,
@@ -68,17 +73,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         icon={<Shield className="h-5 w-5" strokeWidth={1.5} />}
         title="Acesso restrito"
         description="Somente superadministradores têm acesso a esta área."
-        compact={false}
-      />
-    );
-  }
-
-  if (impersonating) {
-    return (
-      <AdminEmptyState
-        icon={<Activity className="h-5 w-5" strokeWidth={1.5} />}
-        title="Impersonação ativa"
-        description="Encerre o acesso à empresa para voltar à Administração."
         compact={false}
       />
     );

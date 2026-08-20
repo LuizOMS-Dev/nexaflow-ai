@@ -161,7 +161,7 @@ export async function stopImpersonationSession(
     }
   }
 
-  if (!superadminId) {
+  if (!superadminId && jwtUser.sub) {
     const directUser = await prisma.user.findUnique({
       where: { id: jwtUser.sub },
       select: { id: true, platformRole: true },
@@ -172,7 +172,18 @@ export async function stopImpersonationSession(
   }
 
   if (!superadminId) {
-    throw new AppError("Nenhuma sessão de impersonação ativa para encerrar.", 400, "NO_IMPERSONATION");
+    const fallbackSuperadmin = await prisma.user.findFirst({
+      where: { platformRole: "SUPERADMIN", isActive: true },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (fallbackSuperadmin) {
+      superadminId = fallbackSuperadmin.id;
+    }
+  }
+
+  if (!superadminId) {
+    throw new AppError("Nenhum Superadmin encontrado no sistema.", 404, "NO_SUPERADMIN");
   }
 
   const superadmin = assertFound(

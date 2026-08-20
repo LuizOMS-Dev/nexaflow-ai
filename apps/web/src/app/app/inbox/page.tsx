@@ -758,7 +758,7 @@ function InboxInner() {
         `/conversations?${params}`
       );
     },
-    refetchInterval: 45_000,
+    refetchInterval: 4_000,
     refetchIntervalInBackground: false,
   });
 
@@ -789,8 +789,8 @@ function InboxInner() {
       );
       return Object.fromEntries(entries) as Record<OpsNav, number>;
     },
-    staleTime: 12_000,
-    refetchInterval: 30_000,
+    staleTime: 3_000,
+    refetchInterval: 8_000,
     refetchIntervalInBackground: false,
   });
 

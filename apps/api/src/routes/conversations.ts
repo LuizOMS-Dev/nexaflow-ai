@@ -110,7 +110,21 @@ export async function conversationRoutes(app: FastifyInstance) {
       })
       .parse(request.query);
 
-    const tenantId = request.user.tenantId!;
+    let tenantId = request.user.tenantId;
+    if (!tenantId && request.user.platformRole === "SUPERADMIN") {
+      const queryTenant = (request.query as Record<string, string>)?.tenantId;
+      if (queryTenant) {
+        tenantId = queryTenant;
+      } else {
+        const firstTenant = await prisma.tenant.findFirst({ select: { id: true } });
+        tenantId = firstTenant?.id || null;
+      }
+    }
+
+    if (!tenantId) {
+      return { items: [], total: 0, page: q.page, limit: q.limit };
+    }
+
     const where: Record<string, unknown> = { tenantId };
 
     if (q.status) where.status = q.status;
@@ -128,19 +142,32 @@ export async function conversationRoutes(app: FastifyInstance) {
         },
       };
     }
-    if (q.search) {
-      where.OR = [
-        { contact: { name: { contains: q.search } } },
-        { lastMessagePreview: { contains: q.search } },
-      ];
+
+    const andConditions: Array<Record<string, unknown>> = [];
+
+    if (q.search && q.search.trim()) {
+      const term = q.search.trim();
+      andConditions.push({
+        OR: [
+          { contact: { name: { contains: term, mode: "insensitive" } } },
+          { contact: { phone: { contains: term } } },
+          { lastMessagePreview: { contains: term, mode: "insensitive" } },
+        ],
+      });
     }
 
     // Atendente só vê conversas atribuídas a ele ou sem responsável (fila)
     if (request.user.role === "AGENT") {
-      where.OR = [
-        { assignedToId: request.user.sub },
-        { assignedToId: null },
-      ];
+      andConditions.push({
+        OR: [
+          { assignedToId: request.user.sub },
+          { assignedToId: null },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     const [items, total] = await Promise.all([
