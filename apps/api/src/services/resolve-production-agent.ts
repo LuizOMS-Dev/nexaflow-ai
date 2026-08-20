@@ -13,25 +13,12 @@ import { prisma } from "../lib/prisma";
  * Não cria segundo sistema: usa apenas AiAgent existente.
  */
 export async function resolveProductionAutoAgent(tenantId: string) {
-  const published = await prisma.aiAgent.findFirst({
-    where: {
-      tenantId,
-      isActive: true,
-      mode: "AUTO",
-      publishStatus: "PUBLISHED",
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-  if (published) return published;
-
-  // Legado: agentes antigos sem lifecycle rígido (não deveria ocorrer — default PUBLISHED)
-  // Mantemos fallback apenas se existir AUTO ativo com status nulo em dados corrompidos.
   return prisma.aiAgent.findFirst({
     where: {
       tenantId,
       isActive: true,
       mode: "AUTO",
-      publishStatus: { not: "ARCHIVED" },
+      publishStatus: "PUBLISHED",
     },
     orderBy: { updatedAt: "desc" },
   });

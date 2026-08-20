@@ -76,13 +76,7 @@ export async function ensureDefaultAiAgent(tenantId: string) {
       },
     });
   } else {
-    // Produção: garante agente elegível a AUTO (sem forçar se operador desativou de propósito)
     const current = existing[0];
-    const shouldEnableAuto =
-      current.mode === "SUGGEST" ||
-      current.mode === "APPROVE" ||
-      !current.isActive ||
-      current.publishStatus !== "PUBLISHED";
 
     agent = await prisma.aiAgent.update({
       where: { id: current.id },
@@ -107,14 +101,7 @@ export async function ensureDefaultAiAgent(tenantId: string) {
         model: current.model?.trim() ? current.model : anaData.model,
         // se já renomearam o agente, mantém o nome customizado
         name: current.name?.trim() ? current.name : "Ana",
-        // autoatendimento: garante AUTO + ativo + publicado na primeira cura
-        ...(shouldEnableAuto
-          ? {
-              mode: AiMode.AUTO,
-              isActive: true,
-              publishStatus: "PUBLISHED" as const,
-            }
-          : { publishStatus: current.publishStatus || "PUBLISHED" }),
+        // Nunca reativa AUTO/PUBLISHED se o operador escolheu Copiloto, Aprovação ou pausou.
       },
     });
     if (existing.length > 1) {
