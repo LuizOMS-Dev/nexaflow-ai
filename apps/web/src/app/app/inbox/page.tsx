@@ -58,6 +58,11 @@ import {
   useToast,
 } from "@/components/ui";
 import { useAuth } from "@/store/auth";
+import {
+  getContactDisplayName,
+  getContactSecondaryText,
+  formatPhone,
+} from "@/lib/format-contact";
 
 const CLOSE_REASONS = [
   { value: "COMPLETED", label: "Resolvido" },
@@ -860,6 +865,33 @@ function InboxInner() {
     }
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    function handleInbound(e: Event) {
+      const customEvent = e as CustomEvent<{
+        conversationId?: string;
+        message?: { content?: string; direction?: string };
+        conversation?: { contact?: { name?: string; phone?: string } };
+      }>;
+      const detail = customEvent.detail;
+      if (!detail) return;
+      // Se não for a conversa aberta atualmente, exibe notificação discreta
+      if (detail.conversationId && detail.conversationId !== selectedId) {
+        const contactName = getContactDisplayName(detail.conversation?.contact);
+        const snippet = (detail.message?.content || "").slice(0, 70);
+        toast({
+          kind: "info",
+          title: `Nova mensagem de ${contactName}`,
+          description: snippet || "Nova mensagem recebida no WhatsApp",
+        });
+      }
+    }
+
+    window.addEventListener("nexaflow:inbound-message", handleInbound);
+    return () => {
+      window.removeEventListener("nexaflow:inbound-message", handleInbound);
+    };
+  }, [selectedId, toast]);
+
   const sendMutation = useMutation({
     mutationFn: (payload: { content: string; isInternal?: boolean }) =>
       api<{ deliveryError?: string }>(`/conversations/${selectedId}/messages`, {
@@ -880,6 +912,25 @@ function InboxInner() {
     },
     onError: (e: Error) =>
       toast({ kind: "error", title: "Não foi possível enviar", description: e.message }),
+  });
+
+  const retryMessageMutation = useMutation({
+    mutationFn: (messageId: string) =>
+      api<{ ok: boolean; error?: string }>(
+        `/conversations/${selectedId}/messages/${messageId}/retry`,
+        { method: "POST" }
+      ),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.ok) {
+        toast({ kind: "success", title: "Mensagem reenviada", description: "Enviada com sucesso para o WhatsApp" });
+      } else {
+        toast({ kind: "error", title: "Falha no reenvio", description: res.error || "Gateway rejeitou o envio" });
+      }
+    },
+    onError: (e: Error) =>
+      toast({ kind: "error", title: "Erro ao reenviar", description: e.message }),
   });
 
   const actionMutation = useMutation({
@@ -1709,7 +1760,7 @@ function InboxInner() {
                               : "bg-surface-subtle text-ink-secondary dark:bg-white/10 dark:text-zinc-200"
                         )}
                       >
-                        {initials(c.contact.name)}
+                        {initials(getContactDisplayName(c.contact))}
                       </div>
                       {c.isUnread && (
                         <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-sky-500 dark:border-[#12151c]" />
@@ -1725,7 +1776,7 @@ function InboxInner() {
                               : "font-medium"
                           )}
                         >
-                          {c.contact.name}
+                          {getContactDisplayName(c.contact)}
                         </p>
                         <span className="shrink-0 text-[10px] tabular-nums text-ink-faint dark:text-zinc-500">
                           {showWait ? (
@@ -1849,12 +1900,19 @@ function InboxInner() {
                     <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
                   </button>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-[11px] font-semibold dark:bg-white/10">
-                    {initials(conversation.contact.name)}
+                    {initials(getContactDisplayName(conversation.contact))}
                   </div>
                   <div className="min-w-0">
-                    <h2 className="truncate font-display text-[14px] font-semibold text-ink dark:text-white">
-                      {conversation.contact.name}
-                    </h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="truncate font-display text-[14px] font-semibold text-ink dark:text-white">
+                        {getContactDisplayName(conversation.contact)}
+                      </h2>
+                      {getContactSecondaryText(conversation.contact) ? (
+                        <span className="shrink-0 text-[12px] font-normal text-ink-muted dark:text-zinc-400">
+                          {getContactSecondaryText(conversation.contact)}
+                        </span>
+                      ) : null}
+                    </div>
                     {(() => {
                       const handoff = handoffStatus({
                         ...conversation,
@@ -2327,9 +2385,19 @@ function InboxInner() {
                           ) : null}
                           <p className="whitespace-pre-wrap break-words">{m.content}</p>
                           {messageMeta(m).deliveryError || messageMeta(m).sendError ? (
-                            <p className="mt-1.5 text-[10.5px] font-medium text-red-600 dark:text-red-300">
-                              Não enviado ao WhatsApp
-                            </p>
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-1.5">
+                              <p className="text-[11px] font-medium text-red-600 dark:text-red-300">
+                                Não enviado ao WhatsApp: {String(messageMeta(m).deliveryError || messageMeta(m).sendError || "Erro no canal")}
+                              </p>
+                              <button
+                                type="button"
+                                className="rounded bg-red-500/10 px-2 py-0.5 text-[10.5px] font-medium text-red-700 hover:bg-red-500/20 dark:bg-red-400/10 dark:text-red-200"
+                                disabled={retryMessageMutation.isPending}
+                                onClick={() => retryMessageMutation.mutate(m.id)}
+                              >
+                                {retryMessageMutation.isPending ? "Reenviando…" : "Tentar novamente"}
+                              </button>
+                            </div>
                           ) : null}
                           {origin === "AI" &&
                           Array.isArray(messageMeta(m).sources) &&
@@ -2681,14 +2749,14 @@ function ContextPanel({
       <Section title="Contato" context>
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-[12px] font-semibold text-sky-900 dark:bg-sky-400/10 dark:text-sky-100">
-            {initials(conversation.contact.name)}
+            {initials(getContactDisplayName(conversation.contact))}
           </div>
           <div className="min-w-0">
             <p className="truncate font-display text-[14px] font-semibold text-ink dark:text-white">
-              {conversation.contact.name}
+              {getContactDisplayName(conversation.contact)}
             </p>
             <p className="truncate text-[12px] text-ink-muted dark:text-zinc-500">
-              {conversation.contact.phone || "Sem telefone"}
+              {formatPhone(conversation.contact.phone) || "Sem telefone"}
             </p>
             {conversation.contact.email ? (
               <p className="truncate text-[12px] text-ink-muted dark:text-zinc-500">

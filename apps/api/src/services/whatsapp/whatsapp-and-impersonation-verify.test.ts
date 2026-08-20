@@ -1,7 +1,7 @@
 ﻿import { describe, expect, it } from "vitest";
 import { parseWahaWebhook } from "./webhook-parse";
 import { normalizePhone } from "./types";
-import { phoneLookupVariants } from "../../lib/contact-fields";
+import { phoneLookupVariants, cleanJid, formatDisplayPhone, resolveContactNameWithPriority } from "../../lib/contact-fields";
 
 describe("1. WhatsApp Webhook Parser — Todos os Formatos Reais", () => {
   it("WAHA: processa mensagem de texto simples", () => {
@@ -28,6 +28,24 @@ describe("1. WhatsApp Webhook Parser — Todos os Formatos Reais", () => {
       mediaUrl: undefined,
       mediaMime: undefined,
     });
+  });
+
+  it("WAHA: descarta pushName que é apenas JID ou telefone", () => {
+    const payload = {
+      event: "message",
+      session: "empresa-1",
+      payload: {
+        id: "msg_jid_push",
+        from: "5511999998888@c.us",
+        body: "Olá",
+        fromMe: false,
+        pushName: "5511999998888@s.whatsapp.net",
+      },
+    };
+
+    const result = parseWahaWebhook(payload);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].name).toBeUndefined();
   });
 
   it("WAHA: processa mensagem com mídia / documento", () => {
@@ -173,16 +191,44 @@ describe("1. WhatsApp Webhook Parser — Todos os Formatos Reais", () => {
   });
 });
 
-describe("2. Normalização e Variantes de Telefone WhatsApp", () => {
+describe("2. Normalização e Resolução de Contato", () => {
   it("normaliza telefones com DDI, DDD e formatação brasileira", () => {
     expect(normalizePhone("+55 (11) 98888-7777")).toBe("5511988887777");
     expect(normalizePhone("11 98888-7777")).toBe("11988887777");
     expect(normalizePhone("5511988887777")).toBe("5511988887777");
   });
 
-  it("gera variantes com 8 e 9 dígitos para lookup tolerante", () => {
-    const variants = phoneLookupVariants("5511988887777");
-    expect(variants.length).toBeGreaterThan(0);
-    expect(variants).toContain("5511988887777");
+  it("limpa JIDs e formata exibição do telefone", () => {
+    expect(cleanJid("5534999999999@s.whatsapp.net")).toBe("5534999999999");
+    expect(formatDisplayPhone("5534999999999")).toBe("+55 (34) 99999-9999");
+  });
+
+  it("resolve prioridade de nome do contato", () => {
+    // 1. Nome existente salvo tem prioridade máxima
+    expect(
+      resolveContactNameWithPriority({
+        currentName: "Fernando Medeiros",
+        pushName: "Fernando WA",
+        phone: "5534999999999",
+      })
+    ).toBe("Fernando Medeiros");
+
+    // 2. pushName do WhatsApp substitui nome que era só telefone
+    expect(
+      resolveContactNameWithPriority({
+        currentName: "+55 (34) 99999-9999",
+        pushName: "Fernando Medeiros",
+        phone: "5534999999999",
+      })
+    ).toBe("Fernando Medeiros");
+
+    // 3. Fallback: telefone formatado
+    expect(
+      resolveContactNameWithPriority({
+        currentName: null,
+        pushName: null,
+        phone: "5534999999999",
+      })
+    ).toBe("+55 (34) 99999-9999");
   });
 });

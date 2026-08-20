@@ -154,6 +154,22 @@ export function useRealtime() {
             /* ignore */
           }
         }
+        if (event === "message.created") {
+          try {
+            const p = (msg.payload || {}) as {
+              conversationId?: string;
+              message?: { direction?: string; content?: string; authorId?: string };
+              conversation?: { contact?: { name?: string; phone?: string } };
+            };
+            if (p.message?.direction === "INBOUND") {
+              window.dispatchEvent(
+                new CustomEvent("nexaflow:inbound-message", { detail: msg.payload })
+              );
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         if (event === "platform.release.published" || event === "notification.created") {
           try {
             const p = (msg.payload || {}) as { type?: string; toast?: boolean };

@@ -78,11 +78,97 @@ export function contactIdentityOk(name?: string | null, phone?: string | null): 
   return Boolean(n || p);
 }
 
-/** Resolve nome persistido: nome digitado, senão telefone (padrão WA). */
+/**
+ * Remove sufixos de JID do WhatsApp (@c.us, @s.whatsapp.net, @g.us, etc).
+ */
+export function cleanJid(input?: string | null): string {
+  if (!input) return "";
+  return input
+    .replace(/@(c\.us|s\.whatsapp\.net|g\.us|broadcast|lid|newsletter)$/i, "")
+    .trim();
+}
+
+/**
+ * Formata telefone para exibição humana agradável.
+ * Exemplo BR: +55 (11) 98888-7777 ou +55 (34) 99999-9999
+ */
+export function formatDisplayPhone(input?: string | null): string {
+  if (!input) return "";
+  const cleaned = cleanJid(input);
+  const digits = digitsOnly(cleaned);
+  if (!digits) return cleaned;
+
+  // Brasil com DDI: 55 + DDD (2) + 9 dígitos ou 8 dígitos
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
+    const ddd = digits.slice(2, 4);
+    const num = digits.slice(4);
+    if (num.length === 9) {
+      return `+55 (${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`;
+    }
+    return `+55 (${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
+  }
+
+  // Brasil sem DDI: DDD (2) + 9 ou 8 dígitos
+  if (digits.length === 11) {
+    const ddd = digits.slice(0, 2);
+    const num = digits.slice(2);
+    return `+55 (${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`;
+  }
+  if (digits.length === 10) {
+    const ddd = digits.slice(0, 2);
+    const num = digits.slice(2);
+    return `+55 (${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
+  }
+
+  // Outros formatos internacionais (E.164 genérico)
+  if (digits.length >= 8 && digits.length <= 15) {
+    return `+${digits}`;
+  }
+
+  return cleaned;
+}
+
+/**
+ * Verifica se uma string parece com um telefone ou identificador técnico em vez de nome real.
+ */
+export function isPhoneOrJidLike(name?: string | null): boolean {
+  if (!name) return true;
+  const t = name.trim();
+  if (!t) return true;
+  if (/@(c\.us|s\.whatsapp\.net|g\.us|broadcast)/i.test(t)) return true;
+  if (/^\+?\d{8,16}$/.test(t.replace(/[\s\-().]/g, ""))) return true;
+  return false;
+}
+
+/**
+ * Resolve o nome canônico do contato com prioridade estrita:
+ * 1. Nome já salvo e customizado pelo operador (não é telefone/JID)
+ * 2. pushName confiável vindo do WhatsApp
+ * 3. Fallback: telefone formatado amigavelmente
+ */
+export function resolveContactNameWithPriority(params: {
+  currentName?: string | null;
+  pushName?: string | null;
+  phone: string;
+}): string {
+  const current = (params.currentName || "").trim();
+  if (current && !isPhoneOrJidLike(current)) {
+    return current.slice(0, 200);
+  }
+
+  const push = cleanJid(params.pushName);
+  if (push && !isPhoneOrJidLike(push) && push.length >= 2) {
+    return push.slice(0, 200);
+  }
+
+  return formatDisplayPhone(params.phone);
+}
+
+/** Resolve nome persistido legado. */
 export function resolveContactName(name?: string | null, phoneNormalized?: string | null): string {
   const n = (name || "").trim();
-  if (n) return n.slice(0, 200);
-  if (phoneNormalized) return phoneNormalized;
+  if (n && !isPhoneOrJidLike(n)) return n.slice(0, 200);
+  if (phoneNormalized) return formatDisplayPhone(phoneNormalized);
   return "";
 }
 

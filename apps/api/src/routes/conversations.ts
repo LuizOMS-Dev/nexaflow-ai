@@ -416,7 +416,13 @@ export async function conversationRoutes(app: FastifyInstance) {
         mediaUrl: body.mediaUrl,
         externalId,
         isAiGenerated: false,
-        metadata: asInputJson(deliveryError ? { deliveryError } : {}),
+        metadata: asInputJson(
+          isInternal
+            ? {}
+            : deliveryError
+              ? { deliveryError, deliveryStatus: "FAILED", sendError: deliveryError }
+              : { deliveryStatus: "SENT" }
+        ),
       },
       include: { author: { select: { id: true, name: true, avatarUrl: true } } },
     });
@@ -465,6 +471,72 @@ export async function conversationRoutes(app: FastifyInstance) {
 
     return { ...message, deliveryError };
   });
+
+  /** Reenvio seguro de mensagem que falhou no envio para o WhatsApp */
+  app.post(
+    "/conversations/:id/messages/:messageId/retry",
+    { preHandler: [app.requirePermission("conversations.reply")] },
+    async (request) => {
+      if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);
+      const { id, messageId } = request.params as { id: string; messageId: string };
+
+      const conversation = assertFound(
+        await prisma.conversation.findFirst({
+          where: { id, tenantId: request.user.tenantId! },
+          include: { contact: true, channel: true },
+        })
+      );
+
+      const msg = assertFound(
+        await prisma.message.findFirst({
+          where: { id: messageId, conversationId: id },
+        })
+      );
+
+      if (msg.direction !== "OUTBOUND") {
+        throw new AppError("Apenas mensagens de saída podem ser reenviadas", 400);
+      }
+
+      if (conversation.channel?.type !== "WHATSAPP" || !conversation.contact.phone) {
+        throw new AppError("Canal ou telefone de destino inválido", 400);
+      }
+
+      const { dispatchWhatsAppText } = await import("../services/whatsapp");
+      const sent = await dispatchWhatsAppText({
+        channelId: conversation.channel.id,
+        to: conversation.contact.phone,
+        text: msg.content,
+        purpose: "reply",
+        tenantId: request.user.tenantId!,
+        contactId: conversation.contactId,
+        idempotencyKey: `retry:${id}:${messageId}:${Date.now()}`,
+      });
+
+      const { asInputJson } = await import("../lib/json");
+      const currentMeta = (msg.metadata || {}) as Record<string, unknown>;
+
+      const updated = await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          externalId: sent.ok ? sent.externalId : msg.externalId,
+          metadata: asInputJson({
+            ...currentMeta,
+            deliveryStatus: sent.ok ? "SENT" : "FAILED",
+            deliveryError: sent.ok ? null : (sent.error || "Falha ao reenviar"),
+            sendError: sent.ok ? null : (sent.error || true),
+            retriedAt: new Date().toISOString(),
+          }),
+        },
+      });
+
+      broadcastToTenant(request.user.tenantId!, "message.created", {
+        conversationId: id,
+        message: updated,
+      });
+
+      return { ok: sent.ok, message: updated, error: sent.error };
+    }
+  );
 
   app.patch("/conversations/:id", { preHandler: [app.requirePermission("conversations.reply")] }, async (request) => {
     if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);

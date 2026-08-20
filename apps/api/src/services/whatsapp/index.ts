@@ -76,24 +76,23 @@ export async function sendWhatsAppText(channelId: string, to: string, text: stri
 
   const { env } = await import("../../lib/env");
   const config = asConfig(channel.config);
-  // Baileys: nativo na API — não injeta URL/key de gateway externo
-  if (config.provider === "baileys" || env.waGatewayProvider === "baileys") {
-    if (!config.provider || config.provider === "waha") {
-      config.provider = "baileys";
+
+  // Provedor explícito do canal tem prioridade máxima
+  const provider = config.provider || env.waGatewayProvider || "waha";
+  config.provider = provider;
+
+  if (config.provider === "waha" || config.mode === "platform") {
+    config.baseUrl = config.baseUrl || env.waGatewayUrl || "http://waha:3000";
+    if (!config.apiKey && env.waGatewayApiKey && !/^sha512:/i.test(env.waGatewayApiKey)) {
+      config.apiKey = env.waGatewayApiKey;
     }
-  } else if (
-    (config.provider === "waha" || config.mode === "platform") &&
-    (!config.baseUrl || !config.apiKey)
-  ) {
-    config.baseUrl = config.baseUrl || env.waGatewayUrl;
-    config.apiKey = config.apiKey || env.waGatewayApiKey;
-    config.provider = "waha";
-  }
-  if (!config.instanceName) {
-    return { ok: false, error: "Instância WhatsApp não configurada no canal" };
   }
 
-  const connector = getConnector(config.provider || env.waGatewayProvider || "baileys");
+  const sessionName = config.session || config.instanceName || channel.name || "default";
+  config.session = sessionName;
+  config.instanceName = sessionName;
+
+  const connector = getConnector(provider);
   const result = await connector.sendText(config, to, text);
 
   if (!result.ok) {
@@ -139,9 +138,10 @@ export async function ingestInboundMessage(params: {
   }
 
   // Armazenamento canônico = dígitos. Lookup multi-formato (legado +).
-  const { phoneLookupVariants } = await import("../../lib/contact-fields");
-  const digits = normalizePhone(params.phone);
-  const variants = phoneLookupVariants(params.phone);
+  const { phoneLookupVariants, resolveContactNameWithPriority, cleanJid } = await import("../../lib/contact-fields");
+  const cleanedPhone = cleanJid(params.phone);
+  const digits = cleanedPhone.replace(/\D/g, "");
+  const variants = phoneLookupVariants(cleanedPhone || params.phone);
   const phoneStored = digits || variants[0] || params.phone.replace(/\D/g, "") || params.phone;
 
   const orClause: Array<Record<string, unknown>> = [];
@@ -158,10 +158,15 @@ export async function ingestInboundMessage(params: {
   const contactWasCreated = !contact;
 
   if (!contact) {
+    const initialName = resolveContactNameWithPriority({
+      currentName: null,
+      pushName: params.name,
+      phone: phoneStored,
+    });
     contact = await prisma.contact.create({
       data: {
         tenantId: params.tenantId,
-        name: params.name || phoneStored,
+        name: initialName,
         phone: phoneStored,
         source: "whatsapp",
         consentWhatsapp: true,
@@ -169,21 +174,18 @@ export async function ingestInboundMessage(params: {
       },
     });
   } else {
+    const updatedName = resolveContactNameWithPriority({
+      currentName: contact.name,
+      pushName: params.name,
+      phone: phoneStored,
+    });
     await prisma.contact.update({
       where: { id: contact.id },
       data: {
         lastInteractionAt: new Date(),
         ...(contact.stage === "archived" ? { stage: null } : {}),
-        // normaliza telefone legado para dígitos quando possível
         ...(digits && contact.phone !== digits ? { phone: digits } : {}),
-        // atualiza nome se ainda era só o número
-        ...(params.name &&
-        (!contact.name ||
-          contact.name.startsWith("+") ||
-          contact.name === contact.phone ||
-          /^\d{10,15}$/.test(contact.name))
-          ? { name: params.name }
-          : {}),
+        ...(updatedName && updatedName !== contact.name ? { name: updatedName } : {}),
       },
     });
   }
@@ -1120,7 +1122,7 @@ async function sendAiOutboundAndHandoff(params: {
 
   if (!send.ok) {
     console.error("[whatsapp] auto-reply send failed:", send.error);
-    await prisma.message.create({
+    const failMsg = await prisma.message.create({
       data: {
         conversationId: params.conversationId,
         direction: "OUTBOUND",
@@ -1129,14 +1131,17 @@ async function sendAiOutboundAndHandoff(params: {
         isAiGenerated: true,
         metadata: {
           aiAuto: true,
+          deliveryStatus: "FAILED",
+          deliveryError: send.error || "Falha no envio WhatsApp",
           sendError: send.error || true,
-          note: "Gerada pela IA mas falhou o envio no WhatsApp",
+          note: "Gerada pela IA mas o envio no WhatsApp falhou",
           platformDegradation: params.forceHandoff || false,
         },
       },
     });
     broadcastToTenant(params.tenantId, "message.created", {
       conversationId: params.conversationId,
+      message: failMsg,
     });
     // Mesmo com falha de envio, handoff + notificação se degradação
     if (params.forceHandoff && params.reason) {
@@ -1181,6 +1186,7 @@ async function sendAiOutboundAndHandoff(params: {
       isAiGenerated: true,
       metadata: {
         aiAuto: true,
+        deliveryStatus: "SENT",
         agentId: params.agentId,
         agentName: params.agentName,
         provider: params.provider,

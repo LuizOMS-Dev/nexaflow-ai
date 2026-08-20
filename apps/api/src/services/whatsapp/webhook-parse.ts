@@ -171,11 +171,21 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
   const phone = jidToPhone(from) || String(from).replace(/\D/g, "");
   if (!phone) return null;
 
-  const name =
+  const rawName =
     (typeof p.pushName === "string" && p.pushName) ||
     (typeof p.notifyName === "string" && p.notifyName) ||
     (typeof p.name === "string" && p.name) ||
+    (typeof p.verifiedName === "string" && p.verifiedName) ||
     undefined;
+
+  let name: string | undefined = undefined;
+  if (rawName && typeof rawName === "string") {
+    const cleaned = rawName.replace(/@(c\.us|s\.whatsapp\.net|g\.us|broadcast)$/i, "").trim();
+    // Só considera como nome se não for puramente dígitos de telefone
+    if (cleaned && !/^\+?\d{8,16}$/.test(cleaned.replace(/[\s\-().]/g, ""))) {
+      name = cleaned.slice(0, 200);
+    }
+  }
 
   return {
     phone,
