@@ -418,6 +418,18 @@ export async function provisionCompanyUser(
           ip: actor.ip || null,
         },
       });
+    } else if (input.accessMethod === "temporary_password" && input.temporaryPassword?.trim()) {
+      const creds = await credentialsForNewUser("temporary_password", input.temporaryPassword);
+      user = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: creds.passwordHash,
+          mustChangePassword: creds.mustChangePassword,
+          status: "ACTIVE",
+          isActive: true,
+        },
+      });
+      firstAccess = "temporary_password";
     }
 
     const existing = await tx.membership.findUnique({
@@ -542,9 +554,18 @@ export async function provisionPlatformAdmin(
       throw new AppError("Este usuário já é administrador da plataforma.", 409, "ALREADY_SUPERADMIN");
     } else {
       const previous = user.platformRole;
+      const updateData: Record<string, unknown> = { platformRole: "SUPERADMIN" };
+      if (input.accessMethod === "temporary_password" && input.temporaryPassword?.trim()) {
+        const creds = await credentialsForNewUser("temporary_password", input.temporaryPassword);
+        updateData.passwordHash = creds.passwordHash;
+        updateData.mustChangePassword = creds.mustChangePassword;
+        updateData.status = "ACTIVE";
+        updateData.isActive = true;
+        firstAccess = "temporary_password";
+      }
       user = await tx.user.update({
         where: { id: user.id },
-        data: { platformRole: "SUPERADMIN" },
+        data: updateData,
       });
       promoted = true;
       await tx.auditLog.create({

@@ -99,16 +99,12 @@ export function NewUserDialog({ open, onClose }: Props) {
     setExistingUser(false);
   }
 
-  useEffect(() => {
-    if (existingUser) setAccessMethod("invite");
-  }, [existingUser]);
-
   const mut = useMutation({
     mutationFn: async () => {
-      const firstAccess =
-        existingUser || accessMethod !== "temporary_password"
-          ? { accessMethod: "invite" as const }
-          : { accessMethod: "temporary_password" as const, temporaryPassword };
+      const isTemp = accessMethod === "temporary_password" && temporaryPassword.trim().length > 0;
+      const firstAccess = isTemp
+        ? { accessMethod: "temporary_password" as const, temporaryPassword: temporaryPassword.trim() }
+        : { accessMethod: "invite" as const };
       if (kind === "company") {
         return api<{ createdUser: boolean; reusedUser: boolean }>("/admin/users", {
           method: "POST",
@@ -182,7 +178,7 @@ export function NewUserDialog({ open, onClose }: Props) {
     if (kind === "company" && !tenantId) next.tenantId = "Selecione a empresa.";
     if (kind === "company" && !role) next.role = "Selecione o papel.";
     if (kind === "platform" && !ack) next.ack = "Confirme o acesso administrativo global.";
-    if (!existingUser && accessMethod === "temporary_password") {
+    if (accessMethod === "temporary_password") {
       if (temporaryPassword.length < 10) next.temporaryPassword = "A senha deve ter pelo menos 10 caracteres.";
       if (temporaryPassword !== temporaryPasswordConfirm) next.temporaryPasswordConfirm = "As senhas não coincidem.";
     }

@@ -883,7 +883,8 @@ function CreateCompanyModal({
     if (!adminName || adminName.length < 2)
       errs.adminName = "Nome do administrador deve ter pelo menos 2 caracteres.";
     if (!adminEmail || !adminEmail.includes("@")) errs.adminEmail = "E-mail inválido.";
-    if (!existingUser && accessMethod === "temporary_password") {
+    const isTempPassword = accessMethod === "temporary_password" || adminPassword.length > 0;
+    if (isTempPassword) {
       if (adminPassword.length < 10) errs.adminPassword = "A senha deve ter pelo menos 10 caracteres.";
       if (adminPassword !== tempConfirm) errs.adminPassword = "As senhas não coincidem.";
     }
@@ -893,13 +894,12 @@ function CreateCompanyModal({
       return;
     }
 
-    const useTempPassword = !existingUser && (accessMethod === "temporary_password" || adminPassword.length > 0);
     mut.mutate({
       name,
       adminName,
       adminEmail,
-      adminPassword: useTempPassword ? adminPassword : undefined,
-      accessMethod: existingUser ? "invite" : useTempPassword ? "temporary_password" : "invite",
+      adminPassword: isTempPassword ? adminPassword : undefined,
+      accessMethod: isTempPassword ? "temporary_password" : "invite",
       planId: selectedPlanId || undefined,
       forceSimilarName: force,
     });
