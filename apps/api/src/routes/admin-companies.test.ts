@@ -293,8 +293,7 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
         name: `Segunda Empresa ${suffix}`,
         adminEmail: existingEmail,
         adminName: "Existing Admin User",
-        // Senha enviada no formulário NÃO deve sobrepor a senha atual do usuário
-        adminPassword: "AttemptedNewPassword123!",
+        accessMethod: "invite",
       },
     });
 
@@ -312,6 +311,71 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
       where: { tenantId: tenant.id, userId: existingUser.id },
     });
     expect(membership?.role).toBe("ADMIN");
+  });
+
+  it("5b. Senha temporária do admin inicial permite login (troca no primeiro acesso)", async () => {
+    const email = `admin-login-${suffix}@test.nexaflow.local`;
+    const password = "SenhaInicial123!";
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Login ${suffix}`,
+        adminEmail: email,
+        adminName: "Admin Login",
+        adminPassword: password,
+        accessMethod: "temporary_password",
+        planId: createdPlanIds[0],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    createdTenantIds.push(res.json().id);
+    const adminUser = await prisma.user.findUnique({ where: { email } });
+    expect(adminUser?.mustChangePassword).toBe(true);
+    if (adminUser) createdUserIds.push(adminUser.id);
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email, password },
+    });
+    expect(login.statusCode).toBe(200);
+    const body = login.json() as { mustChangePassword?: boolean; resetToken?: string; error?: string };
+    expect(body.error).toBeUndefined();
+    expect(body.mustChangePassword).toBe(true);
+    expect(body.resetToken).toBeTruthy();
+  });
+
+  it("5c. Senha temporária em e-mail já existente não substitui a senha da conta", async () => {
+    const existingEmail = `keep-pass-${suffix}@test.nexaflow.local`;
+    const hash = await hashPassword("SenhaQueJaExiste1");
+    const existingUser = await prisma.user.create({
+      data: {
+        email: existingEmail,
+        name: "Conta Existente",
+        passwordHash: hash,
+        status: "ACTIVE",
+      },
+    });
+    createdUserIds.push(existingUser.id);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Keep ${suffix}`,
+        adminEmail: existingEmail,
+        adminName: "Conta Existente",
+        adminPassword: "NovaSenhaIgnorada123",
+        accessMethod: "temporary_password",
+        planId: createdPlanIds[0],
+      },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("ADMIN_USER_EXISTS");
   });
 
   it("6. Rejeição de Plano Indisponível ou Desativado", async () => {

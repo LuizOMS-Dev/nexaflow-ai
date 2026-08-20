@@ -295,15 +295,33 @@ export default function LoginPage() {
           json: { token: resetToken, password },
         });
         setResetToken(null);
-        setPassword("");
-        setPassword2("");
-        setView("reset-done");
-        setLoading(false);
         try {
           window.history.replaceState({}, "", "/login");
         } catch {
           /* ignore */
         }
+        if (email.includes("@")) {
+          const data = await api<LoginOk>("/auth/login", {
+            method: "POST",
+            json: { email: email.trim().toLowerCase(), password },
+          });
+          if (data.mustChangePassword && data.resetToken) {
+            setResetToken(data.resetToken);
+            setPassword("");
+            setPassword2("");
+            setView("reset");
+            setLoading(false);
+            return;
+          }
+          if (data.accessToken || data.token) {
+            finishLogin(data);
+            return;
+          }
+        }
+        setPassword("");
+        setPassword2("");
+        setView("reset-done");
+        setLoading(false);
       } catch (err) {
         const message =
           err instanceof ApiError
@@ -352,6 +370,12 @@ export default function LoginPage() {
         });
         if (data.mustChangePassword && data.resetToken) {
           setResetToken(data.resetToken);
+          setPassword("");
+          setPassword2("");
+          setInfo(
+            data.message ||
+              "Senha temporária aceita. Defina agora a senha definitiva para entrar."
+          );
           setView("reset");
           setMfaToken(null);
           setLoading(false);
@@ -398,6 +422,12 @@ export default function LoginPage() {
 
       if (data.mustChangePassword && data.resetToken) {
         setResetToken(data.resetToken);
+        setPassword("");
+        setPassword2("");
+        setInfo(
+          data.message ||
+            "Senha temporária aceita. Defina agora a senha definitiva para entrar."
+        );
         setView("reset");
         setLoading(false);
         return;
@@ -464,7 +494,7 @@ export default function LoginPage() {
           : view === "forgot-sent"
             ? undefined
             : view === "reset"
-              ? "Defina uma nova senha. Mínimo de 10 caracteres."
+              ? "A senha temporária foi aceita. Defina a senha definitiva (mínimo 10 caracteres) para entrar."
               : view === "reset-done"
                 ? "Você já pode entrar com a nova senha."
                 : view === "link-invalid"

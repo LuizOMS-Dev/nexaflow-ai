@@ -749,13 +749,18 @@ export default function AdminCompaniesPage() {
         open={openCreate}
         plans={plansQuery.data || []}
         onClose={() => setOpenCreate(false)}
-        onCreated={(id) => {
+        onCreated={(id, meta) => {
           setOpenCreate(false);
           void qc.invalidateQueries({ queryKey: ["admin-tenants"] });
           void qc.invalidateQueries({ queryKey: ["admin-overview"] });
           toast({
             title: "Empresa criada",
-            description: "A empresa foi cadastrada e já está disponível para gerenciamento.",
+            description:
+              meta?.firstAccess === "temporary_password"
+                ? "O administrador entra com a senha temporária e define a senha definitiva no primeiro acesso."
+                : meta?.firstAccess === "invite"
+                  ? "Enviamos um convite por e-mail para o administrador definir a senha."
+                  : "A empresa foi cadastrada. O administrador deve entrar com a senha da conta já existente.",
             kind: "success",
           });
           router.push(`/admin/tenants/${id}`);
@@ -782,7 +787,7 @@ function CreateCompanyModal({
   open: boolean;
   plans: PlanRow[];
   onClose: () => void;
-  onCreated: (id: string) => void;
+  onCreated: (id: string, meta?: { firstAccess?: string }) => void;
   onError: (msg: string) => void;
 }) {
   const [force, setForce] = useState(false);
@@ -827,11 +832,11 @@ function CreateCompanyModal({
       planId?: string;
       forceSimilarName?: boolean;
     }) =>
-      api<{ id: string }>("/admin/tenants", {
+      api<{ id: string; firstAccess?: string }>("/admin/tenants", {
         method: "POST",
         json: payload,
       }),
-    onSuccess: (res) => onCreated(res.id),
+    onSuccess: (res) => onCreated(res.id, { firstAccess: res.firstAccess }),
     onError: (e) => {
       if (e instanceof ApiError) {
         if (e.fieldErrors && Object.keys(e.fieldErrors).length > 0) {
@@ -851,6 +856,9 @@ function CreateCompanyModal({
           setFieldErrors((prev) => ({ ...prev, adminName: e.message }));
         } else if (e.code === "WEAK_PASSWORD") {
           setFieldErrors((prev) => ({ ...prev, adminPassword: e.message }));
+        } else if (e.code === "ADMIN_USER_EXISTS") {
+          setFieldErrors((prev) => ({ ...prev, adminEmail: e.message }));
+          setExistingUser(true);
         } else if (e.code === "PLAN_UNAVAILABLE") {
           setFieldErrors((prev) => ({ ...prev, planId: e.message }));
         }

@@ -383,6 +383,18 @@ export async function createCompany(
         ? "temporary_password"
         : "invite";
 
+  const preexistingAdmin = await prisma.user.findUnique({ where: { email } });
+  if (preexistingAdmin && accessMethod === "temporary_password") {
+    throw new AppError(
+      "Este e-mail já possui uma conta no NexaFlow. A senha não foi alterada. Peça para a pessoa entrar com a senha que já usa.",
+      409,
+      "ADMIN_USER_EXISTS"
+    );
+  }
+  const newAdminCreds = preexistingAdmin
+    ? null
+    : await credentialsForNewUser(accessMethod, input.adminPassword);
+
   let created;
   try {
     created = await prisma.$transaction(async (tx) => {
@@ -428,7 +440,7 @@ export async function createCompany(
       let firstAccess: FirstAccessMethod | "existing" = "existing";
       if (!user) {
         isNewUser = true;
-        const creds = await credentialsForNewUser(accessMethod, input.adminPassword);
+        const creds = newAdminCreds ?? (await credentialsForNewUser(accessMethod, input.adminPassword));
         firstAccess = creds.method;
         user = await tx.user.create({
           data: {
@@ -440,6 +452,12 @@ export async function createCompany(
             mustChangePassword: creds.mustChangePassword,
           },
         });
+      } else if (accessMethod === "temporary_password") {
+        throw new AppError(
+          "Este e-mail já possui uma conta no NexaFlow. A senha não foi alterada. Peça para a pessoa entrar com a senha que já usa.",
+          409,
+          "ADMIN_USER_EXISTS"
+        );
       }
 
       // 4. Criação do Tenant
@@ -600,7 +618,11 @@ export async function createCompany(
     })
     .catch(() => null);
 
-  return created.tenant;
+  return {
+    ...created.tenant,
+    firstAccess: created.firstAccess,
+    adminEmail: created.adminEmail,
+  };
 }
 
 export async function updateCompany(
