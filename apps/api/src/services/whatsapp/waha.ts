@@ -142,7 +142,8 @@ export class WahaConnector implements WhatsAppConnector {
   async sendText(config: WhatsAppChannelConfig, to: string, text: string): Promise<SendTextResult> {
     const base = this.base(config);
     const session = this.session(config);
-    const chatId = `${normalizePhone(to)}@c.us`;
+    const { formatWahaDestinationChatId } = await import("./identity-resolver");
+    const chatId = formatWahaDestinationChatId(to);
 
     const res = await fetch(`${base}/api/sendText`, {
       method: "POST",

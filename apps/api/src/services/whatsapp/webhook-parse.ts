@@ -12,10 +12,24 @@ export type ParsedInboundMessage = {
   fromMe: boolean;
   mediaUrl?: string;
   mediaMime?: string;
+  chatId?: string;
+  from?: string;
+  remoteJid?: string;
+  remoteJidAlt?: string;
+  addressingMode?: string;
+};
+
+export type ParsedAckEvent = {
+  externalId: string;
+  ack: number;
+  ackName?: string;
+  status: "SENT" | "DELIVERED" | "READ" | "FAILED";
+  error?: string;
 };
 
 export type ParsedWebhook = {
   messages: ParsedInboundMessage[];
+  acks?: ParsedAckEvent[];
   qrcode?: string | null;
   connection?: { state?: string; phone?: string | null };
 };
@@ -168,8 +182,38 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
       ? (dig(p, "id", "_serialized") as string)
       : undefined);
 
-  const phone = jidToPhone(from) || String(from).replace(/\D/g, "");
-  if (!phone) return null;
+  const chatId =
+    (typeof p.chatId === "string" && p.chatId) ||
+    (typeof dig(p, "_data", "id", "remote") === "string"
+      ? (dig(p, "_data", "id", "remote") as string)
+      : undefined) ||
+    from;
+
+  const remoteJid =
+    (typeof key?.remoteJid === "string" && key.remoteJid) ||
+    (typeof p.remoteJid === "string" && p.remoteJid) ||
+    from;
+
+  const remoteJidAlt =
+    (typeof key?.remoteJidAlt === "string" && key.remoteJidAlt) ||
+    (typeof dig(p, "_data", "key", "remoteJidAlt") === "string"
+      ? (dig(p, "_data", "key", "remoteJidAlt") as string)
+      : undefined) ||
+    (typeof p.remoteJidAlt === "string" && p.remoteJidAlt) ||
+    (typeof dig(p, "_data", "remoteJidAlt") === "string"
+      ? (dig(p, "_data", "remoteJidAlt") as string)
+      : undefined);
+
+  const addressingMode =
+    (typeof key?.addressingMode === "string" && key.addressingMode) ||
+    (typeof dig(p, "_data", "key", "addressingMode") === "string"
+      ? (dig(p, "_data", "key", "addressingMode") as string)
+      : undefined) ||
+    (typeof p.addressingMode === "string" && p.addressingMode) ||
+    undefined;
+
+  const phone = jidToPhone(remoteJidAlt) || jidToPhone(from) || String(from).replace(/\D/g, "");
+  if (!phone && !chatId) return null;
 
   const rawName =
     (typeof p.pushName === "string" && p.pushName) ||
@@ -180,26 +224,69 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
 
   let name: string | undefined = undefined;
   if (rawName && typeof rawName === "string") {
-    const cleaned = rawName.replace(/@(c\.us|s\.whatsapp\.net|g\.us|broadcast)$/i, "").trim();
-    // Só considera como nome se não for puramente dígitos de telefone
-    if (cleaned && !/^\+?\d{8,16}$/.test(cleaned.replace(/[\s\-().]/g, ""))) {
+    const cleaned = rawName.replace(/@(c\.us|s\.whatsapp\.net|g\.us|broadcast|lid)$/i, "").trim();
+    // Só considera como nome se não for puramente dígitos de telefone ou LID
+    if (cleaned && !/^\+?\d{8,20}$/.test(cleaned.replace(/[\s\-().]/g, ""))) {
       name = cleaned.slice(0, 200);
     }
   }
 
   return {
-    phone,
+    phone: phone || chatId,
     name,
     content: bodyText || (mediaUrl ? "[mídia]" : "[mensagem]"),
     externalId: rawId ? (rawId.startsWith("waha:") ? rawId : `waha:${rawId}`) : undefined,
     fromMe,
     mediaUrl,
     mediaMime,
+    chatId,
+    from,
+    remoteJid,
+    remoteJidAlt,
+    addressingMode,
+  };
+}
+
+function parseAck(body: Record<string, unknown>, event: string): ParsedAckEvent | null {
+  if (!event.includes("ack") && body.ack === undefined && body.ackName === undefined) {
+    return null;
+  }
+
+  const payload = asRecord(body.payload) || asRecord(body.data) || body;
+  const key = asRecord(payload.key) || payload;
+  const rawId =
+    (typeof payload.id === "string" && payload.id) ||
+    (typeof key.id === "string" && key.id) ||
+    (typeof payload.messageId === "string" && payload.messageId);
+
+  if (!rawId) return null;
+
+  const externalId = rawId.startsWith("waha:") ? rawId : `waha:${rawId}`;
+  const ackVal = payload.ack !== undefined ? Number(payload.ack) : undefined;
+  const ackName = typeof payload.ackName === "string" ? payload.ackName.toUpperCase() : "";
+
+  let status: ParsedAckEvent["status"] = "SENT";
+  if (ackVal === 3 || ackName === "READ" || ackName === "PLAYED") {
+    status = "READ";
+  } else if (ackVal === 2 || ackName === "DELIVERY_ACK" || ackName === "RECEIVED") {
+    status = "DELIVERED";
+  } else if (ackVal === 1 || ackName === "SERVER_ACK" || ackName === "SENT") {
+    status = "SENT";
+  } else if (ackVal === -1 || ackName === "ERROR" || payload.isSendFailure === true) {
+    status = "FAILED";
+  }
+
+  return {
+    externalId,
+    ack: ackVal ?? 0,
+    ackName: ackName || undefined,
+    status,
+    error: status === "FAILED" ? (payload.error as string) || "Erro reportado pelo WhatsApp" : undefined,
   };
 }
 
 /**
- * WAHA / Evolution / Baileys — message / session.status / messages.upsert
+ * WAHA / Evolution / Baileys — message / session.status / messages.upsert / message.ack
  */
 export function parseWahaWebhook(body: unknown): ParsedWebhook {
   const root = asRecord(body) || {};
@@ -207,6 +294,12 @@ export function parseWahaWebhook(body: unknown): ParsedWebhook {
   const payload = asRecord(root.payload) || asRecord(root.data) || root;
 
   const result: ParsedWebhook = { messages: [] };
+
+  // ACK events
+  const ack = parseAck(root, event) || parseAck(payload, event);
+  if (ack) {
+    result.acks = [ack];
+  }
 
   // Status / Conexão
   if (

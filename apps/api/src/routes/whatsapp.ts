@@ -885,6 +885,11 @@ export async function whatsappRoutes(app: FastifyInstance) {
           name: msg.name,
           content: msg.content,
           externalId: msg.externalId,
+          chatId: msg.chatId,
+          from: msg.from,
+          remoteJid: msg.remoteJid,
+          remoteJidAlt: msg.remoteJidAlt,
+          addressingMode: msg.addressingMode,
         });
         processedCount++;
       } catch (err) {
@@ -895,7 +900,51 @@ export async function whatsappRoutes(app: FastifyInstance) {
       }
     }
 
-    return { ok: true, processed: processedCount };
+    if (parsed.acks && parsed.acks.length > 0) {
+      for (const ack of parsed.acks) {
+        try {
+          const msg = await prisma.message.findFirst({
+            where: {
+              externalId: ack.externalId,
+              conversation: { tenantId: channel.tenantId },
+            },
+          });
+          if (msg) {
+            const currentMeta = (msg.metadata || {}) as Record<string, unknown>;
+            const isFailed = ack.status === "FAILED";
+            const isDelivered = ack.status === "DELIVERED";
+            const isRead = ack.status === "READ";
+
+            const updated = await prisma.message.update({
+              where: { id: msg.id },
+              data: {
+                deliveredAt: isDelivered || isRead ? (msg.deliveredAt || new Date()) : msg.deliveredAt,
+                readAt: isRead ? (msg.readAt || new Date()) : msg.readAt,
+                metadata: asInputJson({
+                  ...currentMeta,
+                  deliveryStatus: ack.status,
+                  deliveryError: isFailed ? (ack.error || "Falha reportada pelo WhatsApp") : null,
+                  sendError: isFailed ? (ack.error || true) : null,
+                  ackValue: ack.ack,
+                  ackName: ack.ackName,
+                  ackUpdatedAt: new Date().toISOString(),
+                }),
+              },
+            });
+
+            const { broadcastToTenant } = await import("../ws/hub");
+            broadcastToTenant(channel.tenantId, "message.created", {
+              conversationId: msg.conversationId,
+              message: updated,
+            });
+          }
+        } catch (err) {
+          request.log.error({ err, ack }, "[webhook/whatsapp] ACK processing failed");
+        }
+      }
+    }
+
+    return { ok: true, processed: processedCount, acks: parsed.acks?.length || 0 };
   }
 
   app.post("/webhooks/waha/:channelId", async (request, reply) => {

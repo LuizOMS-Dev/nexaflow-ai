@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseWahaWebhook } from "./webhook-parse";
 import { normalizePhone } from "./types";
 import { phoneLookupVariants, cleanJid, formatDisplayPhone, resolveContactNameWithPriority } from "../../lib/contact-fields";
@@ -19,15 +19,12 @@ describe("1. WhatsApp Webhook Parser — Todos os Formatos Reais", () => {
 
     const result = parseWahaWebhook(payload);
     expect(result.messages).toHaveLength(1);
-    expect(result.messages[0]).toEqual({
-      phone: "5511999998888",
-      name: "Rodrigo Almeida",
-      content: "Olá, gostaria de saber o preço do plano",
-      externalId: "waha:true_5511999998888@c.us_3EB01234",
-      fromMe: false,
-      mediaUrl: undefined,
-      mediaMime: undefined,
-    });
+    const msg = result.messages[0];
+    expect(msg.phone).toBe("5511999998888");
+    expect(msg.name).toBe("Rodrigo Almeida");
+    expect(msg.content).toBe("Olá, gostaria de saber o preço do plano");
+    expect(msg.externalId).toBe("waha:true_5511999998888@c.us_3EB01234");
+    expect(msg.fromMe).toBe(false);
   });
 
   it("WAHA: descarta pushName que é apenas JID ou telefone", () => {
@@ -230,5 +227,81 @@ describe("2. Normalização e Resolução de Contato", () => {
         phone: "5534999999999",
       })
     ).toBe("+55 (34) 99999-9999");
+  });
+});
+
+describe("3. WAHA NOWEB / LID e ACKs do WhatsApp", () => {
+  it("WAHA NOWEB: processa mensagem com LID e remoteJidAlt preservando identificadores", () => {
+    const payload = {
+      event: "message",
+      session: "empresa-1",
+      payload: {
+        id: "msg_noweb_lid_01",
+        from: "12345678901234@lid",
+        chatId: "12345678901234@lid",
+        body: "Olá, sou cliente VIP",
+        fromMe: false,
+        pushName: "Fernando Medeiros",
+        _data: {
+          key: {
+            remoteJid: "12345678901234@lid",
+            remoteJidAlt: "5534999999999@s.whatsapp.net",
+            addressingMode: "lid",
+          },
+        },
+      },
+    };
+
+    const result = parseWahaWebhook(payload);
+    expect(result.messages).toHaveLength(1);
+    const msg = result.messages[0];
+    expect(msg.chatId).toBe("12345678901234@lid");
+    expect(msg.remoteJid).toBe("12345678901234@lid");
+    expect(msg.remoteJidAlt).toBe("5534999999999@s.whatsapp.net");
+    expect(msg.addressingMode).toBe("lid");
+    expect(msg.phone).toBe("5534999999999");
+    expect(msg.name).toBe("Fernando Medeiros");
+  });
+
+  it("WAHA ACK: processa eventos de entrega, leitura e erro", () => {
+    const ackDelivered = {
+      event: "message.ack",
+      payload: {
+        id: "true_5511999998888@c.us_3EB01234",
+        ack: 2,
+        ackName: "DELIVERY_ACK",
+      },
+    };
+    const ackRead = {
+      event: "message.ack",
+      payload: {
+        id: "true_5511999998888@c.us_3EB01234",
+        ack: 3,
+        ackName: "READ",
+      },
+    };
+    const ackError = {
+      event: "message.ack",
+      payload: {
+        id: "true_5511999998888@c.us_3EB01234",
+        ack: -1,
+        ackName: "ERROR",
+        isSendFailure: true,
+        error: "Recipient not on WhatsApp",
+      },
+    };
+
+    const r1 = parseWahaWebhook(ackDelivered);
+    expect(r1.acks).toHaveLength(1);
+    expect(r1.acks?.[0].status).toBe("DELIVERED");
+
+    const r2 = parseWahaWebhook(ackRead);
+    expect(r2.acks).toHaveLength(1);
+    expect(r2.acks?.[0].status).toBe("READ");
+
+    const r3 = parseWahaWebhook(ackError);
+    expect(r3.acks).toHaveLength(1);
+    expect(r3.acks?.[0].status).toBe("FAILED");
+    expect(r3.acks?.[0].error).toBe("Recipient not on WhatsApp");
   });
 });

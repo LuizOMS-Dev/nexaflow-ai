@@ -17,14 +17,15 @@ describe("parseWahaWebhook", () => {
 
     const parsed = parseWahaWebhook(payload);
     expect(parsed.messages).toHaveLength(1);
-    expect(parsed.messages[0]).toEqual({
+    expect(parsed.messages[0]).toMatchObject({
       phone: "5511999999999",
       name: "João Silva",
       content: "Olá, gostaria de informações",
       externalId: "waha:msg-123",
       fromMe: false,
-      mediaUrl: undefined,
-      mediaMime: undefined,
+      chatId: "5511999999999@c.us",
+      from: "5511999999999@c.us",
+      remoteJid: "5511999999999@c.us",
     });
   });
 
@@ -131,14 +132,13 @@ describe("parseWahaWebhook", () => {
 
     const parsed = parseWahaWebhook(payload);
     expect(parsed.messages).toHaveLength(1);
-    expect(parsed.messages[0]).toEqual({
+    expect(parsed.messages[0]).toMatchObject({
       phone: "5511988776655",
       name: "Maria Souza",
       content: "Olá, quero fazer um orçamento",
       externalId: "waha:3EB0ABC123",
       fromMe: false,
-      mediaUrl: undefined,
-      mediaMime: undefined,
+      remoteJid: "5511988776655@s.whatsapp.net",
     });
   });
 

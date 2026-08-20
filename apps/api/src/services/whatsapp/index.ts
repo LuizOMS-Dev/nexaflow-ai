@@ -119,6 +119,11 @@ export async function ingestInboundMessage(params: {
   content: string;
   externalId?: string;
   type?: string;
+  chatId?: string;
+  from?: string;
+  remoteJid?: string;
+  remoteJidAlt?: string;
+  addressingMode?: string;
 }) {
   if (params.externalId) {
     const duplicate = await prisma.message.findFirst({
@@ -137,62 +142,26 @@ export async function ingestInboundMessage(params: {
     }
   }
 
-  // Armazenamento canônico = dígitos. Lookup multi-formato (legado +).
-  const { phoneLookupVariants, resolveContactNameWithPriority, cleanJid } = await import("../../lib/contact-fields");
-  const cleanedPhone = cleanJid(params.phone);
-  const digits = cleanedPhone.replace(/\D/g, "");
-  const variants = phoneLookupVariants(cleanedPhone || params.phone);
-  const phoneStored = digits || variants[0] || params.phone.replace(/\D/g, "") || params.phone;
+  const { resolveWhatsAppIdentity } = await import("./identity-resolver");
+  const identity = await resolveWhatsAppIdentity({
+    tenantId: params.tenantId,
+    chatId: params.chatId,
+    from: params.from,
+    remoteJid: params.remoteJid,
+    remoteJidAlt: params.remoteJidAlt,
+    addressingMode: params.addressingMode,
+    pushName: params.name,
+    phone: params.phone,
+  });
 
-  const orClause: Array<Record<string, unknown>> = [];
-  if (variants.length) orClause.push({ phone: { in: variants } });
-  if (digits.length >= 10) orClause.push({ phone: { contains: digits.slice(-11) } });
-  if (!orClause.length && phoneStored) orClause.push({ phone: phoneStored });
-
-  let contact = orClause.length
-    ? await prisma.contact.findFirst({
-        where: { tenantId: params.tenantId, OR: orClause },
-      })
-    : null;
-
-  const contactWasCreated = !contact;
-
-  if (!contact) {
-    const initialName = resolveContactNameWithPriority({
-      currentName: null,
-      pushName: params.name,
-      phone: phoneStored,
-    });
-    contact = await prisma.contact.create({
-      data: {
-        tenantId: params.tenantId,
-        name: initialName,
-        phone: phoneStored,
-        source: "whatsapp",
-        consentWhatsapp: true,
-        lastInteractionAt: new Date(),
-      },
-    });
-  } else {
-    const updatedName = resolveContactNameWithPriority({
-      currentName: contact.name,
-      pushName: params.name,
-      phone: phoneStored,
-    });
-    await prisma.contact.update({
-      where: { id: contact.id },
-      data: {
-        lastInteractionAt: new Date(),
-        ...(contact.stage === "archived" ? { stage: null } : {}),
-        ...(digits && contact.phone !== digits ? { phone: digits } : {}),
-        ...(updatedName && updatedName !== contact.name ? { name: updatedName } : {}),
-      },
-    });
-  }
+  const contact = await prisma.contact.findUnique({
+    where: { id: identity.contactId },
+  });
+  if (!contact) throw new Error("Falha ao resolver contato WhatsApp");
 
   broadcastToTenant(
     params.tenantId,
-    contactWasCreated ? "contact.created" : "contact.updated",
+    identity.contactWasCreated ? "contact.created" : "contact.updated",
     { id: contact.id }
   );
 
@@ -340,7 +309,7 @@ export async function ingestInboundMessage(params: {
           messageId: message.id,
           payload: {
             content: params.content,
-            phone: phoneStored,
+            phone: contact.phone || params.phone,
             channelId: params.channelId,
           },
         })
@@ -359,7 +328,7 @@ export async function ingestInboundMessage(params: {
       tenantId: params.tenantId,
       conversationId: conversation.id,
       channelId: params.channelId,
-      contactPhone: phoneStored,
+      contactPhone: contact.phone || params.phone,
     }).catch((err) => {
       console.error("[whatsapp] auto-reply failed", err instanceof Error ? err.message : err);
     });
@@ -1108,12 +1077,24 @@ async function sendAiOutboundAndHandoff(params: {
   correlationId?: string;
   sources?: Array<{ title: string; documentId: string; version: number; chunkIndex: number; score: number }>;
 }) {
+  const conv = await prisma.conversation.findUnique({
+    where: { id: params.conversationId },
+    include: { contact: true },
+  });
+  const customData = (conv?.contact?.customData || {}) as Record<string, unknown>;
+  const destinationTo =
+    (customData.wahaChatId as string) ||
+    (customData.wahaLid as string) ||
+    params.contactPhone ||
+    conv?.contact?.phone ||
+    "";
+
   const { createHash } = await import("crypto");
   const { dispatchWhatsAppText } = await import("./message-dispatch");
   const replyHash = createHash("sha256").update(params.reply).digest("hex").slice(0, 16);
   const send = await dispatchWhatsAppText({
     channelId: params.channelId,
-    to: params.contactPhone,
+    to: destinationTo,
     text: params.reply,
     purpose: "ai",
     tenantId: params.tenantId,

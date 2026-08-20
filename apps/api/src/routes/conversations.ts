@@ -377,7 +377,14 @@ export async function conversationRoutes(app: FastifyInstance) {
     // Envia pelo WhatsApp (Evolution/WAHA) quando for mensagem real no canal
     let externalId: string | undefined;
     let deliveryError: string | undefined;
-    if (!isInternal && conversation.channel?.type === "WHATSAPP" && conversation.contact.phone) {
+    const contactCustom = (conversation.contact.customData || {}) as Record<string, unknown>;
+    const deliveryDestination =
+      (contactCustom.wahaChatId as string) ||
+      (contactCustom.wahaLid as string) ||
+      conversation.contact.phone ||
+      "";
+
+    if (!isInternal && conversation.channel?.type === "WHATSAPP" && deliveryDestination) {
       try {
         const { createHash } = await import("crypto");
         const { dispatchWhatsAppText } = await import("../services/whatsapp");
@@ -391,7 +398,7 @@ export async function conversationRoutes(app: FastifyInstance) {
           `reply:${id}:${request.user.sub}:${contentHash}`;
         const sent = await dispatchWhatsAppText({
           channelId: conversation.channel.id,
-          to: conversation.contact.phone,
+          to: deliveryDestination,
           text: body.content,
           purpose: "reply",
           tenantId: request.user.tenantId!,
@@ -497,14 +504,21 @@ export async function conversationRoutes(app: FastifyInstance) {
         throw new AppError("Apenas mensagens de saída podem ser reenviadas", 400);
       }
 
-      if (conversation.channel?.type !== "WHATSAPP" || !conversation.contact.phone) {
-        throw new AppError("Canal ou telefone de destino inválido", 400);
+      const contactCustom = (conversation.contact.customData || {}) as Record<string, unknown>;
+      const deliveryDestination =
+        (contactCustom.wahaChatId as string) ||
+        (contactCustom.wahaLid as string) ||
+        conversation.contact.phone ||
+        "";
+
+      if (conversation.channel?.type !== "WHATSAPP" || !deliveryDestination) {
+        throw new AppError("Canal ou destino do WhatsApp inválido", 400);
       }
 
       const { dispatchWhatsAppText } = await import("../services/whatsapp");
       const sent = await dispatchWhatsAppText({
         channelId: conversation.channel.id,
-        to: conversation.contact.phone,
+        to: deliveryDestination,
         text: msg.content,
         purpose: "reply",
         tenantId: request.user.tenantId!,
