@@ -122,20 +122,14 @@ export async function adminImpersonationRoutes(app: FastifyInstance) {
         }
       }
 
-      if (!jwtUser) {
-        reply.clearCookie(REFRESH_COOKIE, { path: "/" });
-        reply.clearCookie("nexa_access", { path: "/" });
-        return {
-          accessToken: "",
-          user: null,
-          tenant: null,
-          memberships: [],
-          impersonation: { active: false },
-        };
-      }
+      const userToStop: JwtUser = jwtUser || {
+        sub: "",
+        tenantId: null,
+        sid: undefined,
+      };
 
       const result = await stopImpersonationSession(
-        jwtUser,
+        userToStop,
         {
           ip: request.ip,
           userAgent: request.headers["user-agent"],

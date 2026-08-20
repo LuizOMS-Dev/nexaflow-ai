@@ -186,20 +186,30 @@ export async function stopImpersonationSession(
     throw new AppError("Nenhum Superadmin encontrado no sistema.", 404, "NO_SUPERADMIN");
   }
 
-  const superadmin = assertFound(
-    await prisma.user.findUnique({
-      where: { id: superadminId },
+  let superadmin = await prisma.user.findUnique({
+    where: { id: superadminId },
+    include: {
+      memberships: {
+        where: { isActive: true, status: "ACTIVE" },
+        include: { tenant: { include: { plan: true } } },
+      },
+    },
+  });
+
+  if (!superadmin || superadmin.platformRole !== "SUPERADMIN") {
+    superadmin = await prisma.user.findFirst({
+      where: { platformRole: "SUPERADMIN", isActive: true },
       include: {
         memberships: {
           where: { isActive: true, status: "ACTIVE" },
           include: { tenant: { include: { plan: true } } },
         },
       },
-    })
-  );
+    });
+  }
 
-  if (superadmin.platformRole !== "SUPERADMIN") {
-    throw new AppError("Privilégio de impersonação inválido.", 403, "FORBIDDEN");
+  if (!superadmin) {
+    throw new AppError("Nenhum Superadmin encontrado no sistema.", 404, "NO_SUPERADMIN");
   }
 
   if (jwtUser.sid) {

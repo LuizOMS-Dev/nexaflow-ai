@@ -1235,8 +1235,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     try {
-      const data = await import("@/lib/api").then(({ api }) =>
-        api<{
+      const data = await import("@/lib/api").then(async ({ api, setAccessToken: setMemToken }) => {
+        const res = await api<{
           accessToken: string;
           user: {
             id: string;
@@ -1250,8 +1250,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             role: string;
             tenant: { id: string; name: string; slug: string };
           }>;
-        }>("/admin/stop-impersonation", { method: "POST" })
-      );
+        }>("/admin/stop-impersonation", { method: "POST" });
+        if (res.accessToken) setMemToken(res.accessToken);
+        return res;
+      });
       try {
         sessionStorage.removeItem("nexaflow_impersonating");
       } catch {

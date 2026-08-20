@@ -136,19 +136,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
 
   if (!user || user.platformRole !== "SUPERADMIN") {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#07080c] px-6 text-center">
-        <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-violet-300/80">
-            Administração
-          </p>
-          <h1 className="mt-2 text-xl font-semibold text-white">Acesso restrito</h1>
-          <p className="mt-2 text-[13px] text-white/50">
-            Somente superadministradores entram nesta área.
-          </p>
-          <Link href="/login" className="admin-btn-primary mt-5">
-            Ir para o login
-          </Link>
-        </div>
+      <div className="flex min-h-dvh items-center justify-center bg-[#07080c]">
+        <Spinner />
       </div>
     );
   }

@@ -69,12 +69,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   if (user?.platformRole !== "SUPERADMIN") {
     return (
-      <AdminEmptyState
-        icon={<Shield className="h-5 w-5" strokeWidth={1.5} />}
-        title="Acesso restrito"
-        description="Somente superadministradores têm acesso a esta área."
-        compact={false}
-      />
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Spinner />
+      </div>
     );
   }
 
