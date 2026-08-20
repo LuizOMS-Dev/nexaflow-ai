@@ -28,6 +28,8 @@ import {
   ChartColumn,
   Settings,
   Shield,
+  ShieldAlert,
+  ArrowLeft,
   Menu,
   X,
   Building2,
@@ -336,6 +338,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const onboarding = needsCompanyOnboarding(tenant);
   const multiTenant = memberships.length > 1;
   const isOnboardingRoute = pathname.startsWith("/app/onboarding");
+  const [endingImpersonation, setEndingImpersonation] = useState(false);
 
   useEffect(() => {
     if (hydrated && !user) router.replace("/login");
@@ -885,7 +888,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         user={sidebarUserInfo}
         dark={dark}
         maxHeight={maxHeight}
-        impersonating={impersonating}
         theme={appTheme}
         onSetTheme={handleSetTheme}
         onAccount={() => goUserMenu("/app/account")}
@@ -894,10 +896,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           closeUserMenu();
           setMobileOpen(false);
           void logout().finally(() => router.push("/login"));
-        }}
-        onEndImpersonation={() => {
-          closeUserMenu();
-          void endImpersonation();
         }}
       />
     );
@@ -1229,6 +1227,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   async function endImpersonation() {
+    if (endingImpersonation) return;
+    setEndingImpersonation(true);
     try {
       const data = await import("@/lib/api").then(({ api }) =>
         api<{
@@ -1258,9 +1258,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         tenant: null,
         memberships: data.memberships || [],
       });
-      window.location.href = "/admin";
+      window.location.href = "/admin/companies";
     } catch {
-      window.location.href = "/admin";
+      try {
+        sessionStorage.removeItem("nexaflow_impersonating");
+      } catch {
+        /* ignore */
+      }
+      window.location.href = "/admin/companies";
     }
   }
 
@@ -1319,18 +1324,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Banner de impersonação — contexto tenant com superadmin */}
       {impersonating && (
-        <div className="nf-shell-banner" role="status">
-          <span className="min-w-0 flex-1">
-            Você está acessando {tenant?.name || "esta empresa"} como administrador.
-          </span>
+        <aside
+          role="status"
+          aria-label="Sessão de suporte administrativo"
+          className="relative z-[var(--z-banner)] flex shrink-0 items-center justify-between gap-3 border-b border-amber-500/25 bg-gradient-to-r from-[#141006]/95 via-[#1a1406]/95 to-[#141006]/95 px-4 py-2 text-[12px] text-amber-200 shadow-[0_4px_24px_-4px_rgba(245,158,11,0.15)] backdrop-blur-md transition-all sm:px-6"
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30">
+              <ShieldAlert className="h-3.5 w-3.5" />
+            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="inline-flex items-center rounded-md bg-amber-500/20 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-amber-300 ring-1 ring-amber-400/30">
+                Acesso Superadmin
+              </span>
+              <span className="truncate text-amber-100/80">
+                Você está acessando <strong className="font-semibold text-white">{tenant?.name || "esta empresa"}</strong> em modo administrativo.
+              </span>
+            </div>
+          </div>
+
           <button
             type="button"
-            className="btn-secondary btn-sm h-7 shrink-0"
+            disabled={endingImpersonation}
             onClick={() => void endImpersonation()}
+            className="inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border border-amber-500/35 bg-amber-500/15 px-3 py-1 text-[11.5px] font-semibold text-amber-200 shadow-sm transition-all hover:border-amber-400/60 hover:bg-amber-500/25 hover:text-white active:scale-[0.98] disabled:opacity-50 cursor-pointer"
           >
-            Encerrar acesso administrativo
+            {endingImpersonation ? (
+              <>
+                <Spinner className="h-3 w-3" />
+                <span>Encerrando…</span>
+              </>
+            ) : (
+              <>
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Encerrar acesso e voltar</span>
+              </>
+            )}
           </button>
-        </div>
+        </aside>
       )}
 
       <div className="nf-shell-body relative z-[var(--z-content)]">

@@ -34,13 +34,11 @@ export type TenantUserMenuUser = {
  */
 export function TenantUserMenu({
   user,
-  impersonating,
   theme = "system",
   onSetTheme,
   onAccount,
   onPreferences,
   onLogout,
-  onEndImpersonation,
   panelRef,
   className,
   maxHeight,
@@ -49,13 +47,11 @@ export function TenantUserMenu({
   dark?: boolean;
   floating?: boolean;
   maxHeight?: number;
-  impersonating?: boolean;
   theme?: "light" | "dark" | "system";
   onSetTheme?: (t: "light" | "dark" | "system") => void;
   onAccount: () => void;
   onPreferences?: () => void;
   onLogout: () => void;
-  onEndImpersonation?: () => void;
   panelRef?: Ref<HTMLDivElement>;
   className?: string;
 }) {
@@ -133,18 +129,6 @@ export function TenantUserMenu({
           <SlidersHorizontal className="h-4 w-4 shrink-0 text-zinc-400 group-hover:text-violet-600 dark:text-zinc-400 dark:group-hover:text-violet-300 transition-colors duration-150" strokeWidth={1.75} aria-hidden />
           <span className="min-w-0 flex-1 truncate">Preferências</span>
         </button>
-
-        {impersonating && onEndImpersonation ? (
-          <button
-            type="button"
-            role="menuitem"
-            className="flex h-[34px] w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[12px] font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-400/10 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/30 cursor-pointer"
-            onClick={onEndImpersonation}
-          >
-            <ShieldAlert className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" strokeWidth={1.75} aria-hidden />
-            <span className="min-w-0 flex-1 truncate">Encerrar impersonação</span>
-          </button>
-        ) : null}
       </div>
 
       {/* ── 3. APARÊNCIA (LISTA VERTICAL: Sistema, Claro, Escuro) ── */}

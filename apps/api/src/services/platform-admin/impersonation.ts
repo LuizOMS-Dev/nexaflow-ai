@@ -149,13 +149,35 @@ export async function stopImpersonationSession(
   jwtUser: JwtUser,
   context: { ip?: string; userAgent?: string; jwtSign: (payload: any) => string }
 ) {
-  if (!jwtUser.imp || !jwtUser.impBy) {
+  let superadminId = jwtUser.impBy;
+
+  if (!superadminId && jwtUser.sid) {
+    const activeSession = await prisma.authSession.findUnique({
+      where: { id: jwtUser.sid },
+      select: { impersonatorId: true, isImpersonation: true },
+    });
+    if (activeSession?.isImpersonation && activeSession.impersonatorId) {
+      superadminId = activeSession.impersonatorId;
+    }
+  }
+
+  if (!superadminId) {
+    const directUser = await prisma.user.findUnique({
+      where: { id: jwtUser.sub },
+      select: { id: true, platformRole: true },
+    });
+    if (directUser?.platformRole === "SUPERADMIN") {
+      superadminId = directUser.id;
+    }
+  }
+
+  if (!superadminId) {
     throw new AppError("Nenhuma sessão de impersonação ativa para encerrar.", 400, "NO_IMPERSONATION");
   }
 
   const superadmin = assertFound(
     await prisma.user.findUnique({
-      where: { id: jwtUser.impBy },
+      where: { id: superadminId },
       include: {
         memberships: {
           where: { isActive: true, status: "ACTIVE" },
@@ -170,7 +192,7 @@ export async function stopImpersonationSession(
   }
 
   if (jwtUser.sid) {
-    await revokeSession(jwtUser.sid, "impersonation_stop");
+    await revokeSession(jwtUser.sid, "impersonation_stop").catch(() => null);
   }
 
   // Cria sessão restaurada limpa de Superadmin
@@ -199,14 +221,14 @@ export async function stopImpersonationSession(
     action: "admin.impersonate.stop",
     metadata: { previousUserId: jwtUser.sub, previousTenantId: jwtUser.tenantId },
     ip: context.ip,
-  });
+  }).catch(() => null);
 
   await recordSecurityEvent({
     type: "IMPERSONATION_STOP",
     userId: superadmin.id,
     ip: context.ip,
     metadata: { previousUserId: jwtUser.sub },
-  });
+  }).catch(() => null);
 
   return {
     accessToken,
