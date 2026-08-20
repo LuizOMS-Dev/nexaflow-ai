@@ -916,7 +916,7 @@ export async function conversationRoutes(app: FastifyInstance) {
       agentId: body.agentId,
     });
 
-    // Executa tools estruturadas seguras (não destrutivas)
+    // Copiloto: simula tools (não muta CRM, não faz handoff real)
     let toolResults: unknown[] = [];
     if (suggestion.actions?.length && suggestion.agentId) {
       try {

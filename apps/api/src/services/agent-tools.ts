@@ -158,7 +158,7 @@ export async function executeAgentTool(
   const toolName = normalizeToolName(rawTool);
   const args = rawArgs || {};
 
-  if (ctx.source === "sandbox") {
+  if (ctx.source === "sandbox" || ctx.source === "suggest") {
     return {
       ok: true,
       status: "SUCCESS",

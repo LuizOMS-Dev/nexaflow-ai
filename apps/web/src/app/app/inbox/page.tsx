@@ -117,6 +117,8 @@ type MessageMeta = {
   pendingApproval?: boolean;
   originalReply?: string;
   sources?: Array<{ title?: string; documentId?: string; score?: number; chunkIndex?: number }>;
+  deliveryError?: string;
+  sendError?: string;
   [key: string]: unknown;
 };
 
@@ -860,12 +862,24 @@ function InboxInner() {
 
   const sendMutation = useMutation({
     mutationFn: (payload: { content: string; isInternal?: boolean }) =>
-      api(`/conversations/${selectedId}/messages`, { method: "POST", json: payload }),
-    onSuccess: () => {
+      api<{ deliveryError?: string }>(`/conversations/${selectedId}/messages`, {
+        method: "POST",
+        json: payload,
+      }),
+    onSuccess: (res) => {
       setMessage("");
       qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.deliveryError) {
+        toast({
+          kind: "error",
+          title: "Não enviado no WhatsApp",
+          description: res.deliveryError,
+        });
+      }
     },
+    onError: (e: Error) =>
+      toast({ kind: "error", title: "Não foi possível enviar", description: e.message }),
   });
 
   const actionMutation = useMutation({
@@ -1074,14 +1088,29 @@ function InboxInner() {
 
   async function sendAiReply() {
     if (!selectedId || !ai?.reply) return;
-    await api(`/conversations/${selectedId}/ai-send`, {
-      method: "POST",
-      json: { content: ai.reply, approved: true },
-    });
-    setAi(null);
-    setMessage("");
-    qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
-    qc.invalidateQueries({ queryKey: ["conversations"] });
+    try {
+      const res = await api<{ deliveryError?: string }>(`/conversations/${selectedId}/ai-send`, {
+        method: "POST",
+        json: { content: ai.reply, approved: true },
+      });
+      setAi(null);
+      setMessage("");
+      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.deliveryError) {
+        toast({
+          kind: "error",
+          title: "Não enviado no WhatsApp",
+          description: res.deliveryError,
+        });
+      }
+    } catch (e) {
+      toast({
+        kind: "error",
+        title: "Não foi possível enviar a resposta da IA",
+        description: e instanceof Error ? e.message : "Erro ao enviar",
+      });
+    }
   }
 
   async function onSend(e: FormEvent) {
@@ -2297,6 +2326,11 @@ function InboxInner() {
                             </p>
                           ) : null}
                           <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          {messageMeta(m).deliveryError || messageMeta(m).sendError ? (
+                            <p className="mt-1.5 text-[10.5px] font-medium text-red-600 dark:text-red-300">
+                              Não enviado ao WhatsApp
+                            </p>
+                          ) : null}
                           {origin === "AI" &&
                           Array.isArray(messageMeta(m).sources) &&
                           (messageMeta(m).sources || []).length > 0 ? (
