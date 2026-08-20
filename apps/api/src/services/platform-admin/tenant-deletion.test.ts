@@ -131,8 +131,9 @@ describe("Exclusão real de empresa", () => {
     await cleanupTestTenant(tenant.id).catch(() => null);
   });
 
-  it("exclui agora: dados do tenant saem, User global permanece", async () => {
+  it("exclui agora: dados do tenant saem e User exclusivo da empresa é apagado", async () => {
     const { tenant, user, conv, agent } = await seedCompany("now");
+    const adminEmail = user.email;
     const res = await app.inject({
       method: "DELETE",
       url: `/admin/tenants/${tenant.id}`,
@@ -140,7 +141,9 @@ describe("Exclusão real de empresa", () => {
       payload: { confirmName: tenant.name, acknowledged: true, mode: "now" },
     });
     expect(res.statusCode).toBe(200);
-    expect((res.json() as { deleted?: boolean }).deleted).toBe(true);
+    const body = res.json() as { deleted?: boolean; deletedUserCount?: number };
+    expect(body.deleted).toBe(true);
+    expect(body.deletedUserCount).toBe(1);
 
     expect(await prisma.tenant.findUnique({ where: { id: tenant.id } })).toBeNull();
     expect(await prisma.membership.count({ where: { tenantId: tenant.id } })).toBe(0);
@@ -150,15 +153,63 @@ describe("Exclusão real de empresa", () => {
     expect(await prisma.subscription.count({ where: { tenantId: tenant.id } })).toBe(0);
     expect(await prisma.payment.count({ where: { tenantId: tenant.id } })).toBe(0);
     expect(await prisma.channel.count({ where: { tenantId: tenant.id } })).toBe(0);
+    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
+    expect(await prisma.user.findUnique({ where: { email: adminEmail } })).toBeNull();
 
-    const userAfter = await prisma.user.findUnique({ where: { id: user.id } });
-    expect(userAfter).toBeTruthy();
-    expect(userAfter!.email).toContain("@test.nexaflow.local");
+    const recreate = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: await authHeader(),
+      payload: {
+        name: `Recriada ${suffix}`,
+        adminEmail,
+        adminName: "Admin Recriado",
+        adminPassword: "SenhaNova123!",
+        accessMethod: "temporary_password",
+      },
+    });
+    expect(recreate.statusCode).toBe(200);
+    expect(recreate.json().error).not.toBe("ADMIN_USER_EXISTS");
+    const recreatedId = (recreate.json() as { id: string }).id;
+    const newAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
+    expect(newAdmin).toBeTruthy();
+    expect(newAdmin!.id).not.toBe(user.id);
+    await cleanupTestTenant(recreatedId).catch(() => null);
 
     const audit = await prisma.auditLog.findFirst({
       where: { action: "company.deleted", entityId: tenant.id },
     });
     expect(audit).toBeTruthy();
+  });
+
+  it("exclui agora: User com membership em outra empresa é preservado", async () => {
+    const { tenant, user } = await seedCompany("shared");
+    const other = await prisma.tenant.create({
+      data: {
+        name: `Outra ${suffix}`,
+        slug: `outra-${suffix}`,
+        status: "ACTIVE",
+        settings: testTenantSettings({ suite: "tenant-deletion" }),
+      },
+    });
+    await prisma.membership.create({
+      data: { tenantId: other.id, userId: user.id, role: "AGENT" },
+    });
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/admin/tenants/${tenant.id}`,
+      headers: await authHeader(),
+      payload: { confirmName: tenant.name, acknowledged: true, mode: "now" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { deletedUserCount?: number }).deletedUserCount).toBe(0);
+    expect(await prisma.tenant.findUnique({ where: { id: tenant.id } })).toBeNull();
+    const kept = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(kept).toBeTruthy();
+    expect(await prisma.membership.count({ where: { userId: user.id, tenantId: other.id } })).toBe(1);
+
+    await cleanupTestTenant(other.id).catch(() => null);
   });
 
   it("agenda para o vencimento, empresa opera, e cancelar restaura status", async () => {
@@ -242,7 +293,7 @@ describe("Exclusão real de empresa", () => {
     const first = await runScheduledTenantDeletions(new Date());
     expect(first.results.some((r) => r.id === tenant.id && r.ok)).toBe(true);
     expect(await prisma.tenant.findUnique({ where: { id: tenant.id } })).toBeNull();
-    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeTruthy();
+    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
 
     const second = await runScheduledTenantDeletions(new Date());
     expect(second.results.some((r) => r.id === tenant.id)).toBe(false);

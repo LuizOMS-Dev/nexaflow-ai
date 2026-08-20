@@ -570,11 +570,15 @@ export default function AdminTenantPage() {
       qc.invalidateQueries({ queryKey: ["admin-tenant", id] });
       qc.invalidateQueries({ queryKey: ["admin-overview"] });
       qc.invalidateQueries({ queryKey: ["admin-tenants"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-users-stats"] });
       if (res.deleted) {
         toast({
           kind: "success",
           title: "Empresa excluída",
-          description: "A exclusão é definitiva. Usuários globais foram preservados.",
+          description:
+            res.message ||
+            "A exclusão é definitiva. Usuários só desta empresa também foram removidos.",
         });
         router.push("/admin/companies");
         return;
@@ -1934,7 +1938,7 @@ export default function AdminTenantPage() {
                 label: "Impacto",
                 value:
                   deleteMode === "now"
-                    ? "Remove dados do tenant agora · usuários globais preservados"
+                    ? "Remove dados da empresa agora · usuários só desta empresa também saem"
                     : "Empresa opera até o vencimento · exclusão automática na data",
               },
             ]}
@@ -1948,7 +1952,8 @@ export default function AdminTenantPage() {
               {
                 value: "now",
                 label: "Excluir agora",
-                description: "Exclusão imediata e definitiva de todos os dados da empresa.",
+                description:
+                  "Exclusão imediata. Dados da empresa e usuários que não pertencem a outra empresa são removidos.",
               },
               {
                 value: "schedule",
@@ -1970,8 +1975,8 @@ export default function AdminTenantPage() {
               aria-label="Confirmar que a exclusão é definitiva"
             />
             <span>
-              Entendo que a exclusão é definitiva e que os dados desta empresa serão
-              removidos. Usuários globais não serão apagados.
+              Entendo que a exclusão é definitiva: os dados desta empresa e os usuários
+              que não pertencem a outra empresa serão removidos.
             </span>
           </label>
           <FormField label={`Digite "${t.name}"`} required>

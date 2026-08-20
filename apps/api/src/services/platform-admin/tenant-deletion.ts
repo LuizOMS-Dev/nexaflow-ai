@@ -1,6 +1,7 @@
 /**
  * Exclusão real de empresa (Tenant).
- * - now: transação, dados do tenant, User global preservado
+ * - now: transação, dados do tenant + Users exclusivos desta empresa
+ * - User com membership em outra empresa ou SUPERADMIN é preservado
  * - schedule: scheduledDeletionAt + PENDING_DELETION, opera até a data
  * - job persistente lê o banco (nunca setTimeout por tenant)
  */
@@ -138,6 +139,63 @@ async function collectSideEffects(tenantId: string) {
   };
 }
 
+/**
+ * Após o Tenant (e as memberships dele) saírem: apaga User que ficou sem
+ * nenhuma outra empresa. SUPERADMIN e o ator da exclusão nunca entram.
+ */
+async function deleteExclusiveCompanyUsers(
+  tx: Prisma.TransactionClient,
+  memberUserIds: string[],
+  actorSub: string
+): Promise<{ deletedUserIds: string[]; preservedUserIds: string[] }> {
+  const unique = [...new Set(memberUserIds.filter(Boolean))];
+  if (!unique.length) return { deletedUserIds: [], preservedUserIds: [] };
+
+  const users = await tx.user.findMany({
+    where: { id: { in: unique } },
+    select: {
+      id: true,
+      platformRole: true,
+      memberships: { select: { id: true } },
+    },
+  });
+
+  const deletedUserIds: string[] = [];
+  const preservedUserIds: string[] = [];
+  for (const u of users) {
+    const keep =
+      u.id === actorSub ||
+      u.platformRole === "SUPERADMIN" ||
+      u.memberships.length > 0;
+    if (keep) preservedUserIds.push(u.id);
+    else deletedUserIds.push(u.id);
+  }
+  if (!deletedUserIds.length) return { deletedUserIds, preservedUserIds };
+
+  await tx.note.deleteMany({ where: { authorId: { in: deletedUserIds } } });
+  await tx.message.updateMany({
+    where: { authorId: { in: deletedUserIds } },
+    data: { authorId: null },
+  });
+  await tx.conversation.updateMany({
+    where: { assignedToId: { in: deletedUserIds } },
+    data: { assignedToId: null },
+  });
+  await tx.task.updateMany({
+    where: { assigneeId: { in: deletedUserIds } },
+    data: { assigneeId: null },
+  });
+  await tx.task.updateMany({
+    where: { creatorId: { in: deletedUserIds } },
+    data: { creatorId: null },
+  });
+  await tx.notification.deleteMany({ where: { userId: { in: deletedUserIds } } });
+  await tx.helpAssistantThread.deleteMany({ where: { userId: { in: deletedUserIds } } });
+  await tx.user.deleteMany({ where: { id: { in: deletedUserIds } } });
+
+  return { deletedUserIds, preservedUserIds };
+}
+
 async function cleanupSideEffects(side: {
   storagePaths: string[];
   instanceNames: string[];
@@ -178,13 +236,27 @@ export async function purgeTenantData(
   tenantId: string,
   actor: { sub: string; ip?: string },
   meta: { mode: DeletionMode; reason?: string | null; source: "admin" | "scheduled_job" }
-): Promise<{ ok: true; alreadyDeleted?: boolean; tenantId: string; name: string }> {
+): Promise<{
+  ok: true;
+  alreadyDeleted?: boolean;
+  tenantId: string;
+  name: string;
+  deletedUserIds: string[];
+  preservedUserIds: string[];
+}> {
   const existing = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { id: true, name: true, slug: true, status: true },
   });
   if (!existing) {
-    return { ok: true, alreadyDeleted: true, tenantId, name: "" };
+    return {
+      ok: true,
+      alreadyDeleted: true,
+      tenantId,
+      name: "",
+      deletedUserIds: [],
+      preservedUserIds: [],
+    };
   }
 
   const side = await collectSideEffects(tenantId);
@@ -194,6 +266,9 @@ export async function purgeTenantData(
       select: { userId: true },
     })
   ).map((m) => m.userId);
+
+  let deletedUserIds: string[] = [];
+  let preservedUserIds: string[] = [];
 
   try {
     await prisma.$transaction(
@@ -217,6 +292,7 @@ export async function purgeTenantData(
               previousStatus: live.status,
               memberUserIds,
               hardDelete: true,
+              deleteExclusiveUsers: true,
             } as Prisma.InputJsonValue,
             ip: actor.ip || null,
           },
@@ -224,13 +300,23 @@ export async function purgeTenantData(
 
         await deleteOrphanTenantRows(tx, tenantId);
         await tx.tenant.delete({ where: { id: tenantId } });
+        const users = await deleteExclusiveCompanyUsers(tx, memberUserIds, actor.sub);
+        deletedUserIds = users.deletedUserIds;
+        preservedUserIds = users.preservedUserIds;
       },
       { timeout: 30_000 }
     );
   } catch (err: unknown) {
     const code = typeof err === "object" && err && "code" in err ? String((err as { code?: string }).code) : "";
     if (code === "P2025") {
-      return { ok: true, alreadyDeleted: true, tenantId, name: existing.name };
+      return {
+        ok: true,
+        alreadyDeleted: true,
+        tenantId,
+        name: existing.name,
+        deletedUserIds: [],
+        preservedUserIds: [],
+      };
     }
     throw err;
   }
@@ -250,7 +336,13 @@ export async function purgeTenantData(
     },
   }).catch(() => null);
 
-  return { ok: true, tenantId, name: existing.name };
+  return {
+    ok: true,
+    tenantId,
+    name: existing.name,
+    deletedUserIds,
+    preservedUserIds,
+  };
 }
 
 async function withInflight<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
@@ -292,13 +384,20 @@ export async function deleteCompanyNow(
     })
   );
 
+  const deletedCount = result.deletedUserIds.length;
   return {
     ok: true,
     deleted: true,
     alreadyDeleted: Boolean(result.alreadyDeleted),
     tenantId: id,
     name: result.name || tenant.name,
-    message: "Empresa excluída definitivamente.",
+    deletedUserCount: deletedCount,
+    deletedUserIds: result.deletedUserIds,
+    preservedUserIds: result.preservedUserIds,
+    message:
+      deletedCount > 0
+        ? `Empresa excluída. ${deletedCount} usuário(s) exclusivo(s) desta empresa também foram removidos.`
+        : "Empresa excluída definitivamente.",
   };
 }
 
