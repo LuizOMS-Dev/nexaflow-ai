@@ -1014,7 +1014,7 @@ function CreateCompanyModal({
                       return;
                     }
                     void api<{ items: Array<{ email: string }> }>(
-                      `/admin/users?search=${encodeURIComponent(value)}&limit=8`
+                      `/admin/users?search=${encodeURIComponent(value)}&limit=8&scope=companies`
                     )
                       .then((res) => {
                         setExistingUser((res.items || []).some((u) => u.email.toLowerCase() === value));

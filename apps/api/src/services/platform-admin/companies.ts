@@ -386,15 +386,27 @@ export async function createCompany(
     input.adminPassword
   );
 
-  const preexistingAdmin = await prisma.user.findUnique({ where: { email } });
-  if (preexistingAdmin && accessMethod === "temporary_password") {
+  const preexistingAdmin = await prisma.user.findUnique({
+    where: { email },
+    include: { memberships: { select: { id: true } } },
+  });
+  if (
+    preexistingAdmin &&
+    preexistingAdmin.platformRole !== "SUPERADMIN" &&
+    preexistingAdmin.memberships.length === 0
+  ) {
+    const { recycleOrphanCompanyUser } = await import("./tenant-deletion");
+    await recycleOrphanCompanyUser(preexistingAdmin.id);
+  }
+  const liveAdmin = await prisma.user.findUnique({ where: { email } });
+  if (liveAdmin && accessMethod === "temporary_password") {
     throw new AppError(
       "Este e-mail já possui uma conta no NexaFlow. A senha não foi alterada. Peça para a pessoa entrar com a senha que já usa.",
       409,
       "ADMIN_USER_EXISTS"
     );
   }
-  const newAdminCreds = preexistingAdmin
+  const newAdminCreds = liveAdmin
     ? null
     : await credentialsForNewUser(accessMethod, input.adminPassword);
 

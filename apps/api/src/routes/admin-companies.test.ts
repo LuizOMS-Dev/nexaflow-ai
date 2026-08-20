@@ -281,6 +281,9 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
         name: "Existing Admin User",
         passwordHash: initialPasswordHash,
         status: "ACTIVE",
+        memberships: {
+          create: { tenantId: createdTenantIds[0], role: "AGENT" },
+        },
       },
     });
     createdUserIds.push(existingUser.id);
@@ -428,6 +431,9 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
         name: "Conta Existente",
         passwordHash: hash,
         status: "ACTIVE",
+        memberships: {
+          create: { tenantId: createdTenantIds[0], role: "AGENT" },
+        },
       },
     });
     createdUserIds.push(existingUser.id);
@@ -447,6 +453,48 @@ describe("Módulo Empresas Admin — Validação Completa de Negócio, Transaç�
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe("ADMIN_USER_EXISTS");
+  });
+
+  it("5f. E-mail órfão (sem membership) pode ser reusado como admin inicial", async () => {
+    const email = `orphan-${suffix}@test.nexaflow.local`;
+    const orphan = await prisma.user.create({
+      data: {
+        email,
+        name: "Orfao",
+        passwordHash: await hashPassword("SenhaAntiga123"),
+        status: "ACTIVE",
+      },
+    });
+    createdUserIds.push(orphan.id);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/tenants",
+      headers: auth(superToken),
+      payload: {
+        name: `Empresa Orfao ${suffix}`,
+        adminEmail: email,
+        adminName: "Admin Orfao",
+        adminPassword: "SenhaNova1234",
+        accessMethod: "temporary_password",
+        planId: createdPlanIds[0],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    createdTenantIds.push(res.json().id);
+    expect(await prisma.user.findUnique({ where: { id: orphan.id } })).toBeNull();
+    const reused = await prisma.user.findUnique({ where: { email } });
+    expect(reused).toBeTruthy();
+    expect(reused!.id).not.toBe(orphan.id);
+    if (reused) createdUserIds.push(reused.id);
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email, password: "SenhaNova1234" },
+    });
+    expect(login.statusCode).toBe(200);
+    expect((login.json() as { mustChangePassword?: boolean }).mustChangePassword).toBe(true);
   });
 
   it("6. Rejeição de Plano Indisponível ou Desativado", async () => {

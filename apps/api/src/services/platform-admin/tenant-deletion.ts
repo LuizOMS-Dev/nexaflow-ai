@@ -196,6 +196,13 @@ async function deleteExclusiveCompanyUsers(
   return { deletedUserIds, preservedUserIds };
 }
 
+/** Conta sem membership (empresa já apagada): libera o e-mail para novo cadastro. */
+export async function recycleOrphanCompanyUser(userId: string) {
+  await prisma.$transaction(async (tx) => {
+    await deleteExclusiveCompanyUsers(tx, [userId], "system");
+  });
+}
+
 async function cleanupSideEffects(side: {
   storagePaths: string[];
   instanceNames: string[];
