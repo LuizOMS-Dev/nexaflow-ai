@@ -206,8 +206,10 @@ function sourceMeta(doc: Doc): {
   key: string;
   Icon: typeof BookOpen;
 } {
-  // "Planos e preços" da empresa nunca é SYSTEM/plataforma
   const t = (doc.sourceType || "manual").toLowerCase();
+  if (t === "system_template" || doc.isStarterTemplate) {
+    return { label: "Base Padrão NexaFlow", key: "system_template", Icon: Sparkles };
+  }
   if (t === "system") return { label: "Manual", key: "manual", Icon: BookOpen };
   if (t === "document" || t === "pdf" || t === "file")
     return { label: "Documento", key: "document", Icon: FileText };
@@ -220,6 +222,7 @@ function sourceMeta(doc: Doc): {
 function isStarterModel(doc: Doc) {
   return Boolean(
     doc.isStarterTemplate ||
+      doc.sourceType === "system_template" ||
       doc.hasExamplePlaceholders ||
       hasExamplePlaceholders(doc.content) ||
       doc.title === "Planos e preços"
@@ -525,7 +528,11 @@ export default function KnowledgePage() {
       if (sourceFilter !== "ALL") {
         const src = (d.sourceType || "manual").toLowerCase();
         const mapped = src === "text" ? "manual" : src;
-        if (mapped !== sourceFilter && !(sourceFilter === "system" && d.isSystem)) return false;
+        if (sourceFilter === "system_template") {
+          if (!d.isStarterTemplate && mapped !== "system_template") return false;
+        } else if (mapped !== sourceFilter && !(sourceFilter === "system" && d.isSystem)) {
+          return false;
+        }
       }
       if (agentFilter !== "ALL") {
         if ((d.scope || "all") !== "all") {
@@ -679,10 +686,10 @@ export default function KnowledgePage() {
 
   const sourceOptions = [
     { value: "ALL", label: "Origem" },
+    { value: "system_template", label: "Base Padrão" },
     { value: "manual", label: "Manual" },
     { value: "document", label: "Documento" },
     { value: "import", label: "Importação" },
-    { value: "system", label: "Sistema" },
     { value: "learning", label: "Aprendizado" },
     { value: "gap", label: "Lacuna" },
   ];
@@ -1736,8 +1743,14 @@ function KnowledgeRow({
                 <span className={cn("h-1.5 w-1.5 rounded-full", st.dot)} />
                 {st.text}
               </span>
-              {starter && st.key === "draft" ? (
-                <span className="text-[10.5px] font-medium text-ink-faint">Modelo inicial</span>
+              {starter || doc.sourceType === "system_template" ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-500/[0.12] px-2 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  Base Padrão
+                </span>
+              ) : null}
+              {starter && st.key === "draft" && !hasExamplePlaceholders(doc.content) ? (
+                <span className="text-[10.5px] font-medium text-ink-faint">Personalizável</span>
               ) : null}
               {isDup ? (
                 <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-amber-700 dark:text-amber-300">
@@ -1859,6 +1872,12 @@ function KnowledgeReadView({ doc, isDup }: { doc: Doc; isDup: boolean }) {
         <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", st.className)}>
           {st.text}
         </span>
+        {doc.sourceType === "system_template" || doc.isStarterTemplate ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/[0.12] px-2 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
+            <Sparkles className="h-3 w-3" />
+            Base Padrão NexaFlow
+          </span>
+        ) : null}
         <span className="rounded-full bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-ink-muted dark:bg-white/[0.06]">
           {categoryLabel(doc.category)}
         </span>
@@ -1877,9 +1896,9 @@ function KnowledgeReadView({ doc, isDup }: { doc: Doc; isDup: boolean }) {
         ) : null}
       </div>
 
-      {isStarterModel(doc) && formStatusKey(doc.status) === "draft" ? (
-        <p className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-[12px] text-amber-900 dark:text-amber-100">
-          Modelo inicial. Personalize com as informações comerciais da sua empresa.
+      {(doc.sourceType === "system_template" || isStarterModel(doc)) && formStatusKey(doc.status) === "draft" ? (
+        <p className="rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-3 py-2 text-[12px] text-violet-900 dark:text-violet-100">
+          Documento da Base Padrão criado automaticamente pelo NexaFlow. Personalize este modelo conforme as informações da sua empresa antes de publicar.
         </p>
       ) : null}
 

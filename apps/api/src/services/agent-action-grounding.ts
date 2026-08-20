@@ -67,9 +67,8 @@ export function detectToolRequiredIntent(message: string): ToolRequiredIntent {
   const q = (message || "").toLowerCase();
   if (!q.trim()) return null;
   if (
-    /humano|atendente|pessoa\s+real|falar\s+com\s+(algu[eé]m|a\s+equipe)|transferir|me\s+passa\s+para/i.test(
-      q
-    )
+    /\b(falar\s+com|passar\s+(pra|para)|me\s+passa\s+(pra|para)|transferir\s+(para)?|pode\s+transferir(\s+para)?|chamar|preciso\s+de|quero)\s+(um\s+|uma\s+|o\s+|a\s+|algu[eé]m\s+)?(humano|atendente|pessoa\s+real|algu[eé]m|equipe|time|gerente|operador|especialista)\b/i.test(q) ||
+    /\b(suporte\s+humano|atendimento\s+humano|atendente\s+humano|humano\s+por\s+favor|atendente\s+humano\s+por\s+favor)\b/i.test(q)
   ) {
     return "REQUEST_HUMAN";
   }

@@ -160,7 +160,7 @@ export async function ensureStarterPlansKnowledge(
       content: STARTER_PLANS_CONTENT,
       category: "Comercial",
       status: "draft",
-      sourceType: "manual",
+      sourceType: "system_template",
       sourceUrl: STARTER_SOURCE_URL,
       scope: "all",
       syncedAt: null,
@@ -314,76 +314,80 @@ export async function markStarterPlansRemovedIfMatch(
   await setStarterFlag(tenantId, "removed");
 }
 
-/**
- * Provisionamento inicial de knowledge da empresa.
- * - Cria template Planos e preços (draft) uma vez
- * - NÃO sobrescreve docs existentes
- * - NÃO lê tabela Plan
- */
-export async function provisionTenantKnowledge(tenantId: string) {
-  return ensureStarterPlansKnowledge(tenantId);
-}
+
 
 /** Outros docs de treino opcionais (sem preços NexaFlow). Só cria se não existirem. */
 export async function ensureOptionalTrainingDocs(tenantId: string) {
-  /**
-   * FAQ e Políticas são regras operacionais (sem placeholders de preço).
-   * Criar já como "ready" para o autoatendimento usar imediatamente.
-   * "Planos e preços" continua draft até o cliente personalizar.
-   */
   const extras: Array<{
     title: string;
     category: string;
     content: string;
     status: "draft" | "ready";
+    sourceUrl: string;
   }> = [
     {
-      title: "FAQ atendimento WhatsApp",
-      category: "Suporte",
+      title: "Apresentação da Empresa e Atendimento",
+      category: "Institucional",
       status: "ready",
-      content: `COMO FUNCIONA O ATENDIMENTO
-- No modo automático, a IA responde no WhatsApp quando não há humano na conversa.
-- Se um atendente assumir, a IA para até a conversa ser devolvida ou o cliente pedir ajuda de novo (conforme Configurações → Atendimento).
+      sourceUrl: "nexaflow:starter:institucional:v1",
+      content: `SOBRE NOSSA EMPRESA E ATENDIMENTO
+- Somos dedicados a oferecer atendimento de excelência, transparência e soluções sob medida para cada cliente.
+- Nosso atendimento digital via WhatsApp funciona de forma contínua para esclarecer dúvidas, receber solicitações e conectar com especialistas da equipe.
 
-PEDIDOS FREQUENTES
-- Cliente pede humano / atendente / gerente: ofereça transferir e use o handoff da plataforma.
-- Dúvidas de preço/produto: use somente o que estiver no Conhecimento com status Pronto (nunca invente).
-- Fora do horário: informe que a equipe retorna no próximo horário comercial (complete com o horário real da empresa em Configurações ou neste documento).
+CANAIS E HORÁRIOS DE ATENDIMENTO
+- WhatsApp Oficial: canal direto para suporte, dúvidas e contratações.
+- Horário da Equipe: segunda a sexta-feira, em horário comercial.
+- Fora do horário: nosso assistente virtual recebe mensagens e registra o chamado para retorno prioritário da equipe.
 
-WHATSAPP
-- Conexão: painel Canais / Integrações, via QR Code.
-- Se o canal estiver desconectado, a IA não consegue enviar mensagens.`,
+COMPROMISSO COM O CLIENTE
+- Cordialidade, clareza e agilidade em todas as interações.
+- Respeito à privacidade dos dados de acordo com a LGPD.`,
     },
     {
-      title: "Políticas e regras internas",
+      title: "FAQ de Atendimento ao Cliente",
+      category: "Suporte",
+      status: "ready",
+      sourceUrl: "nexaflow:starter:faq:v1",
+      content: `COMO FUNCIONA O ATENDIMENTO
+- No modo automático, o assistente virtual responde no WhatsApp de forma rápida e precisa com base em informações oficiais.
+- Caso o cliente solicite falar com um atendente humano ou especialista, a conversa é imediatamente encaminhada para a fila de atendimento da nossa equipe.
+
+PERGUNTAS FREQUENTES
+- Como solicitar orçamento: envie os detalhes do serviço ou produto desejado para receber uma proposta personalizada.
+- Formas de pagamento aceitas: Pix, cartão de crédito e boleto bancário.
+- Prazos e entregas: informados detalhadamente conforme a proposta comercial acordada.
+- Suporte técnico e dúvidas: estamos disponíveis para ajudar em todas as etapas do atendimento.`,
+    },
+    {
+      title: "Políticas Comerciais e Diretrizes",
       category: "Políticas",
       status: "ready",
-      content: `REGRAS OBRIGATÓRIAS DO AGENTE
-- Fale apenas do negócio da empresa.
-- Use somente preços, prazos e políticas que estiverem no Conhecimento com status Pronto.
-- Se não souber um fato: diga que não encontrou informação confirmada e ofereça encaminhar a um humano. Nunca invente. Nunca diga "vou verificar depois" sem ação real.
-- Pedidos de desconto, contrato, pagamento ou dados sensíveis: encaminhe a um humano.
-- Assuntos fora do negócio: recuse com educação e volte ao atendimento.
-- Linguagem: português do Brasil, clara e curta no WhatsApp.`,
+      sourceUrl: "nexaflow:starter:politicas:v1",
+      content: `DIRETRIZES DE ATENDIMENTO E COMPROMISSO
+- Informações Verídicas: somente valores, prazos e condições comerciais confirmados pela empresa são informados.
+- Transparência: caso uma dúvida não tenha informação imediata, nossa equipe humana entra em contato para esclarecer.
+- Segurança e Privacidade: todos os dados cadastrais e mensagens são tratados com total confidencialidade e segurança.
+- Condições Comerciais: descontos, contratos e condições especiais são formalizados diretamente com os consultores da equipe.`,
     },
   ];
 
   for (const doc of extras) {
     const exists = await prisma.knowledgeDoc.findFirst({
-      where: { tenantId, title: doc.title },
-      select: { id: true, status: true, content: true },
+      where: {
+        tenantId,
+        OR: [
+          { title: doc.title },
+          { sourceUrl: doc.sourceUrl },
+        ],
+      },
+      select: { id: true, status: true, content: true, sourceType: true },
     });
     if (exists) {
-      // Auto-cura: FAQ/políticas legadas em draft sem placeholders → ready
-      if (
-        exists.status === "draft" &&
-        doc.status === "ready" &&
-        !hasStarterPlaceholders(exists.content || "")
-      ) {
+      if (exists.sourceType !== "system_template") {
         await prisma.knowledgeDoc.update({
           where: { id: exists.id },
-          data: { status: "ready" },
-        });
+          data: { sourceType: "system_template" },
+        }).catch(() => null);
       }
       continue;
     }
@@ -394,7 +398,8 @@ WHATSAPP
         content: doc.content,
         category: doc.category,
         status: doc.status,
-        sourceType: "manual",
+        sourceType: "system_template",
+        sourceUrl: doc.sourceUrl,
         scope: "all",
       },
     });
@@ -402,8 +407,18 @@ WHATSAPP
 }
 
 /**
- * Auto-cura: publica docs operacionais (sem placeholders de exemplo) que ainda estão em rascunho.
- * Nunca publica "Planos e preços" com template de exemplo.
+ * Provisionamento completo da Base Padrão NexaFlow da empresa.
+ * - Cria os 4 documentos padrão visíveis (Institucional, FAQ, Políticas e Modelo de Planos).
+ * - Identifica formalmente com sourceType = "system_template".
+ */
+export async function provisionTenantKnowledge(tenantId: string) {
+  const plans = await ensureStarterPlansKnowledge(tenantId);
+  await ensureOptionalTrainingDocs(tenantId);
+  return plans;
+}
+
+/**
+ * Auto-cura: garante que os documentos operacionais da Base Padrão existam e estejam com status Pronto.
  */
 export async function ensureOperationalKnowledgeReady(tenantId: string): Promise<{
   published: number;
@@ -414,7 +429,7 @@ export async function ensureOperationalKnowledgeReady(tenantId: string): Promise
     where: {
       tenantId,
       status: "draft",
-      NOT: { sourceType: "system" },
+      sourceType: "system_template",
     },
     select: { id: true, title: true, content: true, sourceUrl: true },
   });
@@ -426,17 +441,6 @@ export async function ensureOperationalKnowledgeReady(tenantId: string): Promise
       (d.sourceUrl || "") === STARTER_SOURCE_URL ||
       hasStarterPlaceholders(d.content || "");
     if (isPlansTemplate) continue;
-
-    // só docs curtos/operacionais ou explicitamente FAQ/políticas
-    const title = (d.title || "").toLowerCase();
-    const operational =
-      title.includes("faq") ||
-      title.includes("política") ||
-      title.includes("politica") ||
-      title.includes("regra") ||
-      title.includes("atendimento") ||
-      title.includes("whatsapp");
-    if (!operational) continue;
 
     await prisma.knowledgeDoc.update({
       where: { id: d.id },

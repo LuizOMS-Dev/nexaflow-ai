@@ -15,6 +15,7 @@ export type KnowledgeSource =
   | "manual"
   | "document"
   | "system"
+  | "system_template"
   | "import"
   | "gap"
   | "learning"
@@ -36,6 +37,7 @@ export const KNOWLEDGE_SOURCE_LABEL: Record<string, string> = {
   text: "Manual",
   document: "Documento",
   system: "Sistema NexaFlow",
+  system_template: "Base Padrão NexaFlow",
   import: "Importação",
   gap: "Lacuna resolvida",
   learning: "Aprendizado",
@@ -56,6 +58,7 @@ export function normalizeKnowledgeSource(raw?: string | null): string {
   const s = (raw || "manual").toLowerCase();
   if (s === "text") return "manual";
   if (s === "pdf" || s === "file") return "document";
+  if (s === "system_template" || s === "template") return "system_template";
   return s;
 }
 
@@ -166,7 +169,8 @@ function mapDoc(
   const agents = (doc.agentLinks || []).map((l) => l.agent);
   const system = isSystemKnowledge({ sourceType: doc.sourceType, title: doc.title });
   const isStarterTemplate =
-    (doc.sourceUrl || "") === STARTER_SOURCE_URL ||
+    sourceType === "system_template" ||
+    (doc.sourceUrl || "").startsWith("nexaflow:starter") ||
     doc.title === STARTER_PLANS_TITLE ||
     hasStarterPlaceholders(doc.content);
   let usedByLabel = "Todos os agentes";
@@ -186,7 +190,7 @@ function mapDoc(
     title: doc.title,
     content,
     category: doc.category,
-    sourceType: system ? "manual" : sourceType, // nunca expor catálogo NexaFlow como SYSTEM na UI
+    sourceType: system ? "manual" : sourceType,
     sourceUrl: doc.sourceUrl,
     status,
     scope,
@@ -197,11 +201,13 @@ function mapDoc(
     agents,
     agentCount: agents.length,
     usedByLabel,
-    sourceLabel: system
-      ? KNOWLEDGE_SOURCE_LABEL.manual
-      : KNOWLEDGE_SOURCE_LABEL[sourceType] || sourceType,
+    sourceLabel: isStarterTemplate
+      ? "Base Padrão NexaFlow"
+      : system
+        ? KNOWLEDGE_SOURCE_LABEL.manual
+        : KNOWLEDGE_SOURCE_LABEL[sourceType] || sourceType,
     statusLabel: KNOWLEDGE_STATUS_LABEL[status] || status,
-    isSystem: false, // Planos e preços da empresa nunca são SYSTEM
+    isSystem: false,
     editableContent: true,
     isStarterTemplate,
     hasExamplePlaceholders: hasStarterPlaceholders(doc.content),
@@ -231,10 +237,10 @@ export async function listKnowledgeDocs(params: {
   } catch {
     /* ignore */
   }
-  // Migração leve legada (sem recriar se excluído)
+  // Provisiona / assegura Base Padrão da empresa
   try {
-    const { migrateLegacyPlansDocIfNeeded } = await import("./knowledge-starter");
-    await migrateLegacyPlansDocIfNeeded(params.tenantId);
+    const { provisionTenantKnowledge } = await import("./knowledge-starter");
+    await provisionTenantKnowledge(params.tenantId);
   } catch {
     /* ignore */
   }

@@ -637,26 +637,16 @@ export async function autoReplyStillEligible(params: {
   tenantId: string;
   conversationId: string;
   agentId: string;
+  inboundMessageId?: string;
 }): Promise<boolean> {
   const conv = await prisma.conversation.findFirst({
     where: { id: params.conversationId, tenantId: params.tenantId },
     select: { assignedToId: true, status: true },
   });
-  if (!conv || conv.status === "CLOSED" || conv.status === "ARCHIVED") return false;
-  if (conv.assignedToId) return false;
-
-  const waiting = await prisma.message.findFirst({
-    where: {
-      conversationId: params.conversationId,
-      metadata: { path: ["waitingHuman"], equals: true },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, metadata: true },
-  });
-  if (waiting) {
-    const meta = (waiting.metadata || {}) as { waitingHuman?: boolean; requiresAssume?: boolean };
-    if (meta.waitingHuman || meta.requiresAssume) return false;
+  if (!conv || conv.status === "CLOSED" || conv.status === "ARCHIVED" || conv.status === "PENDING") {
+    return false;
   }
+  if (conv.assignedToId) return false;
 
   const agent = await prisma.aiAgent.findFirst({
     where: {
@@ -679,15 +669,16 @@ export async function autoReplyStillEligible(params: {
   const lastInbound = await prisma.message.findFirst({
     where: { conversationId: params.conversationId, direction: "INBOUND" },
     orderBy: { createdAt: "desc" },
-    select: { createdAt: true },
+    select: { id: true, createdAt: true },
   });
   if (lastInbound) {
+    const targetInboundId = params.inboundMessageId || lastInbound.id;
     const already = await prisma.message.findFirst({
       where: {
         conversationId: params.conversationId,
         direction: "OUTBOUND",
         isAiGenerated: true,
-        createdAt: { gte: lastInbound.createdAt },
+        metadata: { path: ["inboundMessageId"], equals: targetInboundId },
       },
       select: { id: true },
     });
@@ -699,6 +690,7 @@ export async function autoReplyStillEligible(params: {
       conversationId: params.conversationId,
       direction: "OUTBOUND",
       isAiGenerated: false,
+      authorId: { not: null },
       createdAt: { gte: new Date(Date.now() - 15_000) },
     },
     select: { id: true },
@@ -718,105 +710,48 @@ async function maybeAutoReplyAi(params: {
   channelId: string;
   contactPhone: string;
 }) {
+  console.log(`[ai-trace] [AUTO_START] conversationId=${params.conversationId} phone=${params.contactPhone}`);
+
   // Humano no comando → IA fica em silêncio
   const conv = await prisma.conversation.findFirst({
     where: { id: params.conversationId, tenantId: params.tenantId },
     select: { assignedToId: true, status: true },
   });
   if (!conv || conv.status === "CLOSED" || conv.status === "ARCHIVED") {
+    console.log(`[ai-trace] [AUTO_SKIP] conversationId=${params.conversationId} status=${conv?.status || "missing"}`);
     return;
   }
   if (conv.assignedToId) {
-    console.log("[whatsapp] auto-reply: humano assumiu (assignedToId), skip");
+    console.log(`[ai-trace] [AUTO_SKIP] conversationId=${params.conversationId} humano assumiu (assignedToId=${conv.assignedToId})`);
     return;
   }
 
-  // Config empresa (Configurações → Atendimento):
-  // "IA reassumir quando o cliente voltar" — default true.
+  // Fila humana / handoff: se conv.status === "PENDING", só responde se empresa permite reassumir
   const resumeOnReturn = await getAiResumeOnCustomerReturn(params.tenantId);
-
-  /**
-   * Fila humana / handoff:
-   * - Humano atribuído → já saiu acima.
-   * - Conversa PENDING ou aviso de handoff ativo:
-   *   · se empresa permite resume + cliente voltou a escrever → IA reassume e responde;
-   *   · senão → silêncio (humano deve Assumir).
-   */
-  // Só flags ATIVOS de fila (não humanHandoff legado já resolvido)
-  const handoff = await prisma.message.findFirst({
-    where: {
-      conversationId: params.conversationId,
-      OR: [
-        { metadata: { path: ["waitingHuman"], equals: true } },
-        { metadata: { path: ["requiresAssume"], equals: true } },
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  const inHumanQueue = conv.status === "PENDING" || Boolean(handoff);
+  const inHumanQueue = conv.status === "PENDING";
   if (inHumanQueue) {
-    const meta = (handoff?.metadata || {}) as Record<string, unknown>;
-    const kind = String(meta.noticeKind || "");
-    const assumed =
-      meta.assumedByHuman === true || kind === "human_takeover";
+    const lastInbound = await prisma.message.findFirst({
+      where: { conversationId: params.conversationId, direction: "INBOUND" },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true, content: true },
+    });
 
-    // Já reassumida (aviso mais recente) → segue normal
-    if (kind === "ai_resumed_customer_return" || meta.aiResumed === true) {
-      // ok
-    } else if (assumed) {
-      console.log("[whatsapp] auto-reply: takeover humano no histórico, skip");
-      return;
-    } else {
-      const lastInbound = await prisma.message.findFirst({
-        where: { conversationId: params.conversationId, direction: "INBOUND" },
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true, content: true },
-      });
-      const handoffAt = handoff?.createdAt?.getTime() ?? 0;
-      const customerReturned =
-        Boolean(lastInbound?.createdAt) &&
-        lastInbound!.createdAt.getTime() > handoffAt + 800;
+    const { isMeaningfulCustomerReturnMessage } = await import("./resume-guard");
+    const meaningfulReturn = isMeaningfulCustomerReturnMessage(lastInbound?.content || "");
 
-      // Plataforma (todos os agentes): "ok", "obrigado", "tudo bem" etc. NÃO reabrem
-      const { isMeaningfulCustomerReturnMessage } = await import("./resume-guard");
-      const meaningfulReturn = isMeaningfulCustomerReturnMessage(
-        lastInbound?.content || ""
-      );
-
-      if (
-        resumeOnReturn &&
-        customerReturned &&
-        meaningfulReturn &&
-        !conv.assignedToId
-      ) {
-        console.log(
-          "[whatsapp] auto-reply: cliente pediu ajuda de novo — IA reassumindo (config empresa)"
-        );
-        try {
-          await resumeAiAfterCustomerReturn({
-            tenantId: params.tenantId,
-            conversationId: params.conversationId,
-          });
-        } catch (err) {
-          console.warn(
-            "[whatsapp] resume AI failed:",
-            err instanceof Error ? err.message : err
-          );
-        }
-        // segue e responde
-      } else {
-        if (customerReturned && !meaningfulReturn) {
-          console.log(
-            `[whatsapp] auto-reply: msg trivial ("${(lastInbound?.content || "").slice(0, 40)}") — não reassumir IA`
-          );
-        } else {
-          console.log(
-            `[whatsapp] auto-reply: fila humana ativa (resumeOnReturn=${resumeOnReturn}, returned=${customerReturned}, meaningful=${meaningfulReturn}) — skip`
-          );
-        }
-        return;
+    if (resumeOnReturn && meaningfulReturn && !conv.assignedToId) {
+      console.log(`[ai-trace] [AUTO_RESUME] cliente voltou a interagir — IA reassumindo`);
+      try {
+        await resumeAiAfterCustomerReturn({
+          tenantId: params.tenantId,
+          conversationId: params.conversationId,
+        });
+      } catch (err) {
+        console.warn("[whatsapp] resume AI failed:", err instanceof Error ? err.message : err);
       }
+    } else {
+      console.log(`[ai-trace] [AUTO_SKIP] fila humana ativa (status=PENDING, meaningful=${meaningfulReturn})`);
+      return;
     }
   }
 
@@ -826,7 +761,7 @@ async function maybeAutoReplyAi(params: {
 
   if (!agent) {
     console.warn(
-      "[whatsapp] auto-reply: nenhum agente elegível (precisa isActive + mode AUTO + publishStatus PUBLISHED)"
+      `[ai-trace] [AUTO_SKIP] nenhum agente elegível para tenant=${params.tenantId} (precisa isActive + mode AUTO + publishStatus PUBLISHED)`
     );
     return;
   }
@@ -837,7 +772,7 @@ async function maybeAutoReplyAi(params: {
     await assertTenantCanRunAiAuto(params.tenantId);
   } catch (err) {
     console.warn(
-      "[whatsapp] auto-reply: access gate —",
+      `[ai-trace] [AUTO_SKIP] access gate:`,
       err instanceof Error ? err.message : err
     );
     return;
@@ -846,7 +781,6 @@ async function maybeAutoReplyAi(params: {
   const {
     getTenantAiCreditPressure,
     buildInstabilityClientMessage,
-    platformAiHandoffToHuman,
   } = await import("../platform-ai-degradation");
 
   const creditPressure = await getTenantAiCreditPressure(params.tenantId);
@@ -858,9 +792,16 @@ async function maybeAutoReplyAi(params: {
   const contactFirst = extractValidPersonFirstName(contact?.contact?.name);
   const contactFull = contact?.contact?.name || null;
 
+  const lastInbound = await prisma.message.findFirst({
+    where: { conversationId: params.conversationId, direction: "INBOUND" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, createdAt: true, content: true },
+  });
+  const inboundMessageId = lastInbound?.id;
+
   // Créditos esgotados: promete humano + fila Assumir (operacional)
   if (creditPressure.exhausted) {
-    console.warn("[whatsapp] auto-reply: créditos esgotados — handoff plataforma");
+    console.warn(`[ai-trace] [AUTO_CREDITS_EXHAUSTED] tenantId=${params.tenantId}`);
     const reply = buildInstabilityClientMessage({
       agentName: agent.name,
       contactFirstName: contactFirst,
@@ -872,6 +813,7 @@ async function maybeAutoReplyAi(params: {
       conversationId: params.conversationId,
       channelId: params.channelId,
       contactPhone: params.contactPhone,
+      inboundMessageId,
       agentId: agent.id,
       agentName: agent.name,
       contactName: contactFull,
@@ -891,7 +833,7 @@ async function maybeAutoReplyAi(params: {
     select: { assignedToId: true },
   });
   if (again?.assignedToId) {
-    console.log("[whatsapp] auto-reply: humano assumiu, skip");
+    console.log(`[ai-trace] [AUTO_SKIP] humano assumiu, skip`);
     return;
   }
 
@@ -900,32 +842,28 @@ async function maybeAutoReplyAi(params: {
     where: {
       conversationId: params.conversationId,
       direction: "OUTBOUND",
+      authorId: { not: null },
       createdAt: { gte: new Date(Date.now() - 2000) },
       isAiGenerated: false,
     },
   });
   if (recentOut) {
-    console.log("[whatsapp] auto-reply: humano já respondeu, skip");
+    console.log(`[ai-trace] [AUTO_SKIP] humano já respondeu nos últimos 2s, skip`);
     return;
   }
 
-  const lastInbound = await prisma.message.findFirst({
-    where: { conversationId: params.conversationId, direction: "INBOUND" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, createdAt: true },
-  });
   if (lastInbound) {
     const alreadyReplied = await prisma.message.findFirst({
       where: {
         conversationId: params.conversationId,
         direction: "OUTBOUND",
         isAiGenerated: true,
-        createdAt: { gte: lastInbound.createdAt },
+        metadata: { path: ["inboundMessageId"], equals: lastInbound.id },
       },
       select: { id: true },
     });
     if (alreadyReplied) {
-      console.log("[whatsapp] auto-reply: já respondeu este inbound, skip");
+      console.log(`[ai-trace] [ALREADY_REPLIED] conversationId=${params.conversationId} inboundId=${lastInbound.id}, skip`);
       return;
     }
   }
@@ -938,6 +876,7 @@ async function maybeAutoReplyAi(params: {
     /* não bloqueia resposta */
   }
 
+  console.log(`[ai-trace] [AI_GENERATING] conversationId=${params.conversationId} agent=${agent.name}`);
   const { generateHumanWhatsAppReply } = await import("../ai");
   const generated = await generateHumanWhatsAppReply({
     tenantId: params.tenantId,
@@ -947,25 +886,21 @@ async function maybeAutoReplyAi(params: {
 
   let reply = (generated.reply || "").trim();
   if (!reply) {
-    console.warn("[whatsapp] auto-reply: resposta vazia");
+    console.warn(`[ai-trace] [AUTO_SKIP] resposta vazia`);
     return;
   }
 
-  // Tools leves no AUTO: pedido de humano → handoff real (não só texto)
+  // Tools leves no AUTO: SOMENTE pedido explícito de humano dispara tool request_human
   try {
-    const lastIn = await prisma.message.findFirst({
-      where: { conversationId: params.conversationId, direction: "INBOUND" },
-      orderBy: { createdAt: "desc" },
-      select: { content: true },
-    });
     const { detectToolRequiredIntent } = await import("../agent-action-grounding");
-    const intent = detectToolRequiredIntent(lastIn?.content || "");
-    const wantsHuman =
+    const intent = detectToolRequiredIntent(lastInbound?.content || "");
+    const wantsHumanExplicit =
       intent === "REQUEST_HUMAN" ||
       Boolean(generated.needsHumanHandoff) ||
-      /\b(humano|atendente|pessoa|gerente|operador)\b/i.test(lastIn?.content || "");
+      /\b(falar\s+com|passar\s+para|transferir\s+para|chamar|preciso\s+de|quero)\s+(um\s+|uma\s+)?(humano|atendente|pessoa\s+real|gerente|operador|especialista)\b/i.test(lastInbound?.content || "") ||
+      /\b(suporte\s+humano|atendimento\s+humano|atendente\s+humano|humano\s+por\s+favor)\b/i.test(lastInbound?.content || "");
 
-    if (wantsHuman) {
+    if (wantsHumanExplicit) {
       const convRow = await prisma.conversation.findFirst({
         where: { id: params.conversationId, tenantId: params.tenantId },
         select: { contactId: true },
@@ -981,7 +916,7 @@ async function maybeAutoReplyAi(params: {
         },
         [{ tool: "request_human", args: { reason: "cliente_pediu_humano" } }]
       );
-      console.log("[whatsapp] auto-reply: tool request_human executado");
+      console.log(`[ai-trace] [HUMAN_HANDOFF_TRIGGERED] conversationId=${params.conversationId}`);
     }
   } catch (err) {
     console.warn(
@@ -991,7 +926,6 @@ async function maybeAutoReplyAi(params: {
   }
 
   // Fila "Assumir" só: needsHumanHandoff real (regras/tool) OU créditos esgotados.
-  // Rate limit / erro transitório → NÃO forceHandoff (mensagem soft, sem banner).
   const forceHandoff =
     Boolean(generated.needsHumanHandoff) || creditPressure.exhausted;
 
@@ -1001,28 +935,19 @@ async function maybeAutoReplyAi(params: {
       ? generated.degradationReason
       : undefined;
 
-  if (generated.model === "rate_limited" || generated.degradationReason === "provider_rate_limit") {
-    console.warn(
-      "[whatsapp] auto-reply: rate limit — soft (sem fila Assumir)"
-    );
-  } else if (forceHandoff && creditPressure.exhausted) {
-    console.warn(
-      "[whatsapp] auto-reply: créditos esgotados — handoff Assumir"
-    );
-  }
-
   const stillOk = await autoReplyStillEligible({
     tenantId: params.tenantId,
     conversationId: params.conversationId,
     agentId: agent.id,
+    inboundMessageId,
   });
   if (!stillOk) {
-    console.log("[whatsapp] auto-reply: estado mudou após geração (humano/handoff/agente) — descarta envio");
+    console.log(`[ai-trace] [AUTO_DISCARD] estado mudou após geração — descarta envio conversationId=${params.conversationId}`);
     return;
   }
 
   console.log(
-    `[whatsapp] auto-reply: enviando como ${generated.agentName || agent.name} (${reply.slice(0, 80)}…)`
+    `[ai-trace] [AI_DISPATCH] enviando como ${generated.agentName || agent.name} (${reply.slice(0, 60)}…)`
   );
 
   await sendAiOutboundAndHandoff({
@@ -1030,6 +955,7 @@ async function maybeAutoReplyAi(params: {
     conversationId: params.conversationId,
     channelId: params.channelId,
     contactPhone: params.contactPhone,
+    inboundMessageId,
     agentId: agent.id,
     agentName: generated.agentName || agent.name,
     contactName: contactFull,
@@ -1059,6 +985,7 @@ async function sendAiOutboundAndHandoff(params: {
   conversationId: string;
   channelId: string;
   contactPhone: string;
+  inboundMessageId?: string;
   agentId: string;
   agentName: string;
   contactName?: string | null;
@@ -1093,17 +1020,22 @@ async function sendAiOutboundAndHandoff(params: {
   const { createHash } = await import("crypto");
   const { dispatchWhatsAppText } = await import("./message-dispatch");
   const replyHash = createHash("sha256").update(params.reply).digest("hex").slice(0, 16);
+  const idempotencyKey = params.inboundMessageId
+    ? `ai-auto:${params.conversationId}:${params.inboundMessageId}`
+    : `ai-auto:${params.conversationId}:${replyHash}`;
+
+  console.log(`[ai-trace] [OUTBOUND_QUEUED] conversationId=${params.conversationId} to=${destinationTo} key=${idempotencyKey}`);
   const send = await dispatchWhatsAppText({
     channelId: params.channelId,
     to: destinationTo,
     text: params.reply,
     purpose: "ai",
     tenantId: params.tenantId,
-    idempotencyKey: `ai-auto:${params.conversationId}:${replyHash}`,
+    idempotencyKey,
   });
 
   if (!send.ok) {
-    console.error("[whatsapp] auto-reply send failed:", send.error);
+    console.error(`[ai-trace] [OUTBOUND_FAILED] error=${send.error}`);
     const failMsg = await prisma.message.create({
       data: {
         conversationId: params.conversationId,
@@ -1113,6 +1045,7 @@ async function sendAiOutboundAndHandoff(params: {
         isAiGenerated: true,
         metadata: {
           aiAuto: true,
+          inboundMessageId: params.inboundMessageId,
           deliveryStatus: "FAILED",
           deliveryError: send.error || "Falha no envio WhatsApp",
           sendError: send.error || true,
@@ -1125,7 +1058,6 @@ async function sendAiOutboundAndHandoff(params: {
       conversationId: params.conversationId,
       message: failMsg,
     });
-    // Mesmo com falha de envio, handoff + notificação se degradação
     if (params.forceHandoff && params.reason) {
       const { platformAiHandoffToHuman } = await import("../platform-ai-degradation");
       await platformAiHandoffToHuman({
@@ -1139,6 +1071,8 @@ async function sendAiOutboundAndHandoff(params: {
     }
     return;
   }
+
+  console.log(`[ai-trace] [OUTBOUND_SENT] conversationId=${params.conversationId} externalId=${send.externalId || "ok"}`);
 
   if (!params.skipUsageCredit) {
     try {
@@ -1168,6 +1102,7 @@ async function sendAiOutboundAndHandoff(params: {
       isAiGenerated: true,
       metadata: {
         aiAuto: true,
+        inboundMessageId: params.inboundMessageId,
         deliveryStatus: "SENT",
         agentId: params.agentId,
         agentName: params.agentName,

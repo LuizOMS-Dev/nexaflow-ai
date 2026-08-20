@@ -759,7 +759,7 @@ export async function generateHumanWhatsAppReply(params: {
       where: { id: params.conversationId, tenantId: params.tenantId },
       include: {
         contact: { include: { memory: true } },
-        messages: { orderBy: { createdAt: "desc" }, take: 10 },
+        messages: { orderBy: { createdAt: "desc" }, take: 6 },
       },
     }),
     params.agentId
@@ -783,7 +783,7 @@ export async function generateHumanWhatsAppReply(params: {
   const retrieval = await retrieveForAgent({
     tenantId: params.tenantId,
     agentId: agent?.id,
-    take: 6,
+    take: 3,
     query: lastInbound?.content || null,
   });
   const knowledge = retrieval.chunks.map((c) => ({
@@ -805,13 +805,13 @@ export async function generateHumanWhatsAppReply(params: {
   const first = extractValidPersonFirstName(contact?.name);
   const clientLabel = first || (isValidPersonName(contact?.name) ? contact.name : "Cliente");
 
-  const contactMemorySummary = (contact.memory?.summary || "").trim().slice(0, 200);
-  let conversationMemory = (conversation.memorySummary || "").trim().slice(0, 600);
+  const contactMemorySummary = (contact.memory?.summary || "").trim().slice(0, 150);
+  let conversationMemory = (conversation.memorySummary || "").trim().slice(0, 300);
   if (!conversationMemory) {
     try {
       const { getConversationMemory } = await import("./conversation-memory");
       const mem = await getConversationMemory(params.tenantId, conversation.id);
-      conversationMemory = (mem?.summary || "").trim().slice(0, 600);
+      conversationMemory = (mem?.summary || "").trim().slice(0, 300);
     } catch {
       /* ignore */
     }
@@ -819,7 +819,7 @@ export async function generateHumanWhatsAppReply(params: {
   const memorySummary = [contactMemorySummary, conversationMemory ? `Atendimento: ${conversationMemory}` : ""]
     .filter(Boolean)
     .join(" · ")
-    .slice(0, 700);
+    .slice(0, 400);
   const profileBits = [
     contact.commercialStatus ? `Status: ${contact.commercialStatus}` : null,
     contact.priority ? `Prioridade: ${contact.priority}` : null,
@@ -828,20 +828,20 @@ export async function generateHumanWhatsAppReply(params: {
     .filter(Boolean)
     .join(" · ");
 
-  const behavior = sanitizeAgentInstructions(agent?.instructions || "", agentName).slice(0, 520);
-  const restrictions = (agent?.restrictions || "").trim().slice(0, 240);
-  const objective = (agent?.objective || "").trim().slice(0, 160);
+  const behavior = sanitizeAgentInstructions(agent?.instructions || "", agentName).slice(0, 360);
+  const restrictions = (agent?.restrictions || "").trim().slice(0, 180);
+  const objective = (agent?.objective || "").trim().slice(0, 120);
 
   const transcript = messages
     .filter((m) => m.direction === "INBOUND" || m.direction === "OUTBOUND")
     .map((m) => {
-      const t = (m.content || "").slice(0, 280);
+      const t = (m.content || "").slice(0, 180);
       if (m.direction === "INBOUND") return `Cliente: ${t}`;
       return `Você: ${t}`;
     })
     .join("\n");
 
-  const userInbound = (lastInbound?.content || "").slice(0, 500);
+  const userInbound = (lastInbound?.content || "").slice(0, 400);
   const toolIntent = detectToolRequiredIntent(userInbound);
   const knowledgeRelevant = knowledgeLooksRelevantToIntent(toolIntent, knowledge);
   const knowledgeBlock = wrapKnowledgeAsData(retrieval.chunks);
@@ -968,6 +968,21 @@ Escreva a resposta completa de WhatsApp:`;
 
       if (!generated) {
         const lastOutbound = [...messages].reverse().find((m) => m.direction === "OUTBOUND");
+        if (executionId) {
+          void import("./ai-execution")
+            .then(({ finishAiExecution }) =>
+              finishAiExecution({
+                id: executionId!,
+                status: "SUCCEEDED",
+                provider: "heuristic",
+                model: "heuristic",
+                inputTokens: 0,
+                outputTokens: 0,
+                retrievalCount: retrieval.chunks.length,
+              })
+            )
+            .catch(() => null);
+        }
         return {
           reply: buildSmartFallbackReply({
             userInbound,
@@ -1014,7 +1029,7 @@ Escreva a resposta completa de WhatsApp:`;
 
       // NÃO chamar analyzeConversation aqui — dobrava consumo de tokens e gerava rate limit no Groq.
       console.log(
-        `[ai] WA reply ok tokensIn=${generated.usage?.inputTokens ?? "?"} tokensOut=${generated.usage?.outputTokens ?? "?"} model=${generated.model} grounded=${grounded.rewritten} outcome=${grounded.outcome}`
+        `[ai-trace] [AI_SUCCEEDED] conversationId=${conversation.id} tokensIn=${generated.usage?.inputTokens ?? "?"} tokensOut=${generated.usage?.outputTokens ?? "?"} model=${generated.model} grounded=${grounded.rewritten} outcome=${grounded.outcome}`
       );
 
       void import("./platform-ai-health").then(({ markPlatformAiHealthy }) =>
@@ -1062,13 +1077,13 @@ Escreva a resposta completa de WhatsApp:`;
           ? String((err as { code?: string }).code || "")
           : "";
       console.error(
-        `[ai] generateHumanWhatsAppReply attempt=${attempt + 1} failed:`,
+        `[ai-trace] [AI_ATTEMPT_FAILED] attempt=${attempt + 1}:`,
         lastErr,
         lastCode ? `code=${lastCode}` : ""
       );
       if (isProviderRateLimitError(lastErr, lastCode) && attempt < 1) {
         const waitMs = 900;
-        console.warn(`[ai] rate limit — retry rápido em ${waitMs}ms`);
+        console.warn(`[ai-trace] rate limit — retry rápido em ${waitMs}ms`);
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
@@ -1076,10 +1091,36 @@ Escreva a resposta completa de WhatsApp:`;
     }
   }
 
-  console.error("[ai] generateHumanWhatsAppReply giving up:", lastErr, lastCode || "");
+  console.error(`[ai-trace] [AI_FAILED] conversationId=${conversation.id}:`, lastErr, lastCode || "");
+  if (executionId) {
+    void import("./ai-execution")
+      .then(({ finishAiExecution }) =>
+        finishAiExecution({
+          id: executionId!,
+          status: "FAILED",
+          provider: env.aiProvider || "groq",
+          model: agent?.model,
+          errorCode: lastCode || "AI_ERROR",
+          errorMessage: lastErr,
+        })
+      )
+      .catch(() => null);
+  }
+
+  const lastOutbound = [...messages].reverse().find((m) => m.direction === "OUTBOUND");
+  const fallbackReply = buildSmartFallbackReply({
+    userInbound,
+    agentName,
+    companyHint,
+    first,
+    isFirst,
+    knowledge,
+    lastOutboundText: lastOutbound?.content,
+  });
+
   if (isProviderRateLimitError(lastErr, lastCode)) {
     void import("./platform-ai-health").then(({ markPlatformAiUnstable }) =>
-      markPlatformAiUnstable("rate_limit", { cooldownMs: 25_000 })
+      markPlatformAiUnstable("rate_limit", { cooldownMs: 20_000 })
     );
     void import("./entitlements")
       .then(({ recordAiUsage }) =>
@@ -1093,14 +1134,8 @@ Escreva a resposta completa de WhatsApp:`;
         })
       )
       .catch(() => null);
-    // Soft fail: NÃO entra na fila "Assumir" (só cliente/IA pedindo humano)
     return {
-      reply: buildInstabilityClientMessage({
-        agentName,
-        contactFirstName: first,
-        isFirst,
-        promiseHuman: false,
-      }),
+      reply: fallbackReply,
       provider: env.aiProvider || "rate_limited",
       model: "rate_limited",
       agentName,
@@ -1110,7 +1145,7 @@ Escreva a resposta completa de WhatsApp:`;
   }
 
   void import("./platform-ai-health").then(({ markPlatformAiUnstable }) =>
-    markPlatformAiUnstable("provider_error", { cooldownMs: 30_000 })
+    markPlatformAiUnstable("provider_error", { cooldownMs: 15_000 })
   );
   void import("./entitlements")
     .then(({ recordAiUsage }) =>
@@ -1125,12 +1160,7 @@ Escreva a resposta completa de WhatsApp:`;
     )
     .catch(() => null);
   return {
-    reply: buildInstabilityClientMessage({
-      agentName,
-      contactFirstName: first,
-      isFirst,
-      promiseHuman: false,
-    }),
+    reply: fallbackReply,
     provider: env.aiProvider || "heuristic",
     model: "error_fallback",
     agentName,
