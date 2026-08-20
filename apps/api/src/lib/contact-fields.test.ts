@@ -80,3 +80,37 @@ describe("contact-fields resolveContactNameWithPriority", () => {
     expect(name).toBe("+55 (34) 99999-9999");
   });
 });
+
+describe("contact-fields person name and first name helpers", () => {
+  it("isValidPersonName aceita nomes reais e rejeita números, telefones e +55", async () => {
+    const { isValidPersonName } = await import("./contact-fields");
+    expect(isValidPersonName("Rodrigo Almeida")).toBe(true);
+    expect(isValidPersonName("Ana")).toBe(true);
+    expect(isValidPersonName("Luiz Otávio")).toBe(true);
+    
+    // Rejeições críticas:
+    expect(isValidPersonName("+55 (34) 99999-9999")).toBe(false);
+    expect(isValidPersonName("+55")).toBe(false);
+    expect(isValidPersonName("+55 11 98888-7777")).toBe(false);
+    expect(isValidPersonName("5534999999999")).toBe(false);
+    expect(isValidPersonName("12345678901234@lid")).toBe(false);
+    expect(isValidPersonName("5511999998888@c.us")).toBe(false);
+    expect(isValidPersonName("Cliente")).toBe(false);
+    expect(isValidPersonName("")).toBe(false);
+    expect(isValidPersonName(null)).toBe(false);
+  });
+
+  it("extractValidPersonFirstName extrai primeiro nome legítimo e NUNCA retorna +55 ou números", async () => {
+    const { extractValidPersonFirstName } = await import("./contact-fields");
+    expect(extractValidPersonFirstName("Rodrigo Almeida")).toBe("Rodrigo");
+    expect(extractValidPersonFirstName("maria clara")).toBe("Maria");
+    expect(extractValidPersonFirstName("ana")).toBe("Ana");
+
+    // NUNCA retorna +55:
+    expect(extractValidPersonFirstName("+55 (34) 99999-9999")).toBeNull();
+    expect(extractValidPersonFirstName("+55")).toBeNull();
+    expect(extractValidPersonFirstName("5534999999999")).toBeNull();
+    expect(extractValidPersonFirstName("12345678901234@lid")).toBeNull();
+    expect(extractValidPersonFirstName(null)).toBeNull();
+  });
+});

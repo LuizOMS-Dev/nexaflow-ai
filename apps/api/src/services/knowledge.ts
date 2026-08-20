@@ -367,16 +367,24 @@ export async function getKnowledgeDoc(
  * Score simples de relevância (sem embeddings).
  * Título pesa mais; categoria e corpo reforçam.
  */
+const PORTUGUESE_2_LETTER_STOPWORDS = new Set([
+  "de", "do", "da", "em", "no", "na", "um", "se", "os", "as", "ao", "ou", "me", "te", "eu", "já"
+]);
+
+export function tokenizeKnowledgeQuery(q: string): string[] {
+  return (q || "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((t) => t.length > 2 || (t.length === 2 && !PORTUGUESE_2_LETTER_STOPWORDS.has(t)));
+}
+
 export function scoreKnowledgeDoc(
   query: string,
   title: string,
   content: string,
   category?: string | null
 ): number {
-  const terms = query
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length > 2);
+  const terms = tokenizeKnowledgeQuery(query);
   if (!terms.length) return 0;
   const tTitle = (title || "").toLowerCase();
   const tCat = (category || "").toLowerCase();

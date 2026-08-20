@@ -130,6 +130,8 @@ export function useRealtime() {
         event === "contact.deleted"
       ) {
         pendingRef.current.contacts = true;
+        pendingRef.current.conversations = true;
+        pendingRef.current.allConversations = true;
         if (payload.id) {
           pendingRef.current.contactIds.add(payload.id);
           if (event === "contact.deleted") {

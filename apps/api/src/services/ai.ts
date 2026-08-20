@@ -286,6 +286,63 @@ export function getAiStatus() {
 }
 
 /**
+ * Resposta heurística inteligente para perguntas básicas, identidade, saudações
+ * e falhas de rede, sem loops repetitivos de "Recebi sua mensagem".
+ */
+export function buildSmartFallbackReply(params: {
+  userInbound: string;
+  agentName: string;
+  companyHint: string;
+  first?: string | null;
+  isFirst: boolean;
+  knowledge?: Array<{ title?: string; content?: string }>;
+  lastOutboundText?: string | null;
+}): string {
+  const { userInbound, agentName, companyHint, first, isFirst, knowledge = [], lastOutboundText } = params;
+  const q = (userInbound || "").trim().toLowerCase();
+  const hi = first ? `Oi, ${first}!` : "Olá!";
+
+  // 1. Pergunta sobre a identidade do próprio agente (Qual seu nome?, Quem é você?, etc.)
+  if (
+    /qual(\s+[eé])?\s+(o\s+)?(seu|teu)\s+nome|quem\s+[eé]\s+voc[eê]|com\s+quem\s+(eu\s+)?(estou\s+)?faland|qual\s+(o\s+)?nome\s+da\s+(atendente|assistente)/i.test(
+      q
+    )
+  ) {
+    return `Meu nome é ${agentName}. Sou assistente virtual da ${companyHint}. Como posso te ajudar hoje?`;
+  }
+
+  // 2. Pergunta sobre a empresa (ex: O que é a FM Conteúdos?)
+  const companyEscaped = companyHint.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const isCompanyQuery =
+    new RegExp(`o\\s+que\\s+[eé]\\s+(a|o)?\\s*(${companyEscaped}|empresa|voc[eê]s\\s+fazem)`, "i").test(q) ||
+    new RegExp(`quem\\s+[eé]\\s+(a|o)?\\s*(${companyEscaped})`, "i").test(q) ||
+    new RegExp(`sobre\\s+(a|o)?\\s*(${companyEscaped})`, "i").test(q);
+
+  if (isCompanyQuery) {
+    if (knowledge.length > 0 && knowledge[0]?.content) {
+      const summary = knowledge[0].content.slice(0, 300).trim();
+      return `A ${companyHint} ${summary}\n\nComo posso te ajudar hoje?`;
+    }
+    return `A ${companyHint} é a nossa empresa. Como posso te orientar hoje?`;
+  }
+
+  // 3. Saudações comuns
+  if (/^(oi|ol[aá]|oie|opa|bom\s+dia|boa\s+tarde|boa\s+noite)[!.,? ]*$/i.test(q)) {
+    return isFirst
+      ? `${hi} Aqui é a ${agentName}, da ${companyHint}. Tudo bem? Como posso te ajudar hoje? 🙂`
+      : `${hi} Tudo bem? Em que posso te ajudar hoje?`;
+  }
+
+  // 4. Fallback alternado (evita repetição consecutiva de "Me explica um pouco mais")
+  const lastOutbound = (lastOutboundText || "").toLowerCase();
+  if (lastOutbound.includes("explica um pouco mais") || lastOutbound.includes("recebi sua mensagem")) {
+    return `${hi} Entendi. Poderia me dar mais alguns detalhes para que eu possa te orientar melhor?`;
+  }
+
+  return `${hi} Recebi sua mensagem. Me explica um pouco mais pra eu te ajudar certinho?`;
+}
+
+/**
  * Chamada canônica multi-provider (tenant ou platform).
  * Todos os novos módulos devem preferir isto em vez de OpenAI SDK direto.
  */
@@ -744,6 +801,10 @@ export async function generateHumanWhatsAppReply(params: {
   const isFirst = inboundCount <= 1;
 
   const contact = conversation.contact;
+  const { extractValidPersonFirstName, isValidPersonName } = await import("../lib/contact-fields");
+  const first = extractValidPersonFirstName(contact?.name);
+  const clientLabel = first || (isValidPersonName(contact?.name) ? contact.name : "Cliente");
+
   const contactMemorySummary = (contact.memory?.summary || "").trim().slice(0, 200);
   let conversationMemory = (conversation.memorySummary || "").trim().slice(0, 600);
   if (!conversationMemory) {
@@ -816,9 +877,13 @@ ${objective ? `Objetivo: ${objective}` : "Objetivo: Atender o cliente com excel�
 DIRETRIZES DE ATENDIMENTO HUMANO NO WHATSAPP (PADRÃO OURO):
 1. COMUNICAÇÃO 100% NATURAL E HUMANA: Escreva como um excelente profissional humano da equipe no WhatsApp. Seja acolhedor(a), empático(a), resolutivo(a) e simpático(a).
 2. ESTRUTURA IDEAL PARA CELULAR: Responda em 2 a 5 frases ou tópicos curtos e bem organizados. Use quebras de linha para que a leitura seja rápida, limpa e agradável na tela do celular.
-3. TRATAMENTO PERSONALIZADO: Se souber o nome do cliente, chame-o pelo primeiro nome de forma natural e amigável (ex.: "Oi, Carlos!", "Tudo bem, Mariana?").
-4. RESPOSTA COMPLETA E DIRETA: Vá direto ao ponto e responda exatamente o que o cliente perguntou com base nas informações oficiais do KNOWLEDGE abaixo. Nunca dê respostas vagas sem o conteúdo solicitado.
-5. PRECISÃO TOTAL (NÃO ALUCINAR): Use apenas as informações oficiais do KNOWLEDGE (preços, serviços, horários, condições). Se algo não estiver no Knowledge, seja sincero(a) e solícito(a): "Não tenho esse detalhe confirmado aqui no momento, mas posso te conectar com um de nossos especialistas para te passar certinho. Deseja que eu encaminhe?".
+${
+  first
+    ? `3. TRATAMENTO PERSONALIZADO: O primeiro nome do cliente é "${first}". Você pode chamá-lo(a) pelo primeiro nome de forma natural e amigável (ex.: "Oi, ${first}!", "Tudo bem, ${first}?").`
+    : `3. TRATAMENTO NATURAL E NEUTRO: Você NÃO sabe o nome pessoal do cliente. NUNCA invente nomes fictícios e NUNCA use números, telefones ou prefixos como "+55". Use saudações naturais e acolhedoras como "Olá!", "Oi, tudo bem?", "Olá! Aqui é a ${agentName}, da ${companyHint}."`
+}
+4. RESPOSTA COMPLETA E DIRETA: Vá direto ao ponto e responda exatamente o que o cliente perguntou com base nas informações oficiais do KNOWLEDGE abaixo ou na sua identidade. Nunca dê respostas vagas sem o conteúdo solicitado.
+5. PRECISÃO TOTAL (NÃO ALUCINAR): Use apenas as informações oficiais do KNOWLEDGE (preços, serviços, horários, condições) ou a sua identidade como ${agentName} da ${companyHint}. Se algo sobre serviços/preços não estiver no Knowledge, seja sincero(a) e solícito(a): "Não tenho esse detalhe confirmado aqui no momento, mas posso te conectar com um de nossos especialistas para te passar certinho. Deseja que eu encaminhe?".
 6. TRANSFERÊNCIA HUMANA IMEDIATA: Se o cliente pedir para falar com um atendente humano ou expressar insatisfação, acolha com carinho e confirme a transferência com simpatia ("Com certeza! Vou te transferir agora para um de nossos especialistas. Um momento por favor 😊").
 7. ZERO JARGÕES ROBÓTICOS: NUNCA use frases como "sou uma IA", "conforme meu banco de dados", "minha programação", "processando sua solicitação". Fale sempre em nome da equipe ("Aqui na ${companyHint} nós...", "Nosso time...", "Consigo te ajudar com...").
 8. ${isFirst && agent?.greeting ? `Primeira mensagem: cumprimente com energia positiva e simpatia.` : "Em conversas em andamento: responda diretamente ao assunto sem repetir saudações desnecessárias."}
@@ -832,7 +897,7 @@ ${knowledgeInsufficient ? "Aviso: Informação específica não encontrada no Kn
 
 Responda SOMENTE o texto da mensagem de WhatsApp pronta para envio ao cliente (sem aspas, sem prefixos, sem JSON, sem raciocínio interno).`;
 
-  const userPrompt = `Cliente: ${(conversation.contact.name || "").split(" ")[0] || "cliente"}
+  const userPrompt = `Cliente: ${clientLabel}
 
 Histórico recente:
 ${transcript || "(início da conversa)"}
@@ -841,8 +906,6 @@ ${transcript || "(início da conversa)"}
 ${userInbound}
 
 Escreva a resposta completa de WhatsApp:`;
-
-  const first = conversation.contact.name?.split(" ")[0] || "";
 
   // Pré-filtro de segurança (backend) — não depende do modelo cooperar
   const threat = detectAgentSecurityThreat(lastInbound?.content || "");
@@ -904,11 +967,17 @@ Escreva a resposta completa de WhatsApp:`;
       });
 
       if (!generated) {
-        const hi = first ? `Oi, ${first}!` : "Oi!";
+        const lastOutbound = [...messages].reverse().find((m) => m.direction === "OUTBOUND");
         return {
-          reply: isFirst
-            ? `${hi} Aqui é a ${agentName}, da ${companyHint}. Tudo bem? Me conta como posso te ajudar 🙂`
-            : `${hi} Recebi sua mensagem. Me explica um pouco mais pra eu te ajudar certinho?`,
+          reply: buildSmartFallbackReply({
+            userInbound,
+            agentName,
+            companyHint,
+            first,
+            isFirst,
+            knowledge,
+            lastOutboundText: lastOutbound?.content,
+          }),
           provider: "heuristic",
           model: "heuristic",
           agentName,

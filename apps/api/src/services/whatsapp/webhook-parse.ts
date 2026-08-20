@@ -1,4 +1,5 @@
 import { wahaStatusToRuntime } from "./waha-client";
+import { isValidPersonName } from "../../lib/contact-fields";
 
 /**
  * Parser de webhook WAHA → formato interno do NexaFlow.
@@ -218,6 +219,13 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
   const rawName =
     (typeof p.pushName === "string" && p.pushName) ||
     (typeof p.notifyName === "string" && p.notifyName) ||
+    (typeof dig(p, "_data", "notifyName") === "string" && (dig(p, "_data", "notifyName") as string)) ||
+    (typeof dig(p, "_data", "pushName") === "string" && (dig(p, "_data", "pushName") as string)) ||
+    (typeof dig(p, "_data", "name") === "string" && (dig(p, "_data", "name") as string)) ||
+    (typeof dig(p, "_data", "verifiedName") === "string" && (dig(p, "_data", "verifiedName") as string)) ||
+    (typeof dig(p, "sender", "pushName") === "string" && (dig(p, "sender", "pushName") as string)) ||
+    (typeof dig(p, "sender", "name") === "string" && (dig(p, "sender", "name") as string)) ||
+    (typeof dig(p, "data", "pushName") === "string" && (dig(p, "data", "pushName") as string)) ||
     (typeof p.name === "string" && p.name) ||
     (typeof p.verifiedName === "string" && p.verifiedName) ||
     undefined;
@@ -225,8 +233,7 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
   let name: string | undefined = undefined;
   if (rawName && typeof rawName === "string") {
     const cleaned = rawName.replace(/@(c\.us|s\.whatsapp\.net|g\.us|broadcast|lid)$/i, "").trim();
-    // Só considera como nome se não for puramente dígitos de telefone ou LID
-    if (cleaned && !/^\+?\d{8,20}$/.test(cleaned.replace(/[\s\-().]/g, ""))) {
+    if (isValidPersonName(cleaned)) {
       name = cleaned.slice(0, 200);
     }
   }

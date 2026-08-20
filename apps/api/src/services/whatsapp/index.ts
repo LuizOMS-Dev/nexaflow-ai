@@ -854,7 +854,8 @@ async function maybeAutoReplyAi(params: {
     where: { id: params.conversationId },
     select: { contact: { select: { name: true } } },
   });
-  const contactFirst = contact?.contact?.name?.split(" ")[0] || null;
+  const { extractValidPersonFirstName } = await import("../../lib/contact-fields");
+  const contactFirst = extractValidPersonFirstName(contact?.contact?.name);
   const contactFull = contact?.contact?.name || null;
 
   // Créditos esgotados: promete humano + fila Assumir (operacional)

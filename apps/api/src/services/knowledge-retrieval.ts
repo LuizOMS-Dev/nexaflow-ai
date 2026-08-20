@@ -4,7 +4,7 @@
  */
 import { prisma } from "../lib/prisma";
 import { hasStarterPlaceholders } from "./knowledge-starter";
-import { scoreKnowledgeDoc } from "./knowledge";
+import { scoreKnowledgeDoc, tokenizeKnowledgeQuery } from "./knowledge";
 
 export const RETRIEVAL_THRESHOLD = 1.5;
 
@@ -28,10 +28,7 @@ export type RetrievalResult = {
 };
 
 function tokenize(q: string): string[] {
-  return q
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((t) => t.length > 2);
+  return tokenizeKnowledgeQuery(q);
 }
 
 function cosine(a: number[], b: number[]): number {

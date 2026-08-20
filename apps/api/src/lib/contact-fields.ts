@@ -129,21 +129,67 @@ export function formatDisplayPhone(input?: string | null): string {
 }
 
 /**
+ * Verifica se uma string representa um nome de pessoa genuíno e válido.
+ * Rejeita: telefones (+55..., números), JIDs (@c.us, @lid), vazios, textos técnicos.
+ */
+export function isValidPersonName(name?: string | null): boolean {
+  if (!name || typeof name !== "string") return false;
+  const t = name.trim();
+  if (t.length < 2 || t.length > 200) return false;
+
+  // Rejeita identificadores WhatsApp e domínios
+  if (/@(c\.us|s\.whatsapp\.net|g\.us|broadcast|lid|newsletter)/i.test(t)) return false;
+
+  // Rejeita prefixos e números de telefone (ex: +55, +55 34 9999-8888, 5511999999999)
+  if (/^\+?\d/.test(t)) return false;
+  if (/^[\d\s+\-()./]+$/.test(t)) return false;
+
+  // Rejeita termos técnicos ou placeholders
+  const lower = t.toLowerCase();
+  if (
+    lower === "cliente" ||
+    lower === "contato" ||
+    lower === "desconhecido" ||
+    lower === "unknown" ||
+    lower === "null" ||
+    lower === "undefined"
+  ) {
+    return false;
+  }
+
+  // Deve conter ao menos uma letra válida
+  if (!/\p{L}/u.test(t)) return false;
+
+  return true;
+}
+
+/**
+ * Extrai o primeiro nome pessoal legítimo para uso em saudações de atendimento.
+ * NUNCA retorna telefones, "+55", números ou termos técnicos.
+ * Retorna null se não houver um primeiro nome pessoal válido.
+ */
+export function extractValidPersonFirstName(name?: string | null): string | null {
+  if (!isValidPersonName(name)) return null;
+  const rawFirst = (name || "").trim().split(/\s+/)[0];
+  if (!rawFirst || rawFirst.length < 2) return null;
+  if (!/\p{L}/u.test(rawFirst) || /^\+?\d/.test(rawFirst)) return null;
+
+  // Formatação: Primeira letra maiúscula, restante minúscula se vier tudo maiúsculo/minúsculo
+  const lower = rawFirst.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/**
  * Verifica se uma string parece com um telefone ou identificador técnico em vez de nome real.
  */
 export function isPhoneOrJidLike(name?: string | null): boolean {
-  if (!name) return true;
-  const t = name.trim();
-  if (!t) return true;
-  if (/@(c\.us|s\.whatsapp\.net|g\.us|broadcast)/i.test(t)) return true;
-  if (/^\+?\d{8,16}$/.test(t.replace(/[\s\-().]/g, ""))) return true;
-  return false;
+  return !isValidPersonName(name);
 }
 
 /**
  * Resolve o nome canônico do contato com prioridade estrita:
- * 1. Nome já salvo e customizado pelo operador (não é telefone/JID)
- * 2. pushName confiável vindo do WhatsApp
+ * 1. Nome já salvo manualmente no NexaFlow (se for nome de pessoa válido)
+ * 2. pushName/name válido vindo do WhatsApp
  * 3. Fallback: telefone formatado amigavelmente
  */
 export function resolveContactNameWithPriority(params: {
@@ -152,12 +198,12 @@ export function resolveContactNameWithPriority(params: {
   phone: string;
 }): string {
   const current = (params.currentName || "").trim();
-  if (current && !isPhoneOrJidLike(current)) {
+  if (isValidPersonName(current)) {
     return current.slice(0, 200);
   }
 
   const push = cleanJid(params.pushName);
-  if (push && !isPhoneOrJidLike(push) && push.length >= 2) {
+  if (isValidPersonName(push)) {
     return push.slice(0, 200);
   }
 
@@ -167,7 +213,7 @@ export function resolveContactNameWithPriority(params: {
 /** Resolve nome persistido legado. */
 export function resolveContactName(name?: string | null, phoneNormalized?: string | null): string {
   const n = (name || "").trim();
-  if (n && !isPhoneOrJidLike(n)) return n.slice(0, 200);
+  if (isValidPersonName(n)) return n.slice(0, 200);
   if (phoneNormalized) return formatDisplayPhone(phoneNormalized);
   return "";
 }

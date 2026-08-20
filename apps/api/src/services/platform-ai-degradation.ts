@@ -37,6 +37,8 @@ export function isProviderRateLimitError(msg: string, code?: string | null): boo
  * Mensagem ao cliente quando a IA falhou (rate limit / erro transitório).
  * NÃO promete humano e NÃO coloca na fila "Assumir" — fila só com pedido real.
  */
+import { extractValidPersonFirstName } from "../lib/contact-fields";
+
 export function buildInstabilityClientMessage(params: {
   agentName: string;
   contactFirstName?: string | null;
@@ -45,8 +47,8 @@ export function buildInstabilityClientMessage(params: {
   promiseHuman?: boolean;
 }): string {
   const agentName = (params.agentName || "Atendente").trim() || "Atendente";
-  const first = (params.contactFirstName || "").trim();
-  const hi = first ? `Oi, ${first}!` : "Oi!";
+  const first = extractValidPersonFirstName(params.contactFirstName) || "";
+  const hi = first ? `Oi, ${first}!` : "Olá!";
   if (params.promiseHuman) {
     if (params.isFirst) {
       return `${hi} Aqui é a ${agentName}. Estou com uma instabilidade temporária no atendimento automático. Já avisei a equipe — um atendente humano vai assumir o chat em breve.`;

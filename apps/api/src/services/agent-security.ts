@@ -188,6 +188,17 @@ export function sanitizeAgentOutbound(text: string): string {
     /SEGURANÇA NEXAFLOW \(plataforma[\s\S]{0,300}/gi,
     ""
   );
+
+  // Remove saudações corrompidas com telefone ou prefixo (ex: "Oi, +55!", "Olá, +55 34...", "Oi, 5511...")
+  out = out.replace(
+    /\b(oi|ol[aá]|bom dia|boa tarde|boa noite)\s*,\s*\+?\d[\d\s\-()./]{0,20}\s*(!|\.|\?)/gi,
+    "$1$2"
+  );
+  out = out.replace(
+    /\b(oi|ol[aá]|bom dia|boa tarde|boa noite)\s*,\s*\+?\d[\d\s\-()./]{0,20}\b/gi,
+    "$1"
+  );
+
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
