@@ -1093,6 +1093,13 @@ export async function chatWithAgent(params: {
     take: 12,
     query: lastUser?.content || null,
   });
+  const knowledgeSources = knowledge.map((k) => ({
+    title: k.title,
+    documentId: k.id,
+    version: k.version ?? 1,
+    chunkIndex: k.chunkIndex ?? 0,
+    score: Number((k.score ?? 0).toFixed(3)),
+  }));
 
   const transferRules = (agent.transferRules || {}) as {
     triggers?: string[];
@@ -1134,6 +1141,7 @@ export async function chatWithAgent(params: {
       provider: "platform_grounding",
       outcome: "HANDOFF_OFFERED" as const,
       grounded: true,
+      sources: knowledgeSources,
     };
   }
 
@@ -1191,6 +1199,7 @@ Se não responder: diga que não encontrou o fato confirmado — nunca "vou veri
         provider: "heuristic",
         error: true,
         errorCode: "AI_NOT_CONFIGURED",
+        sources: knowledgeSources,
       };
     }
 
@@ -1217,6 +1226,7 @@ Se não responder: diga que não encontrou o fato confirmado — nunca "vou veri
       provider: generated.provider || env.aiProvider,
       outcome: grounded.outcome,
       grounded: grounded.rewritten,
+      sources: knowledgeSources,
     };
   } catch (err) {
     console.error("[ai] agent sandbox generation failed", {
@@ -1231,6 +1241,7 @@ Se não responder: diga que não encontrou o fato confirmado — nunca "vou veri
       provider: env.aiProvider,
       error: true,
       errorCode: "AI_GENERATION_FAILED",
+      sources: knowledgeSources,
     };
   }
 }

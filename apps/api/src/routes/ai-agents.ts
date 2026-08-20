@@ -343,6 +343,8 @@ export async function aiAgentRoutes(app: FastifyInstance) {
         },
       });
 
+      const sources =
+        "sources" in result && Array.isArray(result.sources) ? result.sources : [];
       return {
         sandbox: true,
         reply: result.content,
@@ -353,7 +355,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
           model: result.model || agent.model,
           passed,
           toolsUsed: [] as string[],
-          sources: [] as string[],
+          sources,
           error: "error" in result ? result.error : undefined,
           note: "Ambiente isolado — nenhuma mensagem foi enviada a clientes.",
         },

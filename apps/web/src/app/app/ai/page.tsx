@@ -456,7 +456,12 @@ export default function AiPage() {
   const [chatAgent, setChatAgent] = useState<Agent | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState<
-    Array<{ id: string; role: "user" | "assistant"; content: string }>
+    Array<{
+      id: string;
+      role: "user" | "assistant";
+      content: string;
+      sources?: Array<{ title?: string; documentId?: string; score?: number }>;
+    }>
   >([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -467,6 +472,7 @@ export default function AiPage() {
     provider?: string;
     note?: string;
     passed?: boolean;
+    sources?: Array<{ title?: string; documentId?: string; score?: number }>;
   } | null>(null);
 
   const [form, setForm] = useState({
@@ -634,6 +640,7 @@ export default function AiPage() {
           provider?: string;
           note?: string;
           passed?: boolean;
+          sources?: Array<{ title?: string; documentId?: string; score?: number }>;
         };
       }>(`/ai-agents/${chatAgent!.id}/test`, {
         method: "POST",
@@ -644,10 +651,11 @@ export default function AiPage() {
       }),
     onSuccess: (res, content) => {
       const reply = res.reply || res.content || "(sem resposta)";
+      const sources = Array.isArray(res.meta?.sources) ? res.meta.sources : [];
       setMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), role: "user", content },
-        { id: crypto.randomUUID(), role: "assistant", content: reply },
+        { id: crypto.randomUUID(), role: "assistant", content: reply, sources },
       ]);
       setLastMeta({
         durationMs: res.meta?.durationMs,
@@ -655,6 +663,7 @@ export default function AiPage() {
         provider: res.meta?.provider,
         note: res.meta?.note || (res.sandbox ? "Sandbox — sem envio real" : undefined),
         passed: res.meta?.passed,
+        sources,
       });
       qc.invalidateQueries({ queryKey: ["ai-agents-overview"] });
       setChatInput("");
@@ -2756,6 +2765,16 @@ ${transferBlock ? `\n${transferBlock}` : ""}
                     </dd>
                   </div>
                 ) : null}
+                {lastMeta.sources && lastMeta.sources.length > 0 ? (
+                  <div className="col-span-2 sm:col-span-3">
+                    <dt className="text-ink-faint">Fontes</dt>
+                    <dd className="font-medium text-ink-secondary dark:text-zinc-300">
+                      {Array.from(
+                        new Set(lastMeta.sources.map((s) => s.title).filter(Boolean))
+                      ).join(" · ")}
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </div>
           )}
@@ -2803,7 +2822,17 @@ ${transferBlock ? `\n${transferBlock}` : ""}
                       )}
                     >
                       {m.role === "assistant" ? (
-                        <NiaMarkdown content={m.content} />
+                        <>
+                          <NiaMarkdown content={m.content} />
+                          {m.sources && m.sources.length > 0 ? (
+                            <p className="mt-1.5 text-[10.5px] leading-snug text-ink-faint dark:text-zinc-500">
+                              Fontes consultadas:{" "}
+                              {Array.from(
+                                new Set(m.sources.map((s) => s.title).filter(Boolean))
+                              ).join(" · ")}
+                            </p>
+                          ) : null}
+                        </>
                       ) : (
                         <span className="whitespace-pre-wrap">{m.content}</span>
                       )}
