@@ -65,7 +65,6 @@ import {
   statusLabel,
 } from "@/lib/utils";
 import {
-  Checkbox,
   Dropdown,
   DropdownItem,
   FormField,
@@ -210,6 +209,22 @@ const OPS_NAV_ITEMS: Array<{
   { id: "ai", label: "IA", hint: "IA atendendo", icon: Bot },
   { id: "closed", label: "Encerradas", hint: "Finalizadas", icon: CheckCircle2 },
 ];
+
+function FilterCheckboxIndicator({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors",
+        checked
+          ? "border-violet-600 bg-violet-600 text-white dark:border-violet-500 dark:bg-violet-500"
+          : "border-black/20 bg-black/[0.02] dark:border-white/20 dark:bg-white/[0.03]"
+      )}
+    >
+      <Check className={cn("h-2.5 w-2.5 stroke-[3]", checked ? "opacity-100" : "opacity-0")} />
+    </span>
+  );
+}
 
 function buildConversationParams(opts: {
   opsNav: OpsNav;
@@ -886,8 +901,6 @@ function InboxPageContent() {
     opsNav === "mine"
       ? rawItems.filter((c) => c.status === "OPEN" || c.status === "PENDING")
       : rawItems;
-  const listTotal =
-    opsNav === "mine" ? items.length : listQuery.data?.total ?? items.length;
   const conversation = detailQuery.data;
   const isClosed =
     conversation?.status === "CLOSED" || conversation?.status === "ARCHIVED";
@@ -1267,20 +1280,29 @@ function InboxPageContent() {
               align="left"
               minWidth={240}
               maxWidth={300}
+              matchTriggerWidth
+              preferredPlacement="top"
+              triggerIsInteractive
               triggerClassName="w-full"
               className="p-2 shadow-xl border-black/[0.08] dark:border-white/[0.08] dark:bg-[#12141c] rounded-xl"
               trigger={
                 <button
                   type="button"
+                  aria-label={secondaryFilterCount > 0 ? `Filtros, ${secondaryFilterCount} ativos` : "Filtros"}
                   className={cn(
-                    "flex h-7 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer",
+                    "flex h-8 w-full items-center gap-2 rounded-lg border px-2.5 text-xs font-medium transition-colors cursor-pointer",
                     secondaryFilterCount > 0 || filtersOpen
                       ? "border-violet-500/25 bg-violet-500/[0.04] text-violet-800 dark:border-violet-400/25 dark:bg-violet-500/[0.06] dark:text-violet-200"
                       : "border-black/[0.06] bg-black/[0.015] text-ink-secondary hover:bg-black/[0.04] dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.05]"
                   )}
                 >
-                  <Filter className="h-3 w-3" />
-                  <span>{secondaryFilterCount > 0 ? `Filtros · ${secondaryFilterCount}` : "Filtros"}</span>
+                  <Filter className="h-3.5 w-3.5 shrink-0 text-ink-muted/80 dark:text-zinc-500" />
+                  <span className="min-w-0 flex-1 text-left">Filtros</span>
+                  {secondaryFilterCount > 0 && (
+                    <span className="tabular-nums text-[10.5px] font-semibold text-violet-700 dark:text-violet-300">
+                      {secondaryFilterCount}
+                    </span>
+                  )}
                 </button>
               }
             >
@@ -1298,12 +1320,7 @@ function InboxPageContent() {
                     onClick={() => setUnreadOnly((v) => !v)}
                     className="flex w-full cursor-pointer select-none items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-ink transition-colors hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
                   >
-                    <Checkbox
-                      checked={unreadOnly}
-                      onCheckedChange={setUnreadOnly}
-                      aria-label="Não lidas"
-                      className="pointer-events-none"
-                    />
+                    <FilterCheckboxIndicator checked={unreadOnly} />
                     <span className="flex-1">Não lidas</span>
                   </button>
 
@@ -1315,12 +1332,7 @@ function InboxPageContent() {
                     onClick={() => setNeedsApproval((v) => !v)}
                     className="flex w-full cursor-pointer select-none items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-ink transition-colors hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
                   >
-                    <Checkbox
-                      checked={needsApproval}
-                      onCheckedChange={setNeedsApproval}
-                      aria-label="Aguardando aprovação IA"
-                      className="pointer-events-none"
-                    />
+                    <FilterCheckboxIndicator checked={needsApproval} />
                     <span className="flex-1">Aguardando aprovação IA</span>
                   </button>
 
@@ -1333,12 +1345,7 @@ function InboxPageContent() {
                       onClick={() => setArchivedView((v) => !v)}
                       className="flex w-full cursor-pointer select-none items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-ink transition-colors hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
                     >
-                      <Checkbox
-                        checked={archivedView}
-                        onCheckedChange={setArchivedView}
-                        aria-label="Arquivadas"
-                        className="pointer-events-none"
-                      />
+                      <FilterCheckboxIndicator checked={archivedView} />
                       <span className="flex-1">Arquivadas</span>
                     </button>
                   )}

@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  cloneElement,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -13,6 +15,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -65,20 +68,28 @@ function computePosition(
   panelRect: DOMRect | null,
   align: "left" | "right" | "center" = "right",
   minWidth = DEFAULT_MIN_WIDTH,
-  maxWidth = DEFAULT_MAX_WIDTH
+  maxWidth = DEFAULT_MAX_WIDTH,
+  matchTriggerWidth = false,
+  preferredPlacement: "auto" | "top" | "bottom" = "auto"
 ): MenuPosition {
   const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const availableWidth = Math.max(0, vw - VIEWPORT_PADDING * 2);
 
-  const panelW = Math.max(
-    minWidth,
-    Math.min(maxWidth, panelRect?.width || minWidth)
-  );
+  const panelW = matchTriggerWidth
+    ? Math.min(triggerRect.width, availableWidth)
+    : Math.max(minWidth, Math.min(maxWidth, panelRect?.width || minWidth));
   const panelH = panelRect?.height || 220;
 
   const spaceBelow = vh - triggerRect.bottom - GAP - VIEWPORT_PADDING;
   const spaceAbove = triggerRect.top - GAP - VIEWPORT_PADDING;
-  const preferBottom = spaceBelow >= Math.min(panelH, 160) || spaceBelow >= spaceAbove;
+  const usefulPanelHeight = Math.min(panelH, 160);
+  const preferBottom =
+    preferredPlacement === "top"
+      ? !(spaceAbove >= usefulPanelHeight || spaceAbove >= spaceBelow)
+      : preferredPlacement === "bottom"
+        ? spaceBelow >= usefulPanelHeight || spaceBelow >= spaceAbove
+        : spaceBelow >= usefulPanelHeight || spaceBelow >= spaceAbove;
   const maxHeight = Math.max(
     140,
     Math.min(DEFAULT_MAX_HEIGHT, preferBottom ? spaceBelow : spaceAbove)
@@ -108,8 +119,9 @@ function computePosition(
   return {
     top,
     left,
-    minWidth,
-    maxWidth,
+    width: matchTriggerWidth ? panelW : undefined,
+    minWidth: matchTriggerWidth ? panelW : minWidth,
+    maxWidth: matchTriggerWidth ? panelW : maxWidth,
     maxHeight,
     placement: preferBottom ? "bottom" : "top",
     align,
@@ -549,6 +561,9 @@ export type PopoverProps = {
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  matchTriggerWidth?: boolean;
+  preferredPlacement?: "auto" | "top" | "bottom";
+  triggerIsInteractive?: boolean;
 };
 
 export function Popover({
@@ -562,6 +577,9 @@ export function Popover({
   disabled = false,
   open: controlledOpen,
   onOpenChange,
+  matchTriggerWidth = false,
+  preferredPlacement = "auto",
+  triggerIsInteractive = false,
 }: PopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -593,9 +611,17 @@ export function Popover({
     if (!triggerEl) return;
     const triggerRect = triggerEl.getBoundingClientRect();
     const panelRect = panelRef.current?.getBoundingClientRect() || null;
-    const calculated = computePosition(triggerRect, panelRect, align, minWidth, maxWidth);
+    const calculated = computePosition(
+      triggerRect,
+      panelRect,
+      align,
+      minWidth,
+      maxWidth,
+      matchTriggerWidth,
+      preferredPlacement
+    );
     setPos(calculated);
-  }, [align, minWidth, maxWidth]);
+  }, [align, matchTriggerWidth, maxWidth, minWidth, preferredPlacement]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -638,6 +664,25 @@ export function Popover({
   }, [open, close]);
 
   const content = typeof children === "function" ? children({ close }) : children;
+  const nativeInteractiveTrigger =
+    triggerIsInteractive &&
+    isValidElement(trigger) &&
+    typeof trigger.type === "string" &&
+    ["button", "a", "input", "select", "textarea"].includes(trigger.type);
+  const accessibleTrigger = nativeInteractiveTrigger
+    ? cloneElement(
+        trigger as ReactElement<{
+          "aria-haspopup"?: "dialog";
+          "aria-expanded"?: boolean;
+          "aria-disabled"?: boolean;
+        }>,
+        {
+          "aria-haspopup": "dialog",
+          "aria-expanded": open,
+          "aria-disabled": disabled || undefined,
+        }
+      )
+    : trigger;
 
   const renderedPortal =
     open && mounted
@@ -656,6 +701,7 @@ export function Popover({
             style={{
               top: pos?.top ?? -9999,
               left: pos?.left ?? -9999,
+              width: pos?.width,
               minWidth: pos?.minWidth ?? minWidth,
               maxWidth: pos?.maxWidth ?? maxWidth,
               maxHeight: pos?.maxHeight ?? DEFAULT_MAX_HEIGHT,
@@ -672,15 +718,25 @@ export function Popover({
     <div className={cn("relative inline-flex", triggerClassName)}>
       <div
         ref={triggerRef}
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-disabled={disabled}
+        role={nativeInteractiveTrigger ? undefined : "button"}
+        tabIndex={nativeInteractiveTrigger || disabled ? -1 : 0}
+        aria-haspopup={nativeInteractiveTrigger ? undefined : "dialog"}
+        aria-expanded={nativeInteractiveTrigger ? undefined : open}
+        aria-disabled={nativeInteractiveTrigger ? undefined : disabled}
         onClick={() => handleSetOpen(!open)}
-        className={cn(disabled && "cursor-not-allowed opacity-50")}
+        onKeyDown={(event) => {
+          if (nativeInteractiveTrigger || disabled) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleSetOpen(!open);
+          }
+        }}
+        className={cn(
+          matchTriggerWidth && "w-full min-w-0",
+          disabled && "cursor-not-allowed opacity-50"
+        )}
       >
-        {trigger}
+        {accessibleTrigger}
       </div>
       {renderedPortal}
     </div>

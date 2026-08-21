@@ -1,9 +1,9 @@
 "use client";
 
-import React from "react";
-import { Star, Bot, User, Hourglass, Camera, Mic, Film, FileText, Paperclip, Sparkles, CheckCircle2 } from "lucide-react";
+import { Star, Bot, User, Hourglass, Camera, Mic, Film, FileText, Paperclip, Sparkles } from "lucide-react";
 import { cn, initials, leadPriorityLabel } from "@/lib/utils";
 import { getContactDisplayName } from "@/lib/format-contact";
+import { getConversationPreview, type ConversationPreviewKind } from "@/lib/conversation-preview";
 
 export type InboxConversationItemProps = {
   conversation: any;
@@ -12,87 +12,33 @@ export type InboxConversationItemProps = {
   userId?: string;
 };
 
-/**
- * Formata o preview da mensagem para eliminar completamente placeholders técnicos
- * como [imagem], [áudio], [documento], etc., substituindo por texto e ícones amigáveis.
- */
-function formatConversationPreview(rawPreview?: string | null): React.ReactNode {
-  if (!rawPreview || !rawPreview.trim()) {
-    return <span className="text-ink-faint dark:text-zinc-500 italic">Sem mensagens</span>;
-  }
+const PREVIEW_ICONS: Partial<Record<ConversationPreviewKind, typeof Camera>> = {
+  image: Camera,
+  audio: Mic,
+  video: Film,
+  document: FileText,
+  file: Paperclip,
+  sticker: Sparkles,
+};
 
-  const trimmed = rawPreview.trim();
+function ConversationPreview({ rawPreview }: { rawPreview?: string | null }) {
+  const preview = getConversationPreview(rawPreview);
+  const Icon = PREVIEW_ICONS[preview.kind];
 
-  // 1. Áudio / Mensagem de voz
-  if (/^\[(?:áudio|audio|mensagem de voz)(?::.*?)?\]$/i.test(trimmed) || /^🎤/i.test(trimmed) || /^\bmensagem de voz\b/i.test(trimmed)) {
+  if (!Icon) {
     return (
-      <span className="inline-flex items-center gap-1">
-        <Mic className="h-3 w-3 shrink-0 text-violet-600 dark:text-violet-400" />
-        <span>Mensagem de voz</span>
+      <span className={cn(preview.kind === "empty" && "italic text-ink-faint dark:text-zinc-500")}>
+        {preview.label}
       </span>
     );
   }
 
-  // 2. Foto / Imagem
-  const imageMatch = trimmed.match(/^\[imagem(?::\s*(.+?))?\]$/i);
-  if (imageMatch || /^📷/i.test(trimmed) || /^\[foto\]/i.test(trimmed)) {
-    const caption = imageMatch?.[1]?.trim() || "";
-    return (
-      <span className="inline-flex items-center gap-1">
-        <Camera className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400" />
-        <span>{caption ? `Foto · ${caption}` : "Foto"}</span>
-      </span>
-    );
-  }
-
-  // 3. Vídeo
-  const videoMatch = trimmed.match(/^\[v[íi]deo(?::\s*(.+?))?\]$/i);
-  if (videoMatch || /^🎥/i.test(trimmed)) {
-    const caption = videoMatch?.[1]?.trim() || "";
-    return (
-      <span className="inline-flex items-center gap-1">
-        <Film className="h-3 w-3 shrink-0 text-rose-600 dark:text-rose-400" />
-        <span>{caption ? `Vídeo · ${caption}` : "Vídeo"}</span>
-      </span>
-    );
-  }
-
-  // 4. Documento
-  const docMatch = trimmed.match(/^\[documento(?::\s*(.+?))?\]$/i);
-  if (docMatch || /^📄/i.test(trimmed)) {
-    const docName = docMatch?.[1]?.trim() || "";
-    return (
-      <span className="inline-flex items-center gap-1">
-        <FileText className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
-        <span className="truncate">{docName || "Documento"}</span>
-      </span>
-    );
-  }
-
-  // 5. Sticker / Figurinha
-  if (/^\[(?:sticker|figurinha)(?::.*?)?\]$/i.test(trimmed)) {
-    return (
-      <span className="inline-flex items-center gap-1">
-        <Sparkles className="h-3 w-3 shrink-0 text-amber-500 dark:text-amber-400" />
-        <span>Figurinha</span>
-      </span>
-    );
-  }
-
-  // 6. Arquivo / Mídia genérica
-  const fileMatch = trimmed.match(/^\[(?:arquivo|m[íi]dia|midia)(?::\s*(.+?))?\]$/i);
-  if (fileMatch || /^📎/i.test(trimmed)) {
-    const fileName = fileMatch?.[1]?.trim() || "";
-    return (
-      <span className="inline-flex items-center gap-1">
-        <Paperclip className="h-3 w-3 shrink-0 text-zinc-500 dark:text-zinc-400" />
-        <span className="truncate">{fileName || "Arquivo"}</span>
-      </span>
-    );
-  }
-
-  // 7. Texto normal
-  return <span>{trimmed}</span>;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1">
+      <Icon className="h-3 w-3 shrink-0 text-ink-faint dark:text-zinc-500" aria-hidden />
+      <span className="truncate">{preview.label}</span>
+    </span>
+  );
 }
 
 export function InboxConversationItem({
@@ -195,7 +141,7 @@ export function InboxConversationItem({
               : "text-ink-muted/90 dark:text-zinc-400"
           )}
         >
-          {formatConversationPreview(c.lastMessagePreview)}
+          <ConversationPreview rawPreview={c.lastMessagePreview} />
         </p>
 
         {/* Linha 3: Canal, Responsável / Origem e Tags */}

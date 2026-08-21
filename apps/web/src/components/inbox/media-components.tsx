@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Play,
   Pause,
@@ -39,41 +39,61 @@ export function AudioVoicePlayer({
 }) {
   const resolvedSrc = resolveMediaUrl(src) || src;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const probingDurationRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(initialDuration && isFinite(initialDuration) ? initialDuration : 0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [speed, setSpeed] = useState<number>(1);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
+    probingDurationRef.current = false;
+    audio.currentTime = 0;
+    audio.playbackRate = 1;
+    setCurrentTime(0);
+    setIsPlaying(false);
+    setIsLoading(false);
+    setHasError(false);
+    setSpeed(1);
+
     if (initialDuration && isFinite(initialDuration) && initialDuration > 0) {
       setDuration(initialDuration);
+    } else {
+      setDuration(0);
     }
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onTimeUpdate = () => {
+      if (probingDurationRef.current) {
+        probingDurationRef.current = false;
+        if (isFinite(audio.duration) && audio.duration > 0) {
+          setDuration(audio.duration);
+        } else if (initialDuration && initialDuration > 0) {
+          setDuration(initialDuration);
+        }
+        audio.currentTime = 0;
+        setCurrentTime(0);
+        return;
+      }
+
+      setCurrentTime(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+    };
     const onLoadedMetadata = () => {
       if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
         setDuration(audio.duration);
       } else if (audio.duration === Infinity) {
         // Fix para browsers (Chrome/Firefox) onde WebM/Opus reporta Infinity
+        probingDurationRef.current = true;
         audio.currentTime = 1e101;
-        audio.ontimeupdate = () => {
-          audio.ontimeupdate = onTimeUpdate;
-          if (isFinite(audio.duration) && audio.duration > 0) {
-            setDuration(audio.duration);
-          } else if (initialDuration && initialDuration > 0) {
-            setDuration(initialDuration);
-          }
-          audio.currentTime = 0;
-        };
       } else if (initialDuration && initialDuration > 0) {
         setDuration(initialDuration);
       }
     };
     const onEnded = () => {
+      audio.currentTime = 0;
       setIsPlaying(false);
       setCurrentTime(0);
     };
@@ -99,6 +119,7 @@ export function AudioVoicePlayer({
     audio.addEventListener("error", onError);
 
     return () => {
+      probingDurationRef.current = false;
       audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
       audio.removeEventListener("ended", onEnded);
@@ -125,10 +146,17 @@ export function AudioVoicePlayer({
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const nextTime = Number(e.target.value);
+    const nextTime = Math.max(0, Math.min(Number(e.target.value), duration || 0));
     audio.currentTime = nextTime;
     setCurrentTime(nextTime);
   };
+
+  const sliderMax = duration > 0 && Number.isFinite(duration) ? duration : 1;
+  const sliderTime = Math.max(0, Math.min(currentTime, sliderMax));
+  const progress = duration > 0 ? (sliderTime / duration) * 100 : 0;
+  const sliderStyle = {
+    "--nf-audio-progress": `${Math.max(0, Math.min(progress, 100))}%`,
+  } as CSSProperties;
 
   if (hasError) {
     return (
@@ -152,8 +180,6 @@ export function AudioVoicePlayer({
       </div>
     );
   }
-
-  const [speed, setSpeed] = useState<number>(1);
 
   const cycleSpeed = () => {
     const nextSpeed = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
@@ -190,15 +216,16 @@ export function AudioVoicePlayer({
         <input
           type="range"
           min={0}
-          max={duration || 100}
+          max={sliderMax}
           step="any"
-          value={currentTime}
+          value={sliderTime}
           onChange={handleSeek}
           aria-label="Progresso do áudio"
           aria-valuemin={0}
-          aria-valuemax={duration || 100}
-          aria-valuenow={currentTime}
-          aria-valuetext={formatSeconds(currentTime)}
+          aria-valuemax={sliderMax}
+          aria-valuenow={sliderTime}
+          aria-valuetext={formatSeconds(sliderTime)}
+          style={sliderStyle}
           className={cn(
             "nf-audio-slider w-full focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40",
             isOutbound && "nf-audio-slider--outbound bg-white/30 dark:bg-white/15"
@@ -212,7 +239,7 @@ export function AudioVoicePlayer({
               : "text-ink-muted dark:text-zinc-400"
           )}
         >
-          <span className="font-semibold">{formatSeconds(currentTime)}</span>
+          <span className="font-semibold">{formatSeconds(sliderTime)}</span>
           <div className="flex items-center gap-1.5">
             <span>{duration > 0 ? formatSeconds(duration) : "0:00"}</span>
             <button

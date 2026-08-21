@@ -10657,37 +10657,71 @@ html:not(.dark) .nf-asb {
 
 /* Audio Player Custom Range Slider (NexaFlow Design System) */
 .nf-audio-slider {
+  --nf-audio-progress: 0%;
+  --nf-audio-played: rgb(124 58 237);
+  --nf-audio-track: rgb(0 0 0 / 0.1);
+  --nf-audio-thumb: rgb(124 58 237);
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
   height: 4px;
+  margin: 0;
+  padding: 0;
   border-radius: 9999px;
-  background: rgba(0, 0, 0, 0.1);
+  background: linear-gradient(
+    to right,
+    var(--nf-audio-played) 0,
+    var(--nf-audio-played) var(--nf-audio-progress),
+    var(--nf-audio-track) var(--nf-audio-progress),
+    var(--nf-audio-track) 100%
+  );
   outline: none;
   cursor: pointer;
-  transition: background 0.15s ease;
 }
 .dark .nf-audio-slider {
-  background: rgba(255, 255, 255, 0.15);
+  --nf-audio-played: rgb(167 139 250);
+  --nf-audio-track: rgb(255 255 255 / 0.15);
+  --nf-audio-thumb: rgb(167 139 250);
+}
+.nf-audio-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
 }
 .nf-audio-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 10px;
   height: 10px;
+  margin-top: -3px;
   border-radius: 50%;
-  background: rgb(124, 58, 237);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
   border: 1.5px solid #ffffff;
+  background: var(--nf-audio-thumb);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
+  cursor: pointer;
   transition: transform 0.1s ease, background-color 0.1s ease;
+}
+.nf-audio-slider::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--nf-audio-track);
+}
+.nf-audio-slider::-moz-range-progress {
+  height: 4px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--nf-audio-played);
 }
 .nf-audio-slider::-moz-range-thumb {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: rgb(124, 58, 237);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--nf-audio-thumb);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
   cursor: pointer;
   border: 1.5px solid #ffffff;
   transition: transform 0.1s ease, background-color 0.1s ease;
@@ -10698,19 +10732,31 @@ html:not(.dark) .nf-asb {
 .nf-audio-slider:hover::-moz-range-thumb {
   transform: scale(1.25);
 }
+.nf-audio-slider:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+.nf-audio-slider:active::-moz-range-thumb {
+  transform: scale(1.1);
+}
+.nf-audio-slider--outbound {
+  --nf-audio-played: rgb(255 255 255 / 0.95);
+  --nf-audio-track: rgb(255 255 255 / 0.3);
+  --nf-audio-thumb: #ffffff;
+}
 .nf-audio-slider--outbound::-webkit-slider-thumb {
-  background: #ffffff;
   border-color: rgba(0, 0, 0, 0.15);
 }
 .nf-audio-slider--outbound::-moz-range-thumb {
-  background: #ffffff;
   border-color: rgba(0, 0, 0, 0.15);
 }
+.dark .nf-audio-slider--outbound {
+  --nf-audio-played: rgb(167 139 250);
+  --nf-audio-track: rgb(255 255 255 / 0.15);
+  --nf-audio-thumb: rgb(167 139 250);
+}
 .dark .nf-audio-slider--outbound::-webkit-slider-thumb {
-  background: rgb(167, 139, 250);
   border-color: #ffffff;
 }
 .dark .nf-audio-slider--outbound::-moz-range-thumb {
-  background: rgb(167, 139, 250);
   border-color: #ffffff;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, type FormEvent } from "react";
+import { useRef, useState, useEffect, type CSSProperties, type FormEvent } from "react";
 import {
   Paperclip,
   Image as ImageIcon,
@@ -297,7 +297,7 @@ export function InboxComposer({
 
   const handlePreviewSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const audio = previewAudioRef.current;
-    const nextTime = Number(e.target.value);
+    const nextTime = Math.max(0, Math.min(Number(e.target.value), recordedDuration || 0));
     setPreviewCurrentTime(nextTime);
     if (audio) {
       audio.currentTime = nextTime;
@@ -487,11 +487,24 @@ export function InboxComposer({
                     type="range"
                     min={0}
                     max={recordedDuration || 1}
-                    step={0.05}
-                    value={previewCurrentTime}
+                    step="any"
+                    value={Math.max(0, Math.min(previewCurrentTime, recordedDuration || 1))}
                     onChange={handlePreviewSeek}
                     aria-label="Progresso do áudio"
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full accent-violet-600 bg-black/10 dark:bg-white/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40"
+                    aria-valuemin={0}
+                    aria-valuemax={recordedDuration || 1}
+                    aria-valuenow={Math.max(0, Math.min(previewCurrentTime, recordedDuration || 1))}
+                    aria-valuetext={formatSeconds(previewCurrentTime)}
+                    style={
+                      {
+                        "--nf-audio-progress": `${
+                          recordedDuration > 0
+                            ? Math.max(0, Math.min((previewCurrentTime / recordedDuration) * 100, 100))
+                            : 0
+                        }%`,
+                      } as CSSProperties
+                    }
+                    className="nf-audio-slider w-full focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40"
                   />
                   <div className="mt-0.5 flex items-center justify-between text-[10px] tabular-nums font-mono text-ink-muted/80 dark:text-zinc-400">
                     <span className="font-semibold text-ink dark:text-zinc-200">
