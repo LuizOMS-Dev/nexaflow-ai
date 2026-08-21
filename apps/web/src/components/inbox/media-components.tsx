@@ -30,16 +30,18 @@ import { resolveMediaUrl, formatBytes, formatSeconds, getFileStyle } from "@/lib
  */
 export function AudioVoicePlayer({
   src,
+  initialDuration,
   isOutbound,
 }: {
   src: string;
+  initialDuration?: number;
   isOutbound?: boolean;
 }) {
   const resolvedSrc = resolveMediaUrl(src) || src;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(initialDuration && isFinite(initialDuration) ? initialDuration : 0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
 
@@ -47,10 +49,28 @@ export function AudioVoicePlayer({
     const audio = audioRef.current;
     if (!audio) return;
 
+    if (initialDuration && isFinite(initialDuration) && initialDuration > 0) {
+      setDuration(initialDuration);
+    }
+
     const onTimeUpdate = () => setCurrentTime(audio.currentTime);
     const onLoadedMetadata = () => {
-      if (audio.duration && !isNaN(audio.duration)) {
+      if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration) && audio.duration > 0) {
         setDuration(audio.duration);
+      } else if (audio.duration === Infinity) {
+        // Fix para browsers (Chrome/Firefox) onde WebM/Opus reporta Infinity
+        audio.currentTime = 1e101;
+        audio.ontimeupdate = () => {
+          audio.ontimeupdate = onTimeUpdate;
+          if (isFinite(audio.duration) && audio.duration > 0) {
+            setDuration(audio.duration);
+          } else if (initialDuration && initialDuration > 0) {
+            setDuration(initialDuration);
+          }
+          audio.currentTime = 0;
+        };
+      } else if (initialDuration && initialDuration > 0) {
+        setDuration(initialDuration);
       }
     };
     const onEnded = () => {
@@ -661,9 +681,10 @@ export function MediaBubble({
 
   // Áudio ou Mensagem de Voz
   if (type === "VOICE" || type === "AUDIO" || mime.startsWith("audio/")) {
+    const audioDur = Number(meta.duration) || Number(meta.durationSecs) || undefined;
     return (
       <div className="my-1">
-        <AudioVoicePlayer src={resolvedUrl} isOutbound={isOutbound} />
+        <AudioVoicePlayer src={resolvedUrl} initialDuration={audioDur} isOutbound={isOutbound} />
       </div>
     );
   }
