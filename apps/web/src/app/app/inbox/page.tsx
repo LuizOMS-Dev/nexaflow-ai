@@ -1711,7 +1711,7 @@ function InboxPageContent() {
                             origin === "INTERNAL_NOTE"
                               ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
                               : origin === "HUMAN"
-                                ? "bg-[#181a20] text-white dark:bg-zinc-100 dark:text-zinc-950 shadow-xs"
+                                ? "bg-[#181a20] text-white dark:bg-[#1a1f2c] dark:text-zinc-100 dark:border dark:border-white/[0.08] shadow-xs"
                                 : origin === "AI"
                                   ? "border border-violet-500/20 bg-violet-500/[0.06] text-ink dark:border-violet-400/20 dark:bg-violet-950/40 dark:text-zinc-100"
                                   : "border border-black/[0.05] bg-white text-ink shadow-xs dark:border-white/[0.06] dark:bg-[#121620] dark:text-zinc-100"
@@ -1745,14 +1745,16 @@ function InboxPageContent() {
                           <div
                             className={cn(
                               "mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
-                              origin === "HUMAN" ? "text-white/60 dark:text-zinc-500" : "text-ink-faint dark:text-zinc-500"
+                              origin === "HUMAN"
+                                ? "text-white/65 dark:text-zinc-400"
+                                : "text-ink-faint dark:text-zinc-400"
                             )}
                           >
                             <span>{time}</span>
                             {origin === "HUMAN" && (
                               <span className="inline-flex items-center ml-0.5">
                                 {messageMeta(m).deliveryStatus === "READ" ? (
-                                  <CheckCheck className="h-3 w-3 text-sky-400 dark:text-sky-600" />
+                                  <CheckCheck className="h-3 w-3 text-sky-400 dark:text-sky-400" />
                                 ) : messageMeta(m).deliveryStatus === "DELIVERED" ? (
                                   <CheckCheck className="h-3 w-3 opacity-75" />
                                 ) : messageMeta(m).deliveryStatus === "FAILED" || messageMeta(m).deliveryError ? (

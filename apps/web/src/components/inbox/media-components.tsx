@@ -132,20 +132,20 @@ export function AudioVoicePlayer({
 
   if (hasError) {
     return (
-      <div className={cn(
-        "flex items-center gap-2 py-1.5 px-2 rounded-lg text-xs",
-        isOutbound
-          ? "bg-white/10 text-white/80 dark:bg-black/5 dark:text-zinc-700"
-          : "bg-red-500/10 text-red-600 dark:text-red-300"
-      )}>
-        <AlertCircle className="h-4 w-4 shrink-0" />
-        <span>Áudio indisponível</span>
+      <div
+        className={cn(
+          "flex items-center gap-2 py-1.5 px-2.5 rounded-xl border text-xs transition-colors",
+          "border-rose-500/20 bg-rose-500/[0.06] text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-300"
+        )}
+      >
+        <AlertCircle className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400" />
+        <span className="font-medium">Áudio indisponível</span>
         <a
           href={resolvedSrc}
           target="_blank"
           rel="noopener noreferrer"
           download
-          className="ml-auto underline text-[11px]"
+          className="ml-auto underline text-[11px] font-semibold hover:opacity-80"
         >
           Baixar
         </a>
@@ -171,10 +171,10 @@ export function AudioVoicePlayer({
         onClick={togglePlay}
         aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
         className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
+          "flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-xs cursor-pointer",
           isOutbound
-            ? "bg-white text-zinc-900 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-800"
-            : "bg-sky-500 text-white hover:bg-sky-600 dark:bg-sky-400 dark:text-zinc-950"
+            ? "bg-white text-zinc-900 hover:bg-zinc-100 dark:bg-violet-600 dark:text-white dark:hover:bg-violet-500"
+            : "bg-violet-600 text-white hover:bg-violet-700 dark:bg-violet-500 dark:text-white dark:hover:bg-violet-600"
         )}
       >
         {isLoading ? (
@@ -197,15 +197,15 @@ export function AudioVoicePlayer({
           className={cn(
             "h-1.5 w-full cursor-pointer appearance-none rounded-full focus:outline-none focus-visible:ring-1",
             isOutbound
-              ? "accent-white bg-white/30 dark:bg-black/20 focus-visible:ring-white/50"
-              : "accent-violet-600 bg-black/10 dark:bg-white/15 focus-visible:ring-violet-500/40"
+              ? "accent-white bg-white/30 dark:accent-violet-400 dark:bg-white/15 focus-visible:ring-white/50"
+              : "accent-violet-600 bg-black/10 dark:accent-violet-400 dark:bg-white/15 focus-visible:ring-violet-500/40"
           )}
         />
         <div
           className={cn(
             "mt-1 flex items-center justify-between text-[10.5px] tabular-nums font-mono",
             isOutbound
-              ? "text-white/80 dark:text-zinc-700"
+              ? "text-white/80 dark:text-zinc-300"
               : "text-ink-muted dark:text-zinc-400"
           )}
         >
@@ -218,8 +218,8 @@ export function AudioVoicePlayer({
               className={cn(
                 "rounded px-1.5 py-0.5 text-[9.5px] font-bold transition-all tabular-nums cursor-pointer",
                 isOutbound
-                  ? "bg-white/20 hover:bg-white/30 text-white dark:bg-black/10 dark:hover:bg-black/20 dark:text-zinc-900"
-                  : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-100"
+                  ? "bg-white/20 hover:bg-white/30 text-white dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
+                  : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
               )}
               title="Velocidade de reprodução"
             >
@@ -642,11 +642,11 @@ export function MediaBubble({
         className={cn(
           "my-1 flex items-center gap-2.5 rounded-xl border p-2.5 text-xs transition-colors",
           isOutbound
-            ? "border-white/20 bg-white/10 text-white/90 dark:border-black/10 dark:bg-black/5 dark:text-zinc-800"
-            : "border-black/[0.08] bg-black/[0.03] text-ink-secondary dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-300"
+            ? "border-white/20 bg-white/10 text-white/90 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
+            : "border-black/[0.08] bg-black/[0.02] text-ink-secondary dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-300"
         )}
       >
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:bg-amber-400/20 dark:text-amber-300">
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
@@ -692,7 +692,7 @@ export function MediaBubble({
   // Vídeo
   if (type === "VIDEO" || mime.startsWith("video/")) {
     return (
-      <div className="mt-1.5 mb-1 overflow-hidden rounded-xl">
+      <div className="mt-1 mb-1 overflow-hidden rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black">
         <video
           src={resolvedUrl}
           controls
@@ -709,15 +709,15 @@ export function MediaBubble({
       className={cn(
         "my-1 flex items-center gap-3 rounded-xl border p-2.5 transition-colors",
         isOutbound
-          ? "border-white/20 bg-white/10 text-white hover:bg-white/15 dark:border-black/10 dark:bg-black/5 dark:text-zinc-900 dark:hover:bg-black/10"
-          : "border-black/[0.08] bg-black/[0.03] text-ink hover:bg-black/[0.06] dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-100 dark:hover:bg-white/[0.08]"
+          ? "border-white/15 bg-white/10 text-white hover:bg-white/15 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-100 dark:hover:bg-white/[0.08]"
+          : "border-black/[0.08] bg-black/[0.02] text-ink hover:bg-black/[0.04] dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-zinc-100 dark:hover:bg-white/[0.06]"
       )}
     >
       <div
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-xs",
           isOutbound
-            ? "bg-white/20 text-white dark:bg-black/10 dark:text-zinc-800"
+            ? "bg-white/20 text-white dark:bg-white/10 dark:text-zinc-200"
             : style.badgeBg + " " + style.iconColor
         )}
       >
@@ -737,7 +737,7 @@ export function MediaBubble({
           className={cn(
             "truncate text-xs font-semibold leading-tight",
             isOutbound
-              ? "text-white dark:text-zinc-900"
+              ? "text-white dark:text-zinc-100"
               : "text-ink dark:text-zinc-100"
           )}
           title={filename}
@@ -748,7 +748,7 @@ export function MediaBubble({
           className={cn(
             "text-[10.5px] mt-0.5 font-medium",
             isOutbound
-              ? "text-white/75 dark:text-zinc-600"
+              ? "text-white/75 dark:text-zinc-400"
               : "text-ink-muted dark:text-zinc-400"
           )}
         >
@@ -763,10 +763,10 @@ export function MediaBubble({
           rel="noopener noreferrer"
           download={filename}
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all shadow-xs",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all shadow-xs cursor-pointer",
             isOutbound
-              ? "bg-white/20 hover:bg-white/30 text-white dark:bg-black/10 dark:hover:bg-black/20 dark:text-zinc-900"
-              : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-100"
+              ? "bg-white/20 hover:bg-white/30 text-white dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
+              : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
           )}
           title="Baixar arquivo"
           aria-label={`Baixar ${filename}`}
@@ -811,8 +811,8 @@ function ImageBubbleItem({
         className={cn(
           "my-1 flex items-center gap-2 p-2.5 rounded-xl border text-xs",
           isOutbound
-            ? "border-white/15 bg-white/10 text-white dark:border-black/10 dark:bg-black/5 dark:text-zinc-900"
-            : "border-black/[0.08] bg-black/[0.03] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-100"
+            ? "border-white/15 bg-white/10 text-white dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
+            : "border-black/[0.08] bg-black/[0.02] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-200"
         )}
       >
         <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
@@ -830,14 +830,14 @@ function ImageBubbleItem({
   }
 
   return (
-    <div className="mt-1.5 mb-1 overflow-hidden rounded-xl">
+    <div className="mt-1 mb-1 overflow-hidden rounded-xl">
       <div
         className="group relative cursor-pointer overflow-hidden rounded-xl bg-black/[0.03] dark:bg-white/[0.04] max-h-72 min-h-[140px] min-w-[200px] flex items-center justify-center"
         onClick={() => onOpenLightbox?.(src)}
       >
         {!loaded && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/5 dark:bg-white/5 animate-pulse z-10">
-            <Loader2 className="h-5 w-5 animate-spin text-ink-muted/70" />
+            <Loader2 className="h-5 w-5 animate-spin text-ink-muted/70 dark:text-zinc-400" />
           </div>
         )}
         <img
