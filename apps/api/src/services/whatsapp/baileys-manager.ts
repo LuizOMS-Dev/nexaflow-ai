@@ -357,8 +357,6 @@ export async function startBaileysSession(instanceName: string): Promise<Session
         for (const m of messages) {
           if (!m?.message) continue;
           const fromMe = Boolean(m.key?.fromMe);
-          // loop guard: ignora eco das próprias mensagens
-          if (fromMe) continue;
           const jid = m.key?.remoteJid || "";
           if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast") continue;
 
@@ -405,7 +403,7 @@ export async function startBaileysSession(instanceName: string): Promise<Session
               name: m.pushName,
               content,
               externalId: m.key?.id,
-              fromMe: false,
+              fromMe,
             });
           }
         }

@@ -15,7 +15,6 @@ export async function handleBaileysInbound(msg: {
   externalId?: string;
   fromMe?: boolean;
 }) {
-  if (msg.fromMe) return;
   const content = (msg.content || "").trim();
   if (!content) return;
 
@@ -25,6 +24,17 @@ export async function handleBaileysInbound(msg: {
       `[baileys] inbound ignorado: nenhum canal para instance=${msg.instanceName}`
     );
     return { skipped: true as const, reason: "no_channel" };
+  }
+
+  if (msg.fromMe) {
+    const { ingestExternalOutboundMessage } = await import("./index");
+    return ingestExternalOutboundMessage({
+      tenantId: meta.tenantId,
+      channelId: meta.channelId,
+      phone: msg.phone,
+      content,
+      externalId: msg.externalId,
+    });
   }
 
   const { ingestInboundMessage } = await import("./index");

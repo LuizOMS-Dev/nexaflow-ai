@@ -7,6 +7,7 @@ import {
   asConfig,
   getConnector,
   ingestInboundMessage,
+  ingestExternalOutboundMessage,
   parseWahaWebhook,
   type WhatsAppProvider,
 } from "../services/whatsapp";
@@ -876,7 +877,29 @@ export async function whatsappRoutes(app: FastifyInstance) {
 
     let processedCount = 0;
     for (const msg of parsed.messages) {
-      if (msg.fromMe) continue;
+      if (msg.fromMe) {
+        try {
+          await ingestExternalOutboundMessage({
+            tenantId: channel.tenantId,
+            channelId: channel.id,
+            phone: msg.phone,
+            content: msg.content,
+            externalId: msg.externalId,
+            chatId: msg.chatId,
+            from: msg.from,
+            remoteJid: msg.remoteJid,
+            remoteJidAlt: msg.remoteJidAlt,
+            addressingMode: msg.addressingMode,
+          });
+          processedCount++;
+        } catch (err) {
+          request.log.error(
+            { err, phone: msg.phone },
+            "[webhook/whatsapp] Ingest de mensagem externa fromMe falhou"
+          );
+        }
+        continue;
+      }
       try {
         await ingestInboundMessage({
           tenantId: channel.tenantId,

@@ -141,6 +141,24 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     dig(p, "key", "fromMe")
   );
 
+  const to =
+    (typeof p.to === "string" && p.to) ||
+    (typeof dig(p, "_data", "to") === "string" ? (dig(p, "_data", "to") as string) : "") ||
+    (typeof dig(p, "to") === "string" ? (dig(p, "to") as string) : "") ||
+    "";
+
+  const targetJid: string = fromMe
+    ? ((typeof key?.remoteJid === "string" && key.remoteJid) ||
+       to ||
+       (typeof p.chatId === "string" && p.chatId) ||
+       (typeof p.remoteJid === "string" && p.remoteJid) ||
+       from ||
+       "")
+    : (from ||
+       (typeof key?.remoteJid === "string" && key.remoteJid) ||
+       (typeof p.chatId === "string" && p.chatId) ||
+       "");
+
   const rawMsg =
     asRecord(p.message) ||
     asRecord(dig(p, "data", "message")) ||
@@ -183,17 +201,21 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
       ? (dig(p, "id", "_serialized") as string)
       : undefined);
 
-  const chatId =
+  const chatId: string =
     (typeof p.chatId === "string" && p.chatId) ||
     (typeof dig(p, "_data", "id", "remote") === "string"
       ? (dig(p, "_data", "id", "remote") as string)
-      : undefined) ||
-    from;
+      : "") ||
+    targetJid ||
+    from ||
+    "";
 
-  const remoteJid =
+  const remoteJid: string =
     (typeof key?.remoteJid === "string" && key.remoteJid) ||
     (typeof p.remoteJid === "string" && p.remoteJid) ||
-    from;
+    targetJid ||
+    from ||
+    "";
 
   const remoteJidAlt =
     (typeof key?.remoteJidAlt === "string" && key.remoteJidAlt) ||
@@ -213,7 +235,13 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     (typeof p.addressingMode === "string" && p.addressingMode) ||
     undefined;
 
-  const phone = jidToPhone(remoteJidAlt) || jidToPhone(from) || String(from).replace(/\D/g, "");
+  const phone =
+    jidToPhone(remoteJidAlt) ||
+    jidToPhone(targetJid) ||
+    jidToPhone(remoteJid) ||
+    jidToPhone(chatId) ||
+    jidToPhone(from) ||
+    String(targetJid).replace(/\D/g, "");
   if (!phone && !chatId) return null;
 
   const rawName =

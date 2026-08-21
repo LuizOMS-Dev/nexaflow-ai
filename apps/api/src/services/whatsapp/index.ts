@@ -338,6 +338,152 @@ export async function ingestInboundMessage(params: {
 }
 
 /**
+ * Ingestão de mensagens enviadas por outros dispositivos conectados à mesma conta WhatsApp
+ * (ex.: celular do atendente, WhatsApp Web, múltiplos computadores).
+ * - Cria a Message como OUTBOUND
+ * - Associa à Conversation correta do contato (JID/LID/PN)
+ * - Atualiza preview e emite WebSocket em realtime
+ * - NÃO duplica se a mensagem foi enviada pelo NexaFlow
+ * - NÃO dispara resposta automática da IA
+ */
+export async function ingestExternalOutboundMessage(params: {
+  tenantId: string;
+  channelId: string;
+  phone: string;
+  content: string;
+  externalId?: string;
+  type?: string;
+  chatId?: string;
+  from?: string;
+  remoteJid?: string;
+  remoteJidAlt?: string;
+  addressingMode?: string;
+}) {
+  if (params.externalId) {
+    const duplicate = await prisma.message.findFirst({
+      where: {
+        externalId: params.externalId,
+        conversation: { tenantId: params.tenantId },
+      },
+      include: { conversation: true },
+    });
+    if (duplicate) {
+      return {
+        conversation: duplicate.conversation,
+        message: duplicate,
+        duplicate: true,
+      };
+    }
+  }
+
+  const { resolveWhatsAppIdentity } = await import("./identity-resolver");
+  const identity = await resolveWhatsAppIdentity({
+    tenantId: params.tenantId,
+    chatId: params.chatId,
+    from: params.from,
+    remoteJid: params.remoteJid,
+    remoteJidAlt: params.remoteJidAlt,
+    addressingMode: params.addressingMode,
+    phone: params.phone,
+  });
+
+  const contact = await prisma.contact.findUnique({
+    where: { id: identity.contactId },
+  });
+  if (!contact) throw new Error("Falha ao resolver contato WhatsApp para mensagem externa");
+
+  broadcastToTenant(
+    params.tenantId,
+    identity.contactWasCreated ? "contact.created" : "contact.updated",
+    { id: contact.id }
+  );
+
+  const { resolveConversationForInbound } = await import("../conversation-close");
+  const resolved = await resolveConversationForInbound({
+    tenantId: params.tenantId,
+    contactId: contact.id,
+    channelId: params.channelId,
+  });
+  let conversation = await prisma.conversation.findFirst({
+    where: { id: resolved.conversationId, tenantId: params.tenantId },
+  });
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        tenantId: params.tenantId,
+        contactId: contact.id,
+        channelId: params.channelId,
+        status: "OPEN",
+        isUnread: false,
+      },
+    });
+  }
+
+  const { asInputJson } = await import("../../lib/json");
+  const message = await prisma.message.create({
+    data: {
+      conversationId: conversation.id,
+      direction: "OUTBOUND",
+      content: params.content,
+      externalId: params.externalId,
+      type: params.type === "image" ? "IMAGE" : "TEXT",
+      deliveredAt: new Date(),
+      isAiGenerated: false,
+      metadata: asInputJson({
+        source: "WHATSAPP_DEVICE",
+        origin: "whatsapp_device",
+        externalDevice: true,
+        deliveryStatus: "SENT",
+      }),
+    },
+  });
+
+  const updated = await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: {
+      lastMessageAt: new Date(),
+      lastMessagePreview: params.content.slice(0, 200),
+      isUnread: false,
+      channelId: params.channelId,
+      ...(conversation.status === "PENDING" ? { status: "OPEN" } : {}),
+    },
+    include: { contact: true, channel: true },
+  });
+
+  broadcastToTenant(params.tenantId, "message.created", {
+    conversationId: conversation.id,
+    message,
+    conversation: updated,
+  });
+  broadcastToTenant(params.tenantId, "conversation.updated", {
+    conversation: updated,
+  });
+
+  setImmediate(() => {
+    void import("../webhooks/dispatch")
+      .then(({ emitWebhookEvent }) => {
+        emitWebhookEvent({
+          tenantId: params.tenantId,
+          type: "message.sent",
+          data: {
+            conversationId: conversation.id,
+            message: {
+              id: message.id,
+              content: (params.content || "").slice(0, 500),
+              direction: "OUTBOUND",
+              source: "WHATSAPP_DEVICE",
+            },
+            contactId: contact.id,
+          },
+        });
+      })
+      .catch(() => null);
+  });
+
+  return { conversation: updated, message, duplicate: false };
+}
+
+/**
  * Avisos padrão do sistema no WhatsApp (todos os agentes / todos os clientes).
  * - human_takeover → humano assumiu
  * - attendance_closed → atendimento encerrado

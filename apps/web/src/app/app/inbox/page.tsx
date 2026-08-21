@@ -2286,8 +2286,9 @@ function InboxInner() {
                   }
 
                   const isTeam = origin === "AI" || origin === "HUMAN" || origin === "INTERNAL_NOTE";
+                  const isDeviceMsg = Boolean(messageMeta(m).source === "WHATSAPP_DEVICE" || messageMeta(m).externalDevice);
                   const agentName = origin === "AI" ? aiDisplayName(m) : "";
-                  const humanName = m.author?.name || "Atendente";
+                  const humanName = m.author?.name || (isDeviceMsg ? "WhatsApp (Dispositivo)" : "Atendente");
                   const contactName = conversation?.contact.name || "Cliente";
                   const pendingAi =
                     origin === "AI" &&
@@ -2298,7 +2299,9 @@ function InboxInner() {
                     origin === "AI"
                       ? `Enviado por ${agentName}\nAgente de IA`
                       : origin === "HUMAN"
-                        ? `Enviado por ${humanName}\nAtendente`
+                        ? isDeviceMsg
+                          ? "Enviado pelo WhatsApp (Celular / Web / Dispositivo vinculado)"
+                          : `Enviado por ${humanName}\nAtendente`
                         : origin === "INTERNAL_NOTE"
                           ? `Nota interna · ${humanName}`
                           : contactName;
@@ -2345,7 +2348,7 @@ function InboxInner() {
                             title={senderTooltip}
                           >
                             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ink/10 text-[9px] font-bold text-ink dark:bg-white/[0.12] dark:text-zinc-200">
-                              {initials(humanName)}
+                              {isDeviceMsg ? "WA" : initials(humanName)}
                             </span>
                             {humanName}
                           </p>
