@@ -117,11 +117,17 @@ export async function mediaRoutes(app: FastifyInstance) {
 
         // Caso 1: Multipart file upload
         if (request.isMultipart()) {
-          const file = await request.file();
+          const file = await request.file({
+            limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+          });
           if (!file) {
             throw new AppError("Nenhum arquivo enviado", 400);
           }
           const buf = await file.toBuffer();
+          if (buf.length > 100 * 1024 * 1024) {
+            throw new AppError("Arquivo excede o limite máximo permitido de 100MB", 400);
+          }
+
           const isVoice = file.fields?.isVoice
             ? String((file.fields.isVoice as { value?: unknown }).value || "") === "true"
             : false;
@@ -146,9 +152,14 @@ export async function mediaRoutes(app: FastifyInstance) {
         });
 
         const parsed = bodySchema.parse(request.body);
-        const buf = Buffer.from(parsed.dataBase64, "base64");
+        const cleanBase64 = parsed.dataBase64.replace(/^data:[^;]+;base64,/, "");
+        const buf = Buffer.from(cleanBase64, "base64");
+
         if (!buf.length) {
           throw new AppError("Dados do arquivo inválidos ou vazios", 400);
+        }
+        if (buf.length > 100 * 1024 * 1024) {
+          throw new AppError("Arquivo excede o limite máximo permitido de 100MB", 400);
         }
 
         const stored = await saveMediaBuffer({

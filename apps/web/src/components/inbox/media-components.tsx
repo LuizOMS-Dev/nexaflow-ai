@@ -432,6 +432,7 @@ export function AttachmentPreviewModal({
   const isImage = file.type.startsWith("image/");
   const isVideo = file.type.startsWith("video/");
   const style = getFileStyle(file.name, file.type);
+  const isTooLarge = file.size > 100 * 1024 * 1024;
 
   useEffect(() => {
     if (isImage || isVideo) {
@@ -443,6 +444,7 @@ export function AttachmentPreviewModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isTooLarge || isSending) return;
     await onSend(caption.trim());
   };
 
@@ -464,7 +466,7 @@ export function AttachmentPreviewModal({
           <button
             type="button"
             className="btn-primary h-9 text-sm inline-flex items-center gap-1.5"
-            disabled={isSending}
+            disabled={isSending || isTooLarge}
             onClick={handleSubmit}
           >
             {isSending ? (
@@ -483,6 +485,12 @@ export function AttachmentPreviewModal({
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {isTooLarge && (
+          <div className="flex items-center gap-2 p-2.5 rounded-xl border border-red-500/20 bg-red-50 text-red-600 dark:border-red-400/20 dark:bg-red-950/30 dark:text-red-300 text-xs">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>Este arquivo excede o limite máximo permitido de 100MB.</span>
+          </div>
+        )}
         {isImage && previewUrl ? (
           <div className="flex justify-center overflow-hidden rounded-xl bg-black/5 dark:bg-white/5 p-2">
             <img

@@ -105,13 +105,20 @@ export function sanitizeFilename(original: string): string {
   if (DANGEROUS_EXTENSIONS.has(ext)) {
     throw new AppError(`Tipo de arquivo não permitido por segurança (${ext})`, 400, "FORBIDDEN_FILE_TYPE");
   }
-  const clean = base
+  const nameWithoutExt = path.basename(base, ext);
+  const cleanName = nameWithoutExt
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .replace(/_+/g, "_")
-    .slice(0, 100);
+    .slice(0, 120);
 
+  const cleanExt = ext
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9.]/g, "");
+
+  const clean = cleanName ? `${cleanName}${cleanExt}` : `arquivo${cleanExt}`;
   return clean || "arquivo_anexo";
 }
 

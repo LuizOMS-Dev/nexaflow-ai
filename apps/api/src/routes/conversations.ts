@@ -401,41 +401,41 @@ export async function conversationRoutes(app: FastifyInstance) {
           `reply:${id}:${request.user.sub}:${contentHash}`;
 
         if (isMedia && body.mediaUrl) {
-          const { dispatchWhatsAppMedia } = await import("../services/whatsapp");
+          const { executeMediaSendPipeline } = await import("../services/whatsapp/media-pipeline");
           const meta = (body.metadata || {}) as Record<string, unknown>;
-          let absPath: string | undefined = undefined;
 
-          if (
-            body.mediaUrl.startsWith("/api/media/files/") ||
-            body.mediaUrl.startsWith("/media/files/") ||
-            body.mediaUrl.startsWith("/media/wa/") ||
-            body.mediaUrl.startsWith("/api/media/wa/")
-          ) {
-            const clean = body.mediaUrl.replace(/^\/(?:api\/)?media\/(?:files|wa)\//, "");
-            const parts = clean.split("/");
-            if (parts.length >= 2) {
-              const { resolveMediaFilePath } = await import("../services/storage/media-storage");
-              const resolved = await resolveMediaFilePath(parts[0], parts[1]);
-              if (resolved.exists) absPath = resolved.absPath;
-            }
-          }
-
-          const sent = await dispatchWhatsAppMedia({
+          const pipelineRes = await executeMediaSendPipeline({
+            tenantId: request.user.tenantId!,
             channelId: conversation.channel.id,
+            conversationId: id,
+            contactId: conversation.contactId,
             to: deliveryDestination,
-            kind: (body.type === "NOTE" || body.type === "TEXT" ? "DOCUMENT" : body.type) as any,
+            mediaType: (body.type === "NOTE" || body.type === "TEXT" ? "DOCUMENT" : body.type) as any,
             mediaUrl: body.mediaUrl,
-            absPath,
             caption: body.content || undefined,
             filename: (meta.filename as string) || undefined,
+            originalName: (meta.originalName as string) || (meta.filename as string) || undefined,
             mimetype: (meta.mimetype as string) || undefined,
-            purpose: "reply",
-            tenantId: request.user.tenantId!,
-            contactId: conversation.contactId,
+            filesize: Number(meta.sizeBytes) || undefined,
+            duration: Number(meta.duration) || undefined,
+            clientMessageId: body.idempotencyKey,
             idempotencyKey,
+            purpose: "reply",
+            userId: request.user.sub,
+            isInternal,
           });
-          if (sent.ok) externalId = sent.externalId;
-          else deliveryError = sent.error || "Falha no envio da mídia pelo WhatsApp";
+
+          if (!pipelineRes.ok) {
+            deliveryError = pipelineRes.error || "Falha no envio da mídia pelo WhatsApp";
+          }
+
+          if (pipelineRes.messageId) {
+            const createdMsg = await prisma.message.findUnique({
+              where: { id: pipelineRes.messageId },
+              include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+            });
+            return { ...createdMsg, deliveryError };
+          }
         } else {
           const { dispatchWhatsAppText } = await import("../services/whatsapp");
           const sent = await dispatchWhatsAppText({
@@ -576,32 +576,32 @@ export async function conversationRoutes(app: FastifyInstance) {
       let sent: { ok: boolean; externalId?: string; error?: string };
 
       if (msg.mediaUrl || (msg.type !== "TEXT" && msg.type !== "NOTE")) {
-        const { dispatchWhatsAppMedia } = await import("../services/whatsapp");
-        let absPath: string | undefined = undefined;
+        const { executeMediaSendPipeline } = await import("../services/whatsapp/media-pipeline");
 
-        if (msg.mediaUrl?.startsWith("/api/media/files/")) {
-          const parts = msg.mediaUrl.replace("/api/media/files/", "").split("/");
-          if (parts.length >= 2) {
-            const { resolveMediaFilePath } = await import("../services/storage/media-storage");
-            const resolved = await resolveMediaFilePath(parts[0], parts[1]);
-            if (resolved.exists) absPath = resolved.absPath;
-          }
-        }
-
-        sent = await dispatchWhatsAppMedia({
+        const pipelineRes = await executeMediaSendPipeline({
+          tenantId: request.user.tenantId!,
           channelId: conversation.channel.id,
+          conversationId: id,
+          contactId: conversation.contactId,
           to: deliveryDestination,
-          kind: (msg.type === "NOTE" ? "DOCUMENT" : msg.type) as any,
+          mediaType: (msg.type === "NOTE" ? "DOCUMENT" : msg.type) as any,
           mediaUrl: msg.mediaUrl || "",
-          absPath,
           caption: msg.content || undefined,
           filename: (currentMeta.filename as string) || undefined,
+          originalName: (currentMeta.originalName as string) || (currentMeta.filename as string) || undefined,
           mimetype: (currentMeta.mimetype as string) || undefined,
+          filesize: Number(currentMeta.sizeBytes) || undefined,
+          duration: Number(currentMeta.duration) || undefined,
           purpose: "reply",
-          tenantId: request.user.tenantId!,
-          contactId: conversation.contactId,
+          userId: request.user.sub,
           idempotencyKey: `retry:${id}:${messageId}:${Date.now()}`,
         });
+
+        sent = {
+          ok: pipelineRes.ok,
+          externalId: pipelineRes.externalId,
+          error: pipelineRes.error,
+        };
       } else {
         const { dispatchWhatsAppText } = await import("../services/whatsapp");
         sent = await dispatchWhatsAppText({
@@ -631,7 +631,7 @@ export async function conversationRoutes(app: FastifyInstance) {
         },
       });
 
-      broadcastToTenant(request.user.tenantId!, "message.created", {
+      broadcastToTenant(request.user.tenantId!, "message.updated", {
         conversationId: id,
         message: updated,
       });

@@ -42,6 +42,10 @@ import {
   FileText,
   File as FileIcon,
   Mic,
+  Check,
+  CheckCheck,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import {
   AudioVoiceRecorder,
@@ -2563,16 +2567,44 @@ function InboxInner() {
                               ).join(" · ")}
                             </p>
                           ) : null}
-                          <p
+                          <div
                             className={cn(
-                              "mt-1 text-right text-[10px] tabular-nums",
+                              "mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
                               origin === "HUMAN"
-                                ? "text-white/50 dark:text-ink/45"
+                                ? "text-white/60 dark:text-zinc-600"
                                 : "text-ink-faint dark:text-zinc-500"
                             )}
                           >
-                            {time}
-                          </p>
+                            <span>{time}</span>
+                            {origin === "HUMAN" && (
+                              <span
+                                className="inline-flex items-center ml-0.5"
+                                title={
+                                  messageMeta(m).deliveryStatus === "READ"
+                                    ? "Lido"
+                                    : messageMeta(m).deliveryStatus === "DELIVERED"
+                                      ? "Entregue"
+                                      : messageMeta(m).deliveryStatus === "FAILED" || messageMeta(m).deliveryError
+                                        ? "Falha no envio"
+                                        : messageMeta(m).deliveryStatus === "SENDING" || messageMeta(m).deliveryStatus === "UPLOADING" || messageMeta(m).deliveryStatus === "PREPARING"
+                                          ? "Enviando…"
+                                          : "Enviado"
+                                }
+                              >
+                                {messageMeta(m).deliveryStatus === "READ" ? (
+                                  <CheckCheck className="h-3 w-3 text-sky-400 dark:text-sky-600" />
+                                ) : messageMeta(m).deliveryStatus === "DELIVERED" ? (
+                                  <CheckCheck className="h-3 w-3 opacity-75" />
+                                ) : messageMeta(m).deliveryStatus === "FAILED" || messageMeta(m).deliveryError ? (
+                                  <AlertCircle className="h-3 w-3 text-red-400 dark:text-red-500" />
+                                ) : messageMeta(m).deliveryStatus === "SENDING" || messageMeta(m).deliveryStatus === "UPLOADING" || messageMeta(m).deliveryStatus === "PREPARING" ? (
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin opacity-75" />
+                                ) : (
+                                  <Check className="h-3 w-3 opacity-75" />
+                                )}
+                              </span>
+                            )}
+                          </div>
                           {pendingAi ? (
                             <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-amber-500/20 pt-2">
                               <button

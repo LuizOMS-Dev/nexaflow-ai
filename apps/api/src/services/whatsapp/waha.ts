@@ -183,10 +183,17 @@ export class WahaConnector implements WhatsAppConnector {
     const { formatWahaDestinationChatId } = await import("./identity-resolver");
     const chatId = formatWahaDestinationChatId(to);
 
+    // Normaliza formato data URI
+    let cleanBase64 = media.dataBase64 || "";
+    if (cleanBase64.startsWith("data:")) {
+      cleanBase64 = cleanBase64.replace(/^data:[^;]+;base64,/, "");
+    }
+    const formattedDataUri = `data:${media.mimetype};base64,${cleanBase64}`;
+
     const file = {
       mimetype: media.mimetype,
       filename: media.filename || "arquivo",
-      data: media.dataBase64,
+      data: formattedDataUri,
     };
 
     let endpoint = "/api/sendFile";
@@ -210,9 +217,10 @@ export class WahaConnector implements WhatsAppConnector {
       method: "POST",
       headers: this.headers(config.apiKey),
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
 
-    // Fallback para sendFile caso endpoint específico não exista no WAHA
+    // Fallback para sendFile caso endpoint específico não exista ou falhe no WAHA
     if ((!res || !res.ok) && (endpoint === "/api/sendVideo" || endpoint === "/api/sendVoice")) {
       delete body.convert;
       if (media.caption) body.caption = media.caption;
@@ -220,21 +228,33 @@ export class WahaConnector implements WhatsAppConnector {
         method: "POST",
         headers: this.headers(config.apiKey),
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(45_000),
       }).catch(() => null);
     }
 
     if (!res) {
-      return { ok: false, error: "Serviço WhatsApp não respondeu ao envio de mídia" };
+      return { ok: false, error: "Serviço WhatsApp não respondeu ao envio de mídia (timeout ou desconexão)" };
     }
 
-    const raw = await res.json().catch(() => ({}));
+    const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
-      return { ok: false, error: JSON.stringify(raw).slice(0, 300), raw };
+      const errorMsg =
+        (typeof raw.message === "string" && raw.message) ||
+        (typeof raw.error === "string" && raw.error) ||
+        (typeof raw.description === "string" && raw.description) ||
+        JSON.stringify(raw).slice(0, 300);
+      return { ok: false, error: errorMsg, raw };
     }
+
+    const externalId =
+      (typeof raw.id === "string" && raw.id) ||
+      (typeof (raw.key as { id?: string })?.id === "string" && (raw.key as { id?: string }).id) ||
+      (typeof raw._serialized === "string" && raw._serialized) ||
+      undefined;
 
     return {
       ok: true,
-      externalId: (raw as { id?: string })?.id || (raw as { key?: { id?: string } })?.key?.id,
+      externalId,
       raw,
     };
   }
