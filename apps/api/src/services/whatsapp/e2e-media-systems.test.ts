@@ -49,7 +49,7 @@ describe("E2E Test: Sistema 1 - Envio de Mídias (NexaFlow -> WhatsApp)", () => 
     expect(calledUrl).toBe("http://waha:3000/api/sendImage");
     expect(calledBody.chatId).toBe("5511999990001@c.us");
     expect(calledBody.caption).toBe("Segue comprovante de pagamento");
-    expect(calledBody.file.data).toMatch(/^data:image/jpeg;base64,/);
+    expect(calledBody.file.data).toMatch(/^data:image\/jpeg;base64,/);
 
     vi.unstubAllGlobals();
   });
@@ -83,7 +83,7 @@ describe("E2E Test: Sistema 1 - Envio de Mídias (NexaFlow -> WhatsApp)", () => 
     expect(res.externalId).toBe("waha_msg_voice_002");
     expect(calledUrl).toBe("http://waha:3000/api/sendVoice");
     expect(calledBody.convert).toBe(true);
-    expect(calledBody.file.data).toMatch(/^data:audio/ogg; codecs=opus;base64,/);
+    expect(calledBody.file.data).toMatch(/^data:audio\/ogg; codecs=opus;base64,/);
 
     vi.unstubAllGlobals();
   });
