@@ -110,43 +110,41 @@ export function WhatsAppStatusBanner() {
     <div
       role="status"
       className={cn(
-        "mb-3 flex flex-col gap-2 rounded-xl border px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3",
-        exiting && "wa-banner-exit",
+        "mb-2.5 flex min-h-[40px] items-center justify-between gap-3 rounded-lg border px-3 py-1.5 transition-all duration-200",
+        exiting && "opacity-0 scale-[0.99] pointer-events-none",
         tone === "danger" &&
-          "border-red-500/20 bg-red-500/[0.05] dark:border-red-400/[0.15] dark:bg-red-500/[0.07]",
+          "border-red-500/20 bg-red-500/[0.06] text-red-700 dark:border-red-400/20 dark:bg-red-950/40 dark:text-red-300",
         tone === "info" &&
-          "border-violet-500/20 bg-violet-500/[0.05] dark:border-violet-400/[0.15] dark:bg-violet-500/[0.06]",
+          "border-violet-500/20 bg-violet-500/[0.06] text-violet-700 dark:border-violet-400/20 dark:bg-violet-950/40 dark:text-violet-300",
         tone === "warning" &&
-          "border-amber-500/20 bg-amber-500/[0.05] dark:border-amber-400/[0.15] dark:bg-amber-500/[0.06]"
+          "border-amber-500/20 bg-amber-500/[0.06] text-amber-800 dark:border-amber-400/20 dark:bg-amber-950/40 dark:text-amber-200"
       )}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <div
+      <div className="flex min-w-0 items-center gap-2">
+        <span
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-            tone === "danger" && "bg-red-500/[0.12] text-red-600 dark:text-red-300",
-            tone === "info" && "bg-violet-500/[0.12] text-violet-600 dark:text-violet-300",
-            tone === "warning" && "bg-amber-500/[0.12] text-amber-700 dark:text-amber-300"
+            "h-2 w-2 shrink-0 rounded-full",
+            tone === "danger" && "bg-red-500 animate-pulse",
+            tone === "info" && "bg-violet-500",
+            tone === "warning" && "bg-amber-500 animate-pulse"
           )}
-        >
-          <MessageCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[13px] font-medium leading-snug text-ink dark:text-white">
+        />
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[12px]">
+          <span className="font-semibold text-ink dark:text-white">
             {banner.title}
-          </p>
+          </span>
           {banner.body?.trim() ? (
-            <p className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-ink-muted dark:text-gray-400">
-              {banner.body}
-            </p>
+            <span className="hidden sm:inline text-ink-muted dark:text-zinc-400">
+              · {banner.body}
+            </span>
           ) : null}
         </div>
       </div>
-      {/* CTA alinhado ao status real — sem botão em RECONNECTING / CONNECTED */}
+
       {!exiting && actionLabel ? (
         <Link
           href={banner.actionHref || "/app/integrations"}
-          className="btn-primary h-8 shrink-0 px-3 text-[11px] sm:self-center"
+          className="inline-flex h-7 shrink-0 items-center rounded-md bg-violet-600 px-2.5 text-[11px] font-medium text-white hover:bg-violet-700 active:scale-95 transition-all shadow-sm"
         >
           {actionLabel}
         </Link>
