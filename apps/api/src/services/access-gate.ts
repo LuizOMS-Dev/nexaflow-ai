@@ -118,6 +118,8 @@ export const RESTRICTED_ALLOW_PREFIXES = [
   "/auth/",
   "/usage",
   "/settings",
+  "/finance",
+  "/billing",
   "/notifications",
   "/assistant/",
   "/admin/stop-impersonation",
@@ -682,13 +684,12 @@ export async function evaluateAccessGate(
 
   // ── Financeiro: inadimplência após tolerância ──
   if (financial.code === "SUSPENDED_FOR_NONPAYMENT") {
-    if (impersonating || isAdmin) {
+    if (impersonating) {
       return makeDecision({
         level: "RESTRICTED",
         code: "PAYMENT_SUSPENDED",
-        title: "Assinatura suspensa",
-        message:
-          "O acesso está temporariamente suspenso devido a uma pendência de pagamento.",
+        title: "Restrição financeira (modo suporte)",
+        message: "Empresa com restrição financeira de acesso. Operações automáticas pausadas.",
         userStatus: user.status,
         companyStatus: tenant.status,
         financial,
@@ -698,12 +699,30 @@ export async function evaluateAccessGate(
         policy,
       });
     }
+
+    if (policy.companySuspendMode === "LIMITED" && isAdmin) {
+      return makeDecision({
+        level: "RESTRICTED",
+        code: "PAYMENT_SUSPENDED",
+        title: "Acesso Limitado",
+        message:
+          "O acesso operacional desta empresa está temporariamente restrito devido a uma pendência de pagamento. Administradores podem acessar áreas financeiras para regularização.",
+        userStatus: user.status,
+        companyStatus: tenant.status,
+        financial,
+        capabilities: restrictedCaps(true),
+        operationalPaused: true,
+        impersonating,
+        policy,
+      });
+    }
+
     return makeDecision({
       level: "BLOCKED",
       code: "PAYMENT_SUSPENDED",
-      title: "Assinatura suspensa",
+      title: policy.companySuspendMode === "LIMITED" ? "Acesso temporariamente restrito" : "Acesso bloqueado por pagamento",
       message:
-        "O acesso está temporariamente suspenso devido a uma pendência de pagamento. Peça a um administrador para regularizar.",
+        "O acesso a esta empresa está temporariamente bloqueado devido a uma pendência de pagamento. Entre em contato com um administrador da sua conta para regularização.",
       userStatus: user.status,
       companyStatus: tenant.status,
       financial,

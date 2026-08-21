@@ -89,6 +89,23 @@ function formatFriendlyDateTime(dtStr?: string | null): string {
   return dtStr;
 }
 
+function formatShortEstimatedEnd(dtStr?: string | null): string {
+  if (!dtStr) return "";
+  try {
+    const d = new Date(dtStr);
+    if (!isNaN(d.getTime())) {
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      if (isToday) return `até ${timeStr}`;
+      const isTomorrow = new Date(now.getTime() + 86400000).toDateString() === d.toDateString();
+      if (isTomorrow) return `até amanhã às ${timeStr}`;
+      return `até ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${timeStr}`;
+    }
+  } catch {}
+  return dtStr.length > 20 ? `até ${dtStr.slice(0, 20)}...` : `até ${dtStr}`;
+}
+
 export function MaintenancePanel() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -431,8 +448,8 @@ export function MaintenancePanel() {
                                 )}
                               >
                                 {isSecEnabled
-                                  ? friendlyTime
-                                    ? `Em manutenção · Retorno previsto ${friendlyTime.toLowerCase()}`
+                                  ? state?.estimatedEnd
+                                    ? `Em manutenção · ${formatShortEstimatedEnd(state.estimatedEnd)}`
                                     : "Em manutenção"
                                   : "Disponível"}
                               </span>
@@ -537,10 +554,20 @@ export function MaintenancePanel() {
                   value={globalEstimatedEnd}
                   onChange={(e) => setGlobalEstimatedEnd(e.target.value)}
                   placeholder="Ex.: Hoje às 06:00 ou 21 de agosto às 06:00"
-                  className={inputClass}
+                  className={cn(inputClass, globalEstimatedEnd ? "pr-20" : "")}
                   maxLength={100}
                 />
-                <Calendar className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                {globalEstimatedEnd ? (
+                  <button
+                    type="button"
+                    onClick={() => setGlobalEstimatedEnd("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-0.5 text-[11px] font-medium text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Limpar
+                  </button>
+                ) : (
+                  <Calendar className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                )}
               </div>
             </Field>
 
@@ -612,25 +639,47 @@ export function MaintenancePanel() {
             </div>
 
             <form onSubmit={handleSaveSectionModal} className="space-y-4">
-              <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
-                <div>
+              {/* Controle de Status Inconfundível com Switch Oficial */}
+              <div className="flex items-center justify-between rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="space-y-0.5">
                   <p className="font-semibold text-sm text-white">Status do módulo</p>
                   <p className="text-xs text-white/50">
-                    {secFormEnabled ? "Em manutenção (acesso bloqueado)" : "Disponível (acesso normal)"}
+                    {secFormEnabled
+                      ? "Em manutenção (acesso temporariamente pausado para as empresas)"
+                      : "Disponível (acesso normal liberado)"}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSecFormEnabled((v) => !v)}
-                  className={cn(
-                    "rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer",
-                    secFormEnabled
-                      ? "bg-amber-600 text-white hover:bg-amber-700"
-                      : "bg-brand-600 text-white hover:bg-brand-500"
-                  )}
-                >
-                  {secFormEnabled ? "Em manutenção" : "Disponível"}
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span
+                    className={cn(
+                      "text-xs font-semibold px-2.5 py-1 rounded-lg tracking-wide",
+                      secFormEnabled
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    )}
+                  >
+                    {secFormEnabled ? "Em manutenção" : "Disponível"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={secFormEnabled}
+                    aria-label={`Status do módulo ${TENANT_SECTIONS[editingSection]?.label}`}
+                    onClick={() => setSecFormEnabled((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950",
+                      secFormEnabled ? "bg-amber-600" : "bg-white/15"
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out",
+                        secFormEnabled ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
               </div>
 
               <Field
@@ -662,24 +711,42 @@ export function MaintenancePanel() {
               </Field>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Previsão de retorno (opcional)">
-                  <input
-                    type="text"
-                    value={secFormEstimatedEnd}
-                    onChange={(e) => setSecFormEstimatedEnd(e.target.value)}
-                    placeholder="Ex.: Hoje às 06:00"
-                    className={inputClass}
-                  />
+                <Field label="Previsão de retorno (opcional)" hint="Ex: Hoje às 06:00 ou 21 de agosto às 06:00">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={secFormEstimatedEnd}
+                      onChange={(e) => setSecFormEstimatedEnd(e.target.value)}
+                      placeholder="Ex.: Hoje às 06:00"
+                      className={cn(inputClass, secFormEstimatedEnd ? "pr-20" : "")}
+                      maxLength={100}
+                    />
+                    {secFormEstimatedEnd ? (
+                      <button
+                        type="button"
+                        onClick={() => setSecFormEstimatedEnd("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-0.5 text-[11px] font-medium text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                      >
+                        Limpar
+                      </button>
+                    ) : (
+                      <Calendar className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                    )}
+                  </div>
                 </Field>
 
-                <Field label="Motivo interno (confidencial)">
-                  <input
-                    type="text"
-                    value={secFormInternalReason}
-                    onChange={(e) => setSecFormInternalReason(e.target.value)}
-                    placeholder="Ex.: Upgrade do gateway de IA"
-                    className={inputClass}
-                  />
+                <Field label="Motivo interno (confidencial)" hint="Visível somente ao Superadmin">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={secFormInternalReason}
+                      onChange={(e) => setSecFormInternalReason(e.target.value)}
+                      placeholder="Ex.: Upgrade do gateway de IA"
+                      className={inputClass}
+                      maxLength={500}
+                    />
+                    <Lock className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                  </div>
                 </Field>
               </div>
 
@@ -841,9 +908,14 @@ export function MaintenancePanel() {
               </div>
             </div>
 
-            <p className="text-xs leading-relaxed text-white/70">
-              Todas as empresas e usuários comuns receberão a tela de manutenção com código HTTP 503. O Superadmin continuará com acesso total a /admin/*.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs leading-relaxed text-white/80">
+                Todas as empresas ficarão temporariamente sem acesso à plataforma. A Administração continuará disponível.
+              </p>
+              <p className="text-[11px] leading-relaxed text-white/40">
+                Nota técnica: As requisições de empresas receberão resposta de indisponibilidade temporária (HTTP 503).
+              </p>
+            </div>
 
             <label className="flex items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-xs text-white/80 cursor-pointer">
               <input

@@ -77,19 +77,28 @@ describe("access-gate finance", () => {
 });
 
 describe("access-gate restricted paths", () => {
-  it("permite leitura de settings e auth", () => {
+  it("permite leitura de settings, auth, finance e billing", () => {
     expect(isPathAllowedWhenRestricted("/settings", "GET")).toBe(true);
     expect(isPathAllowedWhenRestricted("/auth/access-state", "GET")).toBe(true);
     expect(isPathAllowedWhenRestricted("/usage", "GET")).toBe(true);
+    expect(isPathAllowedWhenRestricted("/finance", "GET")).toBe(true);
+    expect(isPathAllowedWhenRestricted("/billing", "GET")).toBe(true);
   });
 
-  it("bloqueia mutações operacionais", () => {
+  it("bloqueia rotas operacionais (leitura e mutações)", () => {
+    expect(isPathAllowedWhenRestricted("/conversations", "GET")).toBe(false);
+    expect(isPathAllowedWhenRestricted("/contacts", "GET")).toBe(false);
+    expect(isPathAllowedWhenRestricted("/crm", "GET")).toBe(false);
+    expect(isPathAllowedWhenRestricted("/tasks", "GET")).toBe(false);
+    expect(isPathAllowedWhenRestricted("/marketing", "GET")).toBe(false);
     expect(isPathAllowedWhenRestricted("/contacts", "POST")).toBe(false);
     expect(isPathAllowedWhenRestricted("/campaigns", "POST")).toBe(false);
     expect(isPathAllowedWhenRestricted("/ai-agents", "PATCH")).toBe(false);
+    expect(isPathAllowedWhenRestricted("/whatsapp/send", "POST")).toBe(false);
   });
 
-  it("permite logout", () => {
+  it("permite logout e encerramento de impersonação", () => {
     expect(isPathAllowedWhenRestricted("/auth/logout", "POST")).toBe(true);
+    expect(isPathAllowedWhenRestricted("/admin/stop-impersonation", "POST")).toBe(true);
   });
 });

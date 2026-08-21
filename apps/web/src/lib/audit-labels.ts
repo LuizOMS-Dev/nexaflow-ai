@@ -169,8 +169,10 @@ const EXACT_TITLES: Record<string, string> = {
   "subscription.updated": "Assinatura atualizada",
   "admin.cost.create": "Custo operacional registrado",
   "admin.cost.update": "Custo operacional atualizado",
-  "admin.cost.delete": "Custo operacional removido",
   "platform.access_policy_updated": "Política global de acesso atualizada",
+  "financial_access_policy.updated": "Política de acesso financeiro atualizada",
+  "financial_access_restriction.applied": "Restrição financeira de acesso aplicada",
+  "financial_access_restriction.removed": "Restrição financeira de acesso removida",
 
   // Recursos Operacionais
   "channel.connected": "Canal conectado",

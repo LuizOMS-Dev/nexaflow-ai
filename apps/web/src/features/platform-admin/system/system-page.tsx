@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, Sliders, Save, CheckCircle2, AlertCircle, Clock, ShieldAlert, Sparkles } from "lucide-react";
 import { useToast } from "@/components/ui";
@@ -21,7 +22,16 @@ import { MaintenancePanel } from "./maintenance-panel";
 type Tab = "politica" | "manutencao";
 
 export function SystemPage({ initialTab = "politica" }: { initialTab?: Tab }) {
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab");
+  const defaultTab = (urlTab === "manutencao" || urlTab === "politica") ? urlTab : initialTab;
+  const [tab, setTab] = useState<Tab>(defaultTab);
+
+  useEffect(() => {
+    if (urlTab === "manutencao" || urlTab === "politica") {
+      setTab(urlTab);
+    }
+  }, [urlTab]);
   return (
     <div className="space-y-6">
       <PageHeader
@@ -287,7 +297,7 @@ function PolicyPanel() {
             <div className="space-y-1 max-w-2xl">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-white">
-                  Suspender automaticamente por inadimplência
+                  Aplicar restrição automaticamente após a tolerância
                 </span>
                 <span
                   className={cn(
@@ -301,7 +311,7 @@ function PolicyPanel() {
                 </span>
               </div>
               <p className="text-xs text-white/50 leading-relaxed">
-                Quando ativado, o sistema altera o status das empresas com faturas vencidas automaticamente para <strong>Empresa suspensa</strong> após o término dos dias de tolerância.
+                Quando ativado, o sistema aplica a restrição financeira configurada (<strong>Acesso Limitado</strong> ou <strong>Bloqueio Total</strong>) às empresas com faturas vencidas após o término dos dias de tolerância.
               </p>
             </div>
 
@@ -310,7 +320,7 @@ function PolicyPanel() {
               type="button"
               role="switch"
               aria-checked={autoSuspend}
-              aria-label="Suspender automaticamente por inadimplência"
+              aria-label="Aplicar restrição automaticamente após a tolerância"
               onClick={() => setAutoSuspend((v) => !v)}
               className={cn(
                 "relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950",
@@ -351,7 +361,7 @@ function PolicyPanel() {
         <div className="flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.01] p-3.5 text-xs text-white/50">
           <AlertCircle className="h-4 w-4 shrink-0 text-white/40 mt-0.5" />
           <p className="leading-relaxed">
-            Esta política define as regras operacionais de acesso. Webhooks de pagamento integrados (Stripe, Mercado Pago, Asaas) removem a restrição e restabelecem o acesso total instantaneamente assim que o pagamento é identificado.
+            Esta política define as regras operacionais de acesso. Quando o pagamento é identificado, a restrição financeira é removida automaticamente e o acesso correspondente é restabelecido.
           </p>
         </div>
       </form>

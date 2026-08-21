@@ -1081,7 +1081,7 @@ export async function adminRoutes(app: FastifyInstance) {
     const next = await setAccessPolicy(body);
     await audit({
       userId: request.user.sub,
-      action: "platform.access_policy_updated",
+      action: "financial_access_policy.updated",
       entity: "platform_setting",
       entityId: "nexaflow.access.policy",
       metadata: next as unknown as Record<string, unknown>,
