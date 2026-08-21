@@ -455,8 +455,28 @@ function InboxPageContent() {
   const [needsApproval, setNeedsApproval] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
 
-  const [message, setMessage] = useState("");
+  const [draftsByConv, setDraftsByConv] = useState<Record<string, { reply?: string; internal?: string }>>({});
   const [internal, setInternal] = useState(false);
+
+  const currentMessage = selectedId
+    ? internal
+      ? draftsByConv[selectedId]?.internal || ""
+      : draftsByConv[selectedId]?.reply || ""
+    : "";
+
+  const setCurrentMessage = useCallback(
+    (text: string) => {
+      if (!selectedId) return;
+      setDraftsByConv((prev) => ({
+        ...prev,
+        [selectedId]: {
+          ...prev[selectedId],
+          [internal ? "internal" : "reply"]: text,
+        },
+      }));
+    },
+    [selectedId, internal]
+  );
   const [contextOpen, setContextOpen] = useState(true);
   const [mobileContext, setMobileContext] = useState(false);
 
@@ -640,8 +660,16 @@ function InboxPageContent() {
         method: "POST",
         json: payload,
       }),
-    onSuccess: (res) => {
-      setMessage("");
+    onSuccess: (res, variables) => {
+      if (selectedId) {
+        setDraftsByConv((prev) => ({
+          ...prev,
+          [selectedId]: {
+            ...prev[selectedId],
+            [variables.isInternal ? "internal" : "reply"]: "",
+          },
+        }));
+      }
       qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       if (res.deliveryError) {
@@ -837,18 +865,25 @@ function InboxPageContent() {
 
   async function requestAi() {
     if (!selectedId) return;
+    const targetConvId = selectedId;
     setAiLoading(true);
     try {
-      const result = await api<AiSuggestion>(`/conversations/${selectedId}/ai-suggest`, {
+      const result = await api<AiSuggestion>(`/conversations/${targetConvId}/ai-suggest`, {
         method: "POST",
         json: {},
       });
       setAi(result);
       if (result.reply) {
         setInternal(false);
-        setMessage(result.reply);
+        setDraftsByConv((prev) => ({
+          ...prev,
+          [targetConvId]: {
+            ...prev[targetConvId],
+            reply: result.reply,
+          },
+        }));
       }
-      qc.invalidateQueries({ queryKey: ["conversation", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversation", targetConvId] });
     } finally {
       setAiLoading(false);
     }
@@ -1690,15 +1725,16 @@ function InboxPageContent() {
               {/* 4. COMPOSER UNIFICADO E INTEGRADO */}
               {!isClosed ? (
                 <InboxComposer
-                  message={message}
-                  setMessage={setMessage}
+                  conversationId={selectedId}
+                  message={currentMessage}
+                  setMessage={setCurrentMessage}
                   internal={internal}
                   setInternal={setInternal}
                   isSending={sendMutation.isPending}
                   onSend={async (e) => {
                     e.preventDefault();
-                    if (!message.trim() || !selectedId) return;
-                    await sendMutation.mutateAsync({ content: message.trim(), isInternal: internal });
+                    if (!currentMessage.trim() || !selectedId) return;
+                    await sendMutation.mutateAsync({ content: currentMessage.trim(), isInternal: internal });
                   }}
                   onSendVoice={handleSendVoice}
                   onSelectFile={(f) => setSelectedFile(f)}

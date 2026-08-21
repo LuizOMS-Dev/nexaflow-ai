@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { formatSeconds } from "@/lib/media";
 
 export type InboxComposerProps = {
+  conversationId?: string | null;
   message: string;
   setMessage: (v: string) => void;
   internal: boolean;
@@ -36,6 +37,7 @@ export type InboxComposerProps = {
 };
 
 export function InboxComposer({
+  conversationId,
   message,
   setMessage,
   internal,
@@ -77,26 +79,42 @@ export function InboxComposer({
   const recordSecondsRef = useRef<number>(0);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Auto-resize do textarea
+  // Auto-resize do textarea compacto (min 36px, max 120px)
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 140);
+    const newHeight = Math.min(Math.max(el.scrollHeight, 36), 120);
     el.style.height = `${newHeight}px`;
   }, [message]);
 
-  // Fecha menu de anexos ao clicar fora
+  // Se trocar de conversa durante gravação ou preview, descarta para evitar vazamento
+  useEffect(() => {
+    if (isRecording || recordedBlob || previewAudioUrl) {
+      discardRecording();
+    }
+  }, [conversationId]);
+
+  // Fecha menu de anexos ao clicar fora ou pressionar Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(e.target as Node)) {
         setAttachmentMenuOpen(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setAttachmentMenuOpen(false);
+      }
+    };
     if (attachmentMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [attachmentMenuOpen]);
 
   // Limpeza de recursos ao desmontar
@@ -118,6 +136,7 @@ export function InboxComposer({
 
   // Iniciar Gravação de Áudio
   const startRecording = async () => {
+    if (internal) return;
     setMicError(null);
     try {
       chunksRef.current = [];
@@ -231,6 +250,8 @@ export function InboxComposer({
       const dur = Math.max(1, recordedDuration || recordSecondsRef.current || 1);
       await onSendVoice(recordedBlob, dur);
       discardRecording();
+    } catch {
+      // Em caso de falha de envio, mantém o áudio intacto para permitir tentar novamente
     } finally {
       setIsSendingVoice(false);
     }
@@ -263,13 +284,13 @@ export function InboxComposer({
   };
 
   return (
-    <div className="shrink-0 border-t border-black/[0.06] bg-white px-3 py-2.5 dark:border-white/[0.06] dark:bg-[#0c0e14] sm:px-4">
+    <div className="shrink-0 border-t border-black/[0.06] bg-white px-3 py-2 dark:border-white/[0.06] dark:bg-[#0c0e14] sm:px-4 sm:py-2.5">
       {/* Alerta amigável de erro de microfone */}
       {micError && (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-3 py-1.5 text-xs text-red-600 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
+        <div className="mb-1.5 flex items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.06] px-2.5 py-1 text-xs text-red-600 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
           <div className="flex items-center gap-1.5 min-w-0">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{micError}</span>
+            <span className="truncate text-[11px]">{micError}</span>
           </div>
           <button
             type="button"
@@ -277,21 +298,24 @@ export function InboxComposer({
             className="p-0.5 text-red-500 hover:text-red-700 dark:hover:text-red-200"
             title="Fechar aviso"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
           </button>
         </div>
       )}
 
       {/* Segmented Mode: Responder vs Nota Interna */}
-      <div className="mb-2 flex items-center justify-between">
-        <div className="inline-flex rounded-lg bg-black/[0.04] p-0.5 dark:bg-white/[0.06]">
+      <div className="mb-1.5 flex items-center justify-between">
+        <div className="inline-flex rounded-lg bg-black/[0.03] p-0.5 dark:bg-white/[0.05]">
           <button
             type="button"
-            onClick={() => setInternal(false)}
+            onClick={() => {
+              if (isRecording) discardRecording();
+              setInternal(false);
+            }}
             className={cn(
-              "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all",
+              "rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors",
               !internal
-                ? "bg-white text-ink shadow-xs dark:bg-[#1a1f2c] dark:text-zinc-100"
+                ? "bg-white text-ink shadow-2xs dark:bg-[#181c24] dark:text-zinc-100 font-semibold"
                 : "text-ink-muted hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
             )}
           >
@@ -299,27 +323,30 @@ export function InboxComposer({
           </button>
           <button
             type="button"
-            onClick={() => setInternal(true)}
+            onClick={() => {
+              if (isRecording) discardRecording();
+              setInternal(true);
+            }}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all",
+              "inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-medium transition-colors",
               internal
-                ? "bg-amber-500/15 text-amber-900 shadow-xs dark:bg-amber-400/20 dark:text-amber-100"
+                ? "bg-amber-500/15 text-amber-900 shadow-2xs dark:bg-amber-400/20 dark:text-amber-100 font-semibold"
                 : "text-ink-muted hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
             )}
           >
-            <StickyNote className="h-3 w-3" />
+            <StickyNote className="h-2.5 w-2.5" />
             Nota interna
           </button>
         </div>
 
         {internal && (
-          <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+          <span className="text-[10.5px] font-normal text-amber-700/80 dark:text-amber-300/80">
             Somente equipe · Visível apenas internamente
           </span>
         )}
       </div>
 
-      {/* Caixa de Entrada Unificada */}
+      {/* Caixa de Entrada Unificada e Compacta */}
       <form onSubmit={onSend}>
         <div
           onDragOver={(e) => {
@@ -341,16 +368,16 @@ export function InboxComposer({
             if (f) onSelectFile(f);
           }}
           className={cn(
-            "relative rounded-xl border transition-all duration-150",
+            "relative rounded-xl border transition-colors duration-150",
             isDraggingFile
-              ? "border-violet-500 bg-violet-50/70 ring-2 ring-violet-500/20 dark:border-violet-400 dark:bg-violet-950/30"
+              ? "border-violet-500 bg-violet-50/70 ring-1 ring-violet-500/20 dark:border-violet-400 dark:bg-violet-950/30"
               : internal
-                ? "border-amber-500/35 bg-amber-500/[0.04] focus-within:border-amber-500/50 focus-within:ring-1 focus-within:ring-amber-500/20 dark:border-amber-400/30 dark:bg-amber-500/[0.05]"
-                : "border-black/[0.08] bg-black/[0.015] focus-within:border-violet-500/35 focus-within:bg-white focus-within:ring-1 focus-within:ring-violet-500/20 dark:border-white/[0.08] dark:bg-white/[0.02] dark:focus-within:border-violet-400/35 dark:focus-within:bg-[#12161f]"
+                ? "border-amber-500/25 bg-amber-500/[0.02] focus-within:border-amber-500/40 focus-within:bg-white focus-within:ring-1 focus-within:ring-amber-500/20 dark:border-amber-400/25 dark:bg-amber-500/[0.03] dark:focus-within:bg-[#14161a]"
+                : "border-black/[0.06] bg-black/[0.015] focus-within:border-violet-500/30 focus-within:bg-white focus-within:ring-1 focus-within:ring-violet-500/20 dark:border-white/[0.06] dark:bg-white/[0.02] dark:focus-within:border-violet-400/30 dark:focus-within:bg-[#121620]"
           )}
         >
           {isDraggingFile && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-violet-500/10 backdrop-blur-sm dark:bg-violet-500/20">
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-violet-500/10 backdrop-blur-xs dark:bg-violet-500/20">
               <p className="text-xs font-semibold text-violet-700 dark:text-violet-300">
                 Solte o arquivo para anexar
               </p>
@@ -358,11 +385,11 @@ export function InboxComposer({
           )}
 
           {isRecording ? (
-            /* Barra de Gravação Ativa */
-            <div className="flex h-11 items-center justify-between px-3">
+            /* Barra de Gravação Ativa Compacta */
+            <div className="flex h-10 items-center justify-between px-3">
               <div className="flex items-center gap-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
                 <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                <span className="tabular-nums font-mono text-[12.5px]">{formatSeconds(recordSeconds)}</span>
+                <span className="tabular-nums font-mono text-[12px]">{formatSeconds(recordSeconds)}</span>
                 <div className="flex items-center gap-0.5 h-3 px-1">
                   <span className="w-0.5 h-2 bg-rose-500 rounded-full animate-pulse" />
                   <span className="w-0.5 h-3.5 bg-rose-500 rounded-full animate-pulse [animation-delay:150ms]" />
@@ -370,7 +397,6 @@ export function InboxComposer({
                   <span className="w-0.5 h-3 bg-rose-500 rounded-full animate-pulse [animation-delay:450ms]" />
                   <span className="w-0.5 h-2 bg-rose-500 rounded-full animate-pulse [animation-delay:200ms]" />
                   <span className="w-0.5 h-3 bg-rose-500 rounded-full animate-pulse [animation-delay:350ms]" />
-                  <span className="w-0.5 h-1.5 bg-rose-500 rounded-full animate-pulse [animation-delay:500ms]" />
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -384,16 +410,16 @@ export function InboxComposer({
                 <button
                   type="button"
                   onClick={stopRecording}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-medium text-white hover:bg-rose-700 transition-colors shadow-xs active:scale-95"
+                  className="inline-flex h-6.5 items-center gap-1.5 rounded-md bg-rose-600 px-2.5 text-xs font-medium text-white hover:bg-rose-700 transition-colors shadow-xs active:scale-95"
                 >
-                  <Square className="h-3 w-3 fill-current" />
+                  <Square className="h-2.5 w-2.5 fill-current" />
                   Parar
                 </button>
               </div>
             </div>
           ) : recordedBlob && previewAudioUrl ? (
-            /* Pré-visualização Profissional do Áudio com Seeker e Duração Real */
-            <div className="flex h-12 items-center justify-between gap-3 px-3">
+            /* Pré-visualização do Áudio com Seeker e Tempo Atual / Duração Total */
+            <div className="flex h-11 items-center justify-between gap-3 px-3">
               <audio
                 ref={previewAudioRef}
                 src={previewAudioUrl}
@@ -413,7 +439,8 @@ export function InboxComposer({
                   type="button"
                   onClick={togglePreviewAudio}
                   aria-label={previewPlaying ? "Pausar prévia" : "Reproduzir prévia"}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-xs active:scale-95"
+                  title={previewPlaying ? "Pausar prévia" : "Reproduzir prévia"}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-colors shadow-xs active:scale-95"
                 >
                   {previewPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current ml-0.5" />}
                 </button>
@@ -427,9 +454,9 @@ export function InboxComposer({
                     value={previewCurrentTime}
                     onChange={handlePreviewSeek}
                     aria-label="Progresso do áudio"
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-lg accent-violet-600 bg-black/10 dark:bg-white/15"
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full accent-violet-600 bg-black/10 dark:bg-white/15 focus:outline-none"
                   />
-                  <div className="mt-0.5 flex items-center justify-between text-[10px] tabular-nums font-mono text-ink-muted dark:text-zinc-400">
+                  <div className="mt-0.5 flex items-center justify-between text-[10px] tabular-nums font-mono text-ink-muted/80 dark:text-zinc-400">
                     <span>{formatSeconds(previewCurrentTime)}</span>
                     <span>{formatSeconds(recordedDuration)}</span>
                   </div>
@@ -441,7 +468,7 @@ export function InboxComposer({
                   type="button"
                   onClick={discardRecording}
                   disabled={isSendingVoice}
-                  className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 transition-colors"
+                  className="rounded-md px-2 py-1 text-xs font-medium text-ink-muted hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 transition-colors"
                 >
                   Descartar
                 </button>
@@ -451,18 +478,18 @@ export function InboxComposer({
                   disabled={isSendingVoice}
                   className="inline-flex h-7 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 shadow-xs active:scale-95 transition-all"
                 >
-                  {isSendingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {isSendingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3 w-3" />}
                   <span>Enviar áudio</span>
                 </button>
               </div>
             </div>
           ) : (
-            /* Área de Texto Padrão */
+            /* Área de Texto Compacta com Auto-Resize */
             <>
               <textarea
                 ref={textareaRef}
                 disabled={disabled}
-                className="max-h-[140px] min-h-[44px] w-full resize-none border-0 bg-transparent px-3 pt-2.5 pb-1 text-[13.5px] leading-relaxed text-ink outline-none placeholder:text-ink-faint dark:text-zinc-100"
+                className="max-h-[120px] min-h-[36px] w-full resize-none border-0 bg-transparent px-3 pt-2 pb-1 text-[13px] leading-relaxed text-ink outline-none ring-0 placeholder:text-ink-faint dark:text-zinc-100 focus:ring-0 focus:outline-none"
                 placeholder={
                   placeholder ||
                   (internal
@@ -497,8 +524,8 @@ export function InboxComposer({
                 }}
               />
 
-              {/* Barra Inferior de Ações */}
-              <div className="flex items-center justify-between gap-2 px-2.5 pb-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
+              {/* Barra Inferior de Ações Alinhada e Compacta */}
+              <div className="flex items-center justify-between gap-2 px-2 pb-1.5 pt-0.5 border-t border-black/[0.03] dark:border-white/[0.03]">
                 <div className="flex items-center gap-1">
                   {/* Menu Popover de Anexos */}
                   <div className="relative" ref={attachmentMenuRef}>
@@ -506,18 +533,18 @@ export function InboxComposer({
                       type="button"
                       disabled={internal || disabled}
                       className={cn(
-                        "flex h-7 w-7 items-center justify-center rounded-md text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors disabled:opacity-40",
+                        "flex h-7 w-7 items-center justify-center rounded-md text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed",
                         attachmentMenuOpen && "bg-black/5 text-ink dark:bg-white/10 dark:text-zinc-200"
                       )}
                       onClick={() => setAttachmentMenuOpen((prev) => !prev)}
-                      title="Anexar mídia ou documento"
-                      aria-label="Anexar mídia ou documento"
+                      title={internal ? "Anexos não disponíveis em notas internas" : "Anexar mídia ou documento"}
+                      aria-label={internal ? "Anexos não disponíveis em notas internas" : "Anexar mídia ou documento"}
                     >
-                      <Paperclip className="h-4 w-4" />
+                      <Paperclip className="h-3.5 w-3.5" />
                     </button>
 
-                    {attachmentMenuOpen && (
-                      <div className="absolute bottom-full left-0 mb-2.5 w-60 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-2xl dark:border-white/[0.1] dark:bg-[#181c24] z-30 animate-scale-in">
+                    {attachmentMenuOpen && !internal && (
+                      <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-2xl dark:border-white/[0.1] dark:bg-[#181c24] z-30 animate-scale-in">
                         <button
                           type="button"
                           onClick={() => {
@@ -526,8 +553,8 @@ export function InboxComposer({
                           }}
                           className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                         >
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300">
-                            <ImageIcon className="h-4 w-4" />
+                          <div className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300">
+                            <ImageIcon className="h-3.5 w-3.5" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-ink dark:text-zinc-100">Foto ou vídeo</p>
@@ -542,8 +569,8 @@ export function InboxComposer({
                           }}
                           className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                         >
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300">
-                            <FileText className="h-4 w-4" />
+                          <div className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300">
+                            <FileText className="h-3.5 w-3.5" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-ink dark:text-zinc-100">Documento</p>
@@ -558,8 +585,8 @@ export function InboxComposer({
                           }}
                           className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                         >
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-500/10 text-zinc-600 dark:bg-zinc-400/10 dark:text-zinc-300">
-                            <FileIcon className="h-4 w-4" />
+                          <div className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-lg bg-zinc-500/10 text-zinc-600 dark:bg-zinc-400/10 dark:text-zinc-300">
+                            <FileIcon className="h-3.5 w-3.5" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-ink dark:text-zinc-100">Arquivo</p>
@@ -574,12 +601,12 @@ export function InboxComposer({
                   <button
                     type="button"
                     disabled={internal || disabled}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors disabled:opacity-40"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     onClick={startRecording}
-                    title="Gravar mensagem de voz"
-                    aria-label="Gravar mensagem de voz"
+                    title={internal ? "Gravação de voz não disponível em notas internas" : "Gravar mensagem de voz"}
+                    aria-label={internal ? "Gravação de voz não disponível em notas internas" : "Gravar mensagem de voz"}
                   >
-                    <Mic className="h-4 w-4" />
+                    <Mic className="h-3.5 w-3.5" />
                   </button>
 
                   {/* Sugestão de IA */}
@@ -588,33 +615,33 @@ export function InboxComposer({
                       type="button"
                       disabled={aiLoading || disabled}
                       onClick={onRequestAi}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11.5px] font-medium text-violet-700 hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300 dark:hover:bg-violet-400/10 transition-colors"
+                      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-violet-700 hover:bg-violet-500/10 disabled:opacity-40 dark:text-violet-300 dark:hover:bg-violet-400/10 transition-colors"
                       title="Gerar sugestão de resposta com IA"
                       aria-label="Gerar sugestão de resposta com IA"
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {aiLoading ? "Sugerindo…" : "Sugerir"}
+                      <Sparkles className="h-3 w-3" />
+                      <span>{aiLoading ? "Sugerindo…" : "Sugerir"}</span>
                     </button>
                   )}
                 </div>
 
-                {/* Botão Enviar */}
+                {/* Botão Principal de Envio / Salvar Nota */}
                 <button
                   type="submit"
                   disabled={isSending || disabled || !message.trim()}
                   className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-all shadow-sm active:scale-95 disabled:opacity-40",
+                    "inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-all shadow-2xs active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed",
                     internal
                       ? "bg-amber-600 text-white hover:bg-amber-700"
                       : "bg-violet-600 text-white hover:bg-violet-700"
                   )}
                 >
                   {isSending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <>
                       <span>{internal ? "Salvar nota" : "Enviar"}</span>
-                      {!internal && <Send className="h-3 w-3" />}
+                      {!internal && <Send className="h-2.5 w-2.5" />}
                     </>
                   )}
                 </button>
