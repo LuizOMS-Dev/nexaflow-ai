@@ -601,60 +601,14 @@ export function MediaBubble({
 
   // Imagem
   if (type === "IMAGE" || mime.startsWith("image/")) {
-    if (loadFailed) {
-      return (
-        <div className={cn(
-          "my-1 flex items-center gap-2 p-2.5 rounded-xl border text-xs",
-          isOutbound
-            ? "border-white/15 bg-white/10 text-white dark:border-black/10 dark:bg-black/5 dark:text-zinc-900"
-            : "border-black/[0.08] bg-black/[0.03] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-100"
-        )}>
-          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
-          <span className="truncate">Imagem indisponível ({filename})</span>
-          <a
-            href={downloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto underline font-medium text-[11px]"
-          >
-            Baixar
-          </a>
-        </div>
-      );
-    }
-
     return (
-      <div className="mt-1.5 mb-1 overflow-hidden rounded-xl">
-        <div
-          className="group relative cursor-pointer overflow-hidden rounded-xl bg-black/5 dark:bg-white/5"
-          onClick={() => onOpenLightbox?.(resolvedUrl)}
-        >
-          {isLoading && (
-            <div className="h-48 w-64 animate-pulse rounded-xl bg-black/10 dark:bg-white/10 flex items-center justify-center text-ink-muted">
-              <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />
-            </div>
-          )}
-          <img
-            src={resolvedUrl}
-            alt={filename}
-            onLoad={() => setIsLoading(false)}
-            onError={() => {
-              setIsLoading(false);
-              setLoadFailed(true);
-            }}
-            className={cn(
-              "max-h-72 w-auto max-w-full rounded-xl object-cover transition-transform duration-200 group-hover:scale-[1.02]",
-              isLoading ? "hidden" : "block"
-            )}
-            loading="lazy"
-          />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg">
-              <Maximize2 className="h-4 w-4" />
-            </div>
-          </div>
-        </div>
-      </div>
+      <ImageBubbleItem
+        src={resolvedUrl}
+        filename={filename}
+        downloadUrl={downloadUrl}
+        isOutbound={isOutbound}
+        onOpenLightbox={onOpenLightbox}
+      />
     );
   }
 
@@ -751,6 +705,94 @@ export function MediaBubble({
         >
           <Download className="h-4 w-4" />
         </a>
+      </div>
+    </div>
+  );
+}
+
+function ImageBubbleItem({
+  src,
+  filename,
+  downloadUrl,
+  isOutbound,
+  onOpenLightbox,
+}: {
+  src: string;
+  filename: string;
+  downloadUrl: string;
+  isOutbound?: boolean;
+  onOpenLightbox?: (url: string) => void;
+}) {
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+    if (imgRef.current) {
+      if (imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+        setLoaded(true);
+      }
+    }
+  }, [src]);
+
+  if (failed) {
+    return (
+      <div
+        className={cn(
+          "my-1 flex items-center gap-2 p-2.5 rounded-xl border text-xs",
+          isOutbound
+            ? "border-white/15 bg-white/10 text-white dark:border-black/10 dark:bg-black/5 dark:text-zinc-900"
+            : "border-black/[0.08] bg-black/[0.03] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-100"
+        )}
+      >
+        <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+        <span className="truncate">Imagem indisponível ({filename})</span>
+        <a
+          href={downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto underline font-medium text-[11px]"
+        >
+          Baixar
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 mb-1 overflow-hidden rounded-xl">
+      <div
+        className="group relative cursor-pointer overflow-hidden rounded-xl bg-black/[0.03] dark:bg-white/[0.04] max-h-72 min-h-[140px] min-w-[200px] flex items-center justify-center"
+        onClick={() => onOpenLightbox?.(src)}
+      >
+        {!loaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/5 dark:bg-white/5 animate-pulse z-10">
+            <Loader2 className="h-5 w-5 animate-spin text-ink-muted/70" />
+          </div>
+        )}
+        <img
+          ref={imgRef}
+          src={src}
+          alt={filename}
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setLoaded(false);
+            setFailed(true);
+          }}
+          className={cn(
+            "max-h-72 w-auto max-w-full rounded-xl object-contain transition-all duration-200 group-hover:scale-[1.01]",
+            loaded ? "opacity-100 scale-100" : "opacity-0 scale-95"
+          )}
+        />
+        {loaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100 z-20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg">
+              <Maximize2 className="h-4 w-4" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

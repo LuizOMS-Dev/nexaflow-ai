@@ -26,20 +26,22 @@ export function resolveMediaUrl(url?: string | null): string | null {
   const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
   const base = apiUrl.startsWith("http") || apiUrl.startsWith("/") ? apiUrl : "/nexa-api";
 
-  if (trimmed.startsWith("/api/media/")) {
-    const subPath = trimmed.replace(/^\/api/, "");
+  const normalized = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+
+  if (normalized.startsWith("/api/media/")) {
+    const subPath = normalized.replace(/^\/api/, "");
     return base === "/nexa-api" ? `/nexa-api${subPath}` : `${base}${subPath}`;
   }
 
-  if (trimmed.startsWith("/media/")) {
-    return base === "/nexa-api" ? `/nexa-api${trimmed}` : `${base}${trimmed}`;
+  if (normalized.startsWith("/media/")) {
+    return base === "/nexa-api" ? `/nexa-api${normalized}` : `${base}${normalized}`;
   }
 
-  if (trimmed.startsWith("/nexa-api/")) {
-    return trimmed;
+  if (normalized.startsWith("/nexa-api/")) {
+    return normalized;
   }
 
-  return trimmed;
+  return normalized;
 }
 
 export function formatBytes(bytes?: number | null): string {
