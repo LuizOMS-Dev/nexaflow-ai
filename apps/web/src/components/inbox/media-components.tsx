@@ -132,8 +132,18 @@ export function AudioVoicePlayer({
     );
   }
 
+  const [speed, setSpeed] = useState<number>(1);
+
+  const cycleSpeed = () => {
+    const nextSpeed = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
+    setSpeed(nextSpeed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = nextSpeed;
+    }
+  };
+
   return (
-    <div className="flex items-center gap-2.5 py-1 min-w-[210px] max-w-xs">
+    <div className="flex items-center gap-2.5 py-1 min-w-[220px] max-w-xs">
       <audio ref={audioRef} src={resolvedSrc} preload="metadata" />
       <button
         type="button"
@@ -179,7 +189,22 @@ export function AudioVoicePlayer({
           )}
         >
           <span>{formatSeconds(currentTime)}</span>
-          <span>{duration > 0 ? formatSeconds(duration) : "0:00"}</span>
+          <div className="flex items-center gap-1.5">
+            <span>{duration > 0 ? formatSeconds(duration) : "0:00"}</span>
+            <button
+              type="button"
+              onClick={cycleSpeed}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[9.5px] font-bold transition-all tabular-nums",
+                isOutbound
+                  ? "bg-white/20 hover:bg-white/30 text-white dark:bg-black/10 dark:hover:bg-black/20 dark:text-zinc-900"
+                  : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-100"
+              )}
+              title="Velocidade de reprodução"
+            >
+              {speed}x
+            </button>
+          </div>
         </div>
       </div>
     </div>
