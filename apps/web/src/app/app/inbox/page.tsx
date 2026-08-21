@@ -43,6 +43,7 @@ import {
   CheckCheck,
   AlertCircle,
   Loader2,
+  X,
 } from "lucide-react";
 import {
   AudioVoiceRecorder,
@@ -1139,11 +1140,11 @@ function InboxPageContent() {
           {/* Header da Lista */}
           <div className="shrink-0 space-y-2 border-b border-black/[0.06] p-3 dark:border-white/[0.06]">
             <div className="flex items-center justify-between">
-              <h2 className="font-display text-[15px] font-semibold tracking-tight text-ink dark:text-white">
+              <h2 className="text-sm font-semibold tracking-tight text-ink dark:text-white">
                 Conversas
               </h2>
               {listTotal > 0 && (
-                <span className="tabular-nums text-xs font-medium text-ink-muted dark:text-zinc-400">
+                <span className="tabular-nums text-[11px] font-medium text-ink-muted/80 dark:text-zinc-400">
                   {listTotal}
                 </span>
               )}
@@ -1151,13 +1152,27 @@ function InboxPageContent() {
 
             {/* Busca Rápida */}
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-muted/80 dark:text-zinc-500" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-muted/70 dark:text-zinc-500" />
               <input
-                className="input h-8 pl-8 text-xs placeholder:text-ink-faint"
+                className="h-8 w-full rounded-lg border border-black/[0.06] bg-black/[0.02] pl-8 pr-7 text-xs text-ink placeholder:text-ink-faint focus:border-violet-500/30 focus:bg-white focus:outline-none focus:ring-1 focus:ring-violet-500/20 dark:border-white/[0.06] dark:bg-white/[0.025] dark:text-zinc-100 dark:focus:border-violet-400/30 dark:focus:bg-[#121620]"
                 placeholder="Buscar conversas…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setSearchInput("");
+                }}
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-ink-muted/70 hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
+                  title="Limpar busca"
+                  aria-label="Limpar busca"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
 
             {/* Filas Operacionais */}
@@ -1175,34 +1190,30 @@ function InboxPageContent() {
                       if (item.id !== "closed") setArchivedView(false);
                     }}
                     className={cn(
-                      "relative flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-all duration-150 text-xs font-medium",
+                      "relative flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors text-xs",
                       active
-                        ? "bg-violet-500/[0.1] text-violet-900 dark:bg-violet-400/[0.12] dark:text-violet-100"
-                        : "text-ink-secondary hover:bg-black/[0.03] dark:text-zinc-400 dark:hover:bg-white/[0.04] dark:hover:text-zinc-200"
+                        ? "bg-black/[0.035] text-ink font-semibold dark:bg-white/[0.05] dark:text-white"
+                        : "text-ink-secondary hover:bg-black/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.03] dark:hover:text-zinc-200 font-medium"
                     )}
                   >
                     {active && (
                       <span
-                        className="absolute bottom-1 left-0 top-1 w-[2.5px] rounded-full bg-violet-600 dark:bg-violet-400"
+                        className="absolute bottom-1 left-0 top-1 w-[2px] rounded-r-full bg-violet-600 dark:bg-violet-400"
                         aria-hidden
                       />
                     )}
                     <Icon
                       className={cn(
                         "h-3.5 w-3.5 shrink-0",
-                        active ? "text-violet-600 dark:text-violet-400" : "text-ink-muted dark:text-zinc-500"
+                        active ? "text-violet-600 dark:text-violet-400" : "text-ink-muted/70 dark:text-zinc-500"
                       )}
                     />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {typeof count === "number" && count > 0 && (
                       <span
                         className={cn(
-                          "tabular-nums text-[10.5px] font-semibold",
-                          active
-                            ? "text-violet-800 dark:text-violet-200"
-                            : item.id === "waiting"
-                              ? "text-amber-700 dark:text-amber-300"
-                              : "text-ink-muted dark:text-zinc-500"
+                          "tabular-nums text-[10.5px] font-normal text-ink-muted/70 dark:text-zinc-500",
+                          item.id === "waiting" && "text-amber-700 dark:text-amber-300 font-medium"
                         )}
                       >
                         {count}
@@ -1220,8 +1231,8 @@ function InboxPageContent() {
                 className={cn(
                   "inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors",
                   secondaryFilterCount > 0 || filtersOpen
-                    ? "border-violet-500/30 bg-violet-500/[0.08] text-violet-900 dark:border-violet-400/30 dark:bg-violet-400/[0.1] dark:text-violet-100"
-                    : "border-black/[0.06] text-ink-secondary hover:bg-black/[0.02] dark:border-white/[0.08] dark:text-zinc-400 dark:hover:bg-white/[0.04]"
+                    ? "border-violet-500/25 bg-violet-500/[0.04] text-violet-800 dark:border-violet-400/25 dark:bg-violet-500/[0.06] dark:text-violet-200"
+                    : "border-black/[0.06] bg-black/[0.015] text-ink-secondary hover:bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.04]"
                 )}
                 onClick={() => setFiltersOpen((v) => !v)}
               >
