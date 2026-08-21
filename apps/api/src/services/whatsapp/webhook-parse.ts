@@ -149,19 +149,29 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
       ? (dig(p, "_data", "id", "_serialized") as string)
       : undefined);
 
+  const explicitFromMe =
+    typeof p.fromMe === "boolean"
+      ? p.fromMe
+      : typeof key?.fromMe === "boolean"
+        ? key.fromMe
+        : typeof dig(p, "data", "key", "fromMe") === "boolean"
+          ? (dig(p, "data", "key", "fromMe") as boolean)
+          : typeof dig(p, "_data", "key", "fromMe") === "boolean"
+            ? (dig(p, "_data", "key", "fromMe") as boolean)
+            : typeof dig(p, "data", "fromMe") === "boolean"
+              ? (dig(p, "data", "fromMe") as boolean)
+              : typeof dig(p, "_data", "fromMe") === "boolean"
+                ? (dig(p, "_data", "fromMe") as boolean)
+                : typeof dig(p, "_data", "id", "fromMe") === "boolean"
+                  ? (dig(p, "_data", "id", "fromMe") as boolean)
+                  : typeof dig(p, "id", "fromMe") === "boolean"
+                    ? (dig(p, "id", "fromMe") as boolean)
+                    : undefined;
+
   const rawIdStr = String(rawId || "");
   const idFromMe = rawIdStr.startsWith("true_") || rawIdStr.startsWith("waha:true_");
 
-  const fromMe = Boolean(
-    p.fromMe === true ||
-    key?.fromMe === true ||
-    dig(p, "_data", "key", "fromMe") === true ||
-    dig(p, "data", "key", "fromMe") === true ||
-    dig(p, "key", "fromMe") === true ||
-    dig(p, "_data", "id", "fromMe") === true ||
-    dig(p, "id", "fromMe") === true ||
-    idFromMe
-  );
+  const fromMe = explicitFromMe !== undefined ? explicitFromMe : idFromMe;
 
   const to =
     (typeof p.to === "string" && p.to) ||
