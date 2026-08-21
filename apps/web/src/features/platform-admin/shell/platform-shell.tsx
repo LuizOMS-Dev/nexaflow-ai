@@ -15,6 +15,7 @@ import {
   UserPlus,
   Users,
   Wallet,
+  Wrench,
   X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -55,6 +56,7 @@ const NAV_GROUPS: Array<{
     label: "Controle",
     items: [
       { href: "/admin/audit", label: "Auditoria", icon: Shield },
+      { href: "/admin/system/maintenance", label: "Manutenção", icon: Wrench },
       { href: "/admin/system", label: "Sistema", icon: Activity },
       { href: "/admin/deploy", label: "Deploy", icon: Rocket },
     ],

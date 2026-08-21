@@ -40,6 +40,7 @@ import {
   UserPlus,
   Wallet,
   Headset,
+  Wrench,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -138,6 +139,7 @@ const platformNavGroups = [
   {
     label: "Sistema",
     items: [
+      { href: "/admin/system/maintenance", label: "Manutenção", icon: Wrench },
       { href: "/admin/deploy", label: "Deploy", icon: Rocket },
       { href: "/admin/system/releases", label: "Atualizações", icon: Megaphone },
       { href: "/admin/system/diagnostics", label: "Diagnóstico", icon: Activity },
