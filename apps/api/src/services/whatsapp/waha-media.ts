@@ -158,7 +158,7 @@ async function persistBuffer(
   };
 }
 
-/** Resolve URL para conexão interna segura com o gateway WAHA */
+/** Resolve URL para conexão interna segura com o gateway WAHA (protege contra SSRF) */
 export function resolveAllowedWahaMediaUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.startsWith("data:")) return null;
@@ -172,13 +172,6 @@ export function resolveAllowedWahaMediaUrl(raw: string): string | null {
     return null;
   }
   if (target.protocol !== "http:" && target.protocol !== "https:") return null;
-
-  // Em qualquer ambiente (Docker ou local), rotas do WAHA (/api/files/... ou /files/...)
-  // devem se conectar diretamente ao gateway configurado no backend (env.waGatewayUrl)
-  const isWahaPath = target.pathname.startsWith("/api/files/") || target.pathname.includes("/files/") || target.pathname.startsWith("/api/");
-  if (isWahaPath) {
-    return `${base}${target.pathname}${target.search}`;
-  }
 
   let allowedHost = "waha";
   try {
@@ -194,11 +187,11 @@ export function resolveAllowedWahaMediaUrl(raw: string): string | null {
     host === "localhost" ||
     host === "127.0.0.1";
 
-  if (okHost) {
-    return `${base}${target.pathname}${target.search}`;
+  if (!okHost) {
+    return null;
   }
 
-  return target.toString();
+  return `${base}${target.pathname}${target.search}`;
 }
 
 /** Baixa mídia do WAHA (URL autenticada ou data URL) para storage do tenant com retry e validação. */
