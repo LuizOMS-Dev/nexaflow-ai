@@ -396,6 +396,8 @@ function ImpersonateModal({
     onSuccess: (data) => {
       try {
         sessionStorage.setItem("nexaflow_impersonating", "1");
+        const currentPath = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/admin/companies";
+        sessionStorage.setItem("nexaflow_admin_return_path", currentPath);
       } catch {
         /* ignore */
       }

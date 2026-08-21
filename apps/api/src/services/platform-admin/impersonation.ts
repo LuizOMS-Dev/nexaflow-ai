@@ -90,6 +90,23 @@ export async function startImpersonationSession(
   await audit({
     userId: superadmin.sub,
     tenantId: tenant.id,
+    action: "impersonation.started",
+    entity: "tenant",
+    entityId: tenant.id,
+    metadata: {
+      targetUserId: targetUser.id,
+      sessionId: session.id,
+      reason,
+      actorReal: superadmin.sub,
+      actorEffective: targetUser.id,
+      expiresAt: session.impersonationExpiresAt,
+    },
+    ip: context.ip,
+  });
+
+  await audit({
+    userId: superadmin.sub,
+    tenantId: tenant.id,
     action: "admin.impersonate",
     entity: "tenant",
     entityId: tenant.id,
@@ -212,7 +229,20 @@ export async function stopImpersonationSession(
     throw new AppError("Nenhum Superadmin encontrado no sistema.", 404, "NO_SUPERADMIN");
   }
 
+  let durationMs: number | null = null;
+  let sessionTenantId = jwtUser.tenantId;
+  let sessionReason: string | null = null;
+
   if (jwtUser.sid) {
+    const existingSession = await prisma.authSession.findUnique({
+      where: { id: jwtUser.sid },
+      select: { createdAt: true, tenantId: true, impersonationReason: true },
+    });
+    if (existingSession) {
+      durationMs = Date.now() - existingSession.createdAt.getTime();
+      if (existingSession.tenantId) sessionTenantId = existingSession.tenantId;
+      if (existingSession.impersonationReason) sessionReason = existingSession.impersonationReason;
+    }
     await revokeSession(jwtUser.sid, "impersonation_stop").catch(() => null);
   }
 
@@ -239,16 +269,39 @@ export async function stopImpersonationSession(
 
   await audit({
     userId: superadmin.id,
+    tenantId: sessionTenantId,
+    action: "impersonation.ended",
+    entity: "tenant",
+    entityId: sessionTenantId || "platform",
+    metadata: {
+      durationMs,
+      reason: sessionReason,
+      previousUserId: jwtUser.sub,
+      previousTenantId: sessionTenantId,
+      actorReal: superadmin.id,
+    },
+    ip: context.ip,
+  }).catch(() => null);
+
+  await audit({
+    userId: superadmin.id,
+    tenantId: sessionTenantId,
     action: "admin.impersonate.stop",
-    metadata: { previousUserId: jwtUser.sub, previousTenantId: jwtUser.tenantId },
+    metadata: {
+      durationMs,
+      previousUserId: jwtUser.sub,
+      previousTenantId: sessionTenantId,
+      actorReal: superadmin.id,
+    },
     ip: context.ip,
   }).catch(() => null);
 
   await recordSecurityEvent({
     type: "IMPERSONATION_STOP",
     userId: superadmin.id,
+    tenantId: sessionTenantId || undefined,
     ip: context.ip,
-    metadata: { previousUserId: jwtUser.sub },
+    metadata: { previousUserId: jwtUser.sub, durationMs },
   }).catch(() => null);
 
   return {
