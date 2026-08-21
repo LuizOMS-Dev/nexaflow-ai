@@ -362,6 +362,6 @@ describe("E2E Test: Sistema 2 - Recebimento, Storage e Visualização de Mídias
     expect(parsed.messages).toHaveLength(1);
     expect(parsed.messages[0].fromMe).toBe(true);
     expect(parsed.messages[0].content).toBe("Olá, respondi pelo celular!");
-    expect(parsed.messages[0].externalId).toBe("waha_external_msg_999");
+    expect(parsed.messages[0].externalId).toBe("waha:waha_external_msg_999");
   });
 });
