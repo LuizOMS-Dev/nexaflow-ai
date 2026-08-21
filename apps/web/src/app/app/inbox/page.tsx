@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import {
   FormEvent,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -33,6 +34,7 @@ import {
   MessageSquare,
   Filter,
   ArrowRightLeft,
+  ArrowDown,
   Clock,
   Inbox,
   ListTodo,
@@ -51,7 +53,6 @@ import {
 import { InboxComposer } from "@/components/inbox/inbox-composer";
 import { InboxContextPanel } from "@/components/inbox/inbox-context-panel";
 import { InboxConversationItem } from "@/components/inbox/inbox-conversation-item";
-import { WhatsAppStatusBanner } from "@/components/whatsapp-status-banner";
 import { api } from "@/lib/api";
 import {
   cn,
@@ -872,6 +873,50 @@ function InboxPageContent() {
 
   const showContextPanel = Boolean(selectedId) && contextOpen;
 
+    const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    if (!messagesContainerRef.current) return;
+    messagesContainerRef.current.scrollTo({
+      top: messagesContainerRef.current.scrollHeight,
+      behavior: smooth ? "smooth" : "auto",
+    });
+    setShowJumpToBottom(false);
+  }, []);
+
+  // Ao selecionar/trocar conversa, posiciona no fim
+  useEffect(() => {
+    if (selectedId && conversation?.id === selectedId) {
+      scrollToBottom(false);
+    }
+  }, [selectedId, conversation?.id, scrollToBottom]);
+
+  // Ao chegar novas mensagens, verifica se o usuário está próximo do final (<160px)
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const msgCount = conversation?.messages?.length ?? 0;
+    if (msgCount > messagesCountRef.current) {
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+      if (isNearBottom) {
+        scrollToBottom(true);
+      } else {
+        setShowJumpToBottom(true);
+      }
+    }
+    messagesCountRef.current = msgCount;
+  }, [conversation?.messages?.length, scrollToBottom]);
+
+  const handleTimelineScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (isNearBottom && showJumpToBottom) {
+      setShowJumpToBottom(false);
+    }
+  };
+
   const timeline = useMemo(() => {
     if (!conversation?.messages) return [];
     const out: Array<
@@ -882,29 +927,56 @@ function InboxPageContent() {
           msg: ConversationMessage;
           showLabel: boolean;
           origin: MessageOrigin;
+          isFirstInGroup: boolean;
+          isLastInGroup: boolean;
         }
     > = [];
     let lastDay = "";
-    let lastBucket = "";
-    let lastTime = 0;
+    const msgs = conversation.messages;
 
-    for (const m of conversation.messages) {
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
       const dk = dayKey(m.createdAt);
       if (dk !== lastDay) {
         out.push({ kind: "day", key: `d-${dk}`, label: dayLabel(m.createdAt) });
         lastDay = dk;
-        lastBucket = "";
-        lastTime = 0;
       }
       const origin = resolveMessageOrigin(m);
       const bucket = messageGroupKey(m);
       const msgTime = new Date(m.createdAt).getTime();
-      const isConsecutive = bucket === lastBucket && msgTime - lastTime < 5 * 60_000;
-      const showLabel = origin === "SYSTEM" ? true : !isConsecutive;
 
-      lastBucket = origin === "SYSTEM" ? "" : bucket;
-      lastTime = msgTime;
-      out.push({ kind: "msg", key: m.id, msg: m, showLabel, origin });
+      const prevMsg = msgs[i - 1];
+      const nextMsg = msgs[i + 1];
+
+      const prevBucket = prevMsg ? messageGroupKey(prevMsg) : "";
+      const prevTime = prevMsg ? new Date(prevMsg.createdAt).getTime() : 0;
+      const isFirstInGroup =
+        !prevMsg ||
+        origin === "SYSTEM" ||
+        prevBucket !== bucket ||
+        msgTime - prevTime >= 5 * 60_000 ||
+        dayKey(prevMsg.createdAt) !== dk;
+
+      const nextBucket = nextMsg ? messageGroupKey(nextMsg) : "";
+      const nextTimeVal = nextMsg ? new Date(nextMsg.createdAt).getTime() : 0;
+      const isLastInGroup =
+        !nextMsg ||
+        origin === "SYSTEM" ||
+        nextBucket !== bucket ||
+        nextTimeVal - msgTime >= 5 * 60_000 ||
+        dayKey(nextMsg.createdAt) !== dk;
+
+      const showLabel = origin === "SYSTEM" ? true : isFirstInGroup;
+
+      out.push({
+        kind: "msg",
+        key: m.id,
+        msg: m,
+        showLabel,
+        origin,
+        isFirstInGroup,
+        isLastInGroup,
+      });
     }
     return out;
   }, [conversation?.messages]);
@@ -913,9 +985,7 @@ function InboxPageContent() {
   const scorePct = Math.min(100, Math.max(0, score));
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      {/* 1. Banner WhatsApp Fino e Elegante (40-42px) */}
-      <WhatsAppStatusBanner />
+    <div className="nf-mod nf-mod--inbox nf-mod--bleed flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
 
       {/* 2. Modais Operacionais */}
       <Modal
@@ -1306,7 +1376,7 @@ function InboxPageContent() {
                       onClick={() => assignMutation.mutate({})}
                     >
                       <UserPlus className="h-3.5 w-3.5" />
-                      <span>{assignMutation.isPending ? "Assumindo…" : "Assumir"}</span>
+                      <span>{assignMutation.isPending ? "Assumindo…" : "Assumir atendimento"}</span>
                     </button>
                   )}
 
@@ -1434,7 +1504,11 @@ function InboxPageContent() {
               )}
 
               {/* TIMELINE DE MENSAGENS (O PROTAGONISTA) */}
-              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-4 sm:p-5">
+              <div
+                ref={messagesContainerRef}
+                onScroll={handleTimelineScroll}
+                className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto p-4 sm:p-5 overscroll-contain"
+              >
                 {timeline.map((item) => {
                   if (item.kind === "day") {
                     return (
@@ -1472,17 +1546,40 @@ function InboxPageContent() {
                           ? `Nota interna · ${m.author?.name || "Equipe"}`
                           : getContactDisplayName(conversation.contact);
 
+                  const isFirst = item.isFirstInGroup;
+                  const isLast = item.isLastInGroup;
+
+                  const bubbleRadius = isTeam
+                    ? isFirst && isLast
+                      ? "rounded-2xl"
+                      : isFirst
+                        ? "rounded-2xl rounded-br-sm"
+                        : isLast
+                          ? "rounded-2xl rounded-tr-sm"
+                          : "rounded-l-2xl rounded-r-sm"
+                    : isFirst && isLast
+                      ? "rounded-2xl"
+                      : isFirst
+                        ? "rounded-2xl rounded-bl-sm"
+                        : isLast
+                          ? "rounded-2xl rounded-tl-sm"
+                          : "rounded-r-2xl rounded-l-sm";
+
                   return (
                     <div
                       key={item.key}
-                      className={cn("flex", isTeam ? "justify-end" : "justify-start", item.showLabel ? "mt-3" : "mt-0.5")}
+                      className={cn(
+                        "flex",
+                        isTeam ? "justify-end" : "justify-start",
+                        isFirst ? "mt-3" : "mt-0.5"
+                      )}
                     >
                       <div className={cn("flex max-w-[min(68%,34rem)] flex-col", isTeam ? "items-end" : "items-start")}>
                         {/* Rótulo do Remetente */}
                         {item.showLabel && (
                           <span
                             className={cn(
-                              "mb-1 px-1 text-[11px] font-medium",
+                              "mb-1 px-1 text-[11px] font-medium select-none",
                               origin === "INTERNAL_NOTE"
                                 ? "text-amber-700 dark:text-amber-300"
                                 : origin === "AI"
@@ -1497,7 +1594,8 @@ function InboxPageContent() {
                         {/* Balão de Mensagem */}
                         <div
                           className={cn(
-                            "rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed transition-colors",
+                            "w-fit max-w-full px-3.5 py-2 text-[13px] leading-relaxed transition-colors",
+                            bubbleRadius,
                             origin === "INTERNAL_NOTE"
                               ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
                               : origin === "HUMAN"
@@ -1521,7 +1619,7 @@ function InboxPageContent() {
                           {/* Conteúdo de Texto */}
                           {m.content &&
                             (!m.mediaUrl ||
-                              !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^\]]+)?\]$/i.test(
+                              !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^|\]]+)?\]$/i.test(
                                 m.content.trim()
                               )) && (
                               <p className="whitespace-pre-wrap break-words">{m.content}</p>
@@ -1557,6 +1655,20 @@ function InboxPageContent() {
                   );
                 })}
                 <div ref={messagesEndRef} />
+
+                {/* Botão Flutuante de Novas Mensagens / Ir para o fim */}
+                {showJumpToBottom && (
+                  <div className="sticky bottom-2 flex justify-center pointer-events-none z-20">
+                    <button
+                      type="button"
+                      onClick={() => scrollToBottom(true)}
+                      className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-violet-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg hover:bg-violet-700 active:scale-95 transition-all"
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                      <span>Novas mensagens</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* 4. COMPOSER UNIFICADO E INTEGRADO */}

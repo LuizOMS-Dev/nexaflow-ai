@@ -45,6 +45,7 @@ export function InboxContextPanel({
   const [comercialOpen, setComercialOpen] = useState(true);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [scoreDetailsOpen, setScoreDetailsOpen] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   const contact = conversation.contact;
   const breakdown = Array.isArray(contact?.scoreBreakdown) ? contact.scoreBreakdown : [];
@@ -297,9 +298,23 @@ export function InboxContextPanel({
                   <p className="text-[11px] font-medium text-ink-muted dark:text-zinc-400">
                     Resumo do Contexto
                   </p>
-                  <p className="mt-1 text-[11.5px] leading-relaxed text-ink-secondary dark:text-zinc-300">
+                  <p
+                    className={cn(
+                      "mt-1 text-[11.5px] leading-relaxed text-ink-secondary dark:text-zinc-300",
+                      !summaryExpanded && "line-clamp-3"
+                    )}
+                  >
                     {conversation.aiSummary || contact.memory?.summary}
                   </p>
+                  {String(conversation.aiSummary || contact.memory?.summary).length > 140 && (
+                    <button
+                      type="button"
+                      onClick={() => setSummaryExpanded((v) => !v)}
+                      className="mt-1 text-[10.5px] font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+                    >
+                      {summaryExpanded ? "Ver menos" : "Ver mais"}
+                    </button>
+                  )}
                 </div>
               )}
 

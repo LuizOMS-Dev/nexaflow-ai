@@ -1038,16 +1038,19 @@ export function NexaflowAssistantProvider({ children }: { children?: React.React
     <>
       {children}
 
-      {/* FAB — entrada discreta do copiloto */}
+      {/* FAB — entrada discreta do copiloto (oculto no Inbox para não sobrepor o Composer ou Painel Contextual) */}
       <button
         type="button"
         onClick={openNia}
-        className={cn("nf-nia-fab", (open || present) && "is-hidden")}
+        className={cn(
+          "nf-nia-fab",
+          (open || present || pathname?.startsWith("/app/inbox")) && "is-hidden"
+        )}
         aria-label="Perguntar à NIA"
-        title="Perguntar à NIA"
+        title="Perguntar à NIA (Copiloto)"
         data-tour="assistant-trigger"
-        aria-hidden={open || present}
-        tabIndex={open || present ? -1 : 0}
+        aria-hidden={open || present || pathname?.startsWith("/app/inbox")}
+        tabIndex={open || present || pathname?.startsWith("/app/inbox") ? -1 : 0}
       >
         <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.6} />
       </button>

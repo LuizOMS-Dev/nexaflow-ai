@@ -3311,20 +3311,28 @@ ul .nf-row-check {
 
 /* Páginas full-height (inbox): preenchem o espaço restante — sem estourar o rodapé */
 .nf-main-scroll:has(.nf-mod--bleed) {
-  overflow: hidden;
+  overflow: hidden !important;
+  padding: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
 }
 
 .nf-main-scroll:has(.nf-mod--bleed) .page {
-  flex: 1 1 0%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  max-width: 100%;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: 100% !important;
+  padding: 0 !important;
 }
 
 .nf-main-scroll:has(.nf-mod--bleed) .page > .nf-mod--bleed {
-  flex: 1 1 0%;
-  min-height: 0;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
 }
 
 @media (min-width: 1024px) {

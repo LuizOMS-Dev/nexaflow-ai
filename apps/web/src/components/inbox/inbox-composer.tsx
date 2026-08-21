@@ -210,7 +210,7 @@ export function InboxComposer({
             className={cn(
               "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all",
               !internal
-                ? "bg-white text-ink shadow-sm dark:bg-[#1a1f2c] dark:text-zinc-100"
+                ? "bg-white text-ink shadow-xs dark:bg-[#1a1f2c] dark:text-zinc-100"
                 : "text-ink-muted hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
             )}
           >
@@ -222,7 +222,7 @@ export function InboxComposer({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all",
               internal
-                ? "bg-amber-500/15 text-amber-900 shadow-sm dark:bg-amber-400/20 dark:text-amber-100"
+                ? "bg-amber-500/15 text-amber-900 shadow-xs dark:bg-amber-400/20 dark:text-amber-100"
                 : "text-ink-muted hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-200"
             )}
           >
@@ -233,7 +233,7 @@ export function InboxComposer({
 
         {internal && (
           <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
-            Visível apenas para a equipe
+            Somente equipe · Visível apenas internamente
           </span>
         )}
       </div>
@@ -264,8 +264,8 @@ export function InboxComposer({
             isDraggingFile
               ? "border-violet-500 bg-violet-50/70 ring-2 ring-violet-500/20 dark:border-violet-400 dark:bg-violet-950/30"
               : internal
-                ? "border-amber-500/35 bg-amber-500/[0.04] focus-within:border-amber-500/60 dark:border-amber-400/30 dark:bg-amber-500/[0.05]"
-                : "border-black/[0.08] bg-black/[0.015] focus-within:border-violet-500/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-violet-500/10 dark:border-white/[0.08] dark:bg-white/[0.02] dark:focus-within:border-violet-400/50 dark:focus-within:bg-[#12161f]"
+                ? "border-amber-500/35 bg-amber-500/[0.04] focus-within:border-amber-500/50 focus-within:ring-1 focus-within:ring-amber-500/20 dark:border-amber-400/30 dark:bg-amber-500/[0.05]"
+                : "border-black/[0.08] bg-black/[0.015] focus-within:border-violet-500/35 focus-within:bg-white focus-within:ring-1 focus-within:ring-violet-500/20 dark:border-white/[0.08] dark:bg-white/[0.02] dark:focus-within:border-violet-400/35 dark:focus-within:bg-[#12161f]"
           )}
         >
           {isDraggingFile && (
@@ -280,22 +280,30 @@ export function InboxComposer({
             /* Barra de Gravação Ativa */
             <div className="flex h-11 items-center justify-between px-3">
               <div className="flex items-center gap-2.5 text-xs font-semibold text-rose-600 dark:text-rose-400">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-500 animate-pulse" />
-                <span className="tabular-nums font-mono">{formatSeconds(recordSeconds)}</span>
-                <span className="text-[11px] font-normal text-ink-muted dark:text-zinc-400">Gravando áudio…</span>
+                <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                <span className="tabular-nums font-mono text-[12.5px]">{formatSeconds(recordSeconds)}</span>
+                <div className="flex items-center gap-0.5 h-3 px-1">
+                  <span className="w-0.5 h-2 bg-rose-500 rounded-full animate-pulse" />
+                  <span className="w-0.5 h-3.5 bg-rose-500 rounded-full animate-pulse [animation-delay:150ms]" />
+                  <span className="w-0.5 h-1.5 bg-rose-500 rounded-full animate-pulse [animation-delay:300ms]" />
+                  <span className="w-0.5 h-3 bg-rose-500 rounded-full animate-pulse [animation-delay:450ms]" />
+                  <span className="w-0.5 h-2 bg-rose-500 rounded-full animate-pulse [animation-delay:200ms]" />
+                  <span className="w-0.5 h-3 bg-rose-500 rounded-full animate-pulse [animation-delay:350ms]" />
+                  <span className="w-0.5 h-1.5 bg-rose-500 rounded-full animate-pulse [animation-delay:500ms]" />
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={discardRecording}
-                  className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+                  className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors"
                 >
                   Descartar
                 </button>
                 <button
                   type="button"
                   onClick={stopRecording}
-                  className="inline-flex h-7 items-center gap-1 rounded-md bg-rose-600 px-2.5 text-xs font-medium text-white hover:bg-rose-700 transition-colors shadow-sm"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-medium text-white hover:bg-rose-700 transition-colors shadow-xs active:scale-95"
                 >
                   <Square className="h-3 w-3 fill-current" />
                   Parar
@@ -305,15 +313,15 @@ export function InboxComposer({
           ) : recordedBlob ? (
             /* Pré-visualização do Áudio antes do envio */
             <div className="flex h-11 items-center justify-between px-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={togglePreviewAudio}
-                  className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-xs"
                 >
-                  {previewPlaying ? <Pause className="h-3 w-3 fill-current" /> : <Play className="h-3 w-3 fill-current ml-0.5" />}
+                  {previewPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current ml-0.5" />}
                 </button>
-                <span className="text-xs font-mono font-medium text-ink dark:text-zinc-200">
+                <span className="text-xs font-mono font-medium tabular-nums text-ink dark:text-zinc-200">
                   {formatSeconds(recordedDuration)}
                 </span>
                 <span className="text-[11px] text-ink-muted dark:text-zinc-400">Áudio gravado</span>
@@ -323,19 +331,18 @@ export function InboxComposer({
                   type="button"
                   onClick={discardRecording}
                   disabled={isSendingVoice}
-                  className="p-1 text-ink-muted hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400"
-                  title="Excluir gravação"
+                  className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 transition-colors"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  Excluir
                 </button>
                 <button
                   type="button"
                   onClick={submitVoice}
                   disabled={isSendingVoice}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 shadow-sm"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 shadow-xs active:scale-95 transition-all"
                 >
                   {isSendingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  Enviar áudio
+                  Enviar
                 </button>
               </div>
             </div>
@@ -399,17 +406,22 @@ export function InboxComposer({
                     </button>
 
                     {attachmentMenuOpen && (
-                      <div className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-xl dark:border-white/[0.1] dark:bg-[#181c24] z-30 animate-scale-in">
+                      <div className="absolute bottom-full left-0 mb-2.5 w-60 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-2xl dark:border-white/[0.1] dark:bg-[#181c24] z-30 animate-scale-in">
                         <button
                           type="button"
                           onClick={() => {
                             setAttachmentMenuOpen(false);
                             imageInputRef.current?.click();
                           }}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-ink hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.06] transition-colors"
+                          className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                         >
-                          <ImageIcon className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                          <span>Foto ou vídeo</span>
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300">
+                            <ImageIcon className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-ink dark:text-zinc-100">Foto ou vídeo</p>
+                            <p className="text-[10px] text-ink-muted dark:text-zinc-400">Imagens e vídeos</p>
+                          </div>
                         </button>
                         <button
                           type="button"
@@ -417,10 +429,15 @@ export function InboxComposer({
                             setAttachmentMenuOpen(false);
                             docInputRef.current?.click();
                           }}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-ink hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.06] transition-colors"
+                          className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                         >
-                          <FileText className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                          <span>Documento (PDF, Word, Excel)</span>
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300">
+                            <FileText className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-ink dark:text-zinc-100">Documento</p>
+                            <p className="text-[10px] text-ink-muted dark:text-zinc-400">PDF, Word e planilhas</p>
+                          </div>
                         </button>
                         <button
                           type="button"
@@ -428,10 +445,15 @@ export function InboxComposer({
                             setAttachmentMenuOpen(false);
                             fileInputRef.current?.click();
                           }}
-                          className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-ink hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.06] transition-colors"
+                          className="flex w-full items-center gap-2.5 rounded-lg p-2 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
                         >
-                          <FileIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
-                          <span>Arquivo compactado (ZIP, etc.)</span>
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-500/10 text-zinc-600 dark:bg-zinc-400/10 dark:text-zinc-300">
+                            <FileIcon className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-ink dark:text-zinc-100">Arquivo</p>
+                            <p className="text-[10px] text-ink-muted dark:text-zinc-400">Outros formatos suportados</p>
+                          </div>
                         </button>
                       </div>
                     )}
