@@ -19,6 +19,7 @@ import {
   AlertCircle,
   ExternalLink,
   Volume2,
+  Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui";
@@ -574,25 +575,71 @@ export function MediaBubble({
   mediaUrl,
   metadata,
   isOutbound,
+  content,
   onOpenLightbox,
 }: {
   type: string;
   mediaUrl?: string | null;
   metadata?: Record<string, unknown>;
   isOutbound?: boolean;
+  content?: string | null;
   onOpenLightbox?: (url: string) => void;
 }) {
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  if (!mediaUrl) return null;
-
-  const resolvedUrl = resolveMediaUrl(mediaUrl) || mediaUrl;
   const meta = metadata || {};
   const filename = (meta.originalName as string) || (meta.filename as string) || "arquivo";
   const sizeBytes = Number(meta.sizeBytes) || 0;
   const mime = (meta.mimetype as string) || "";
   const style = getFileStyle(filename, mime);
+
+  // Se não há mediaUrl válida, renderiza fallback gracioso pelo tipo
+  if (!mediaUrl) {
+    const isVoiceOrAudio =
+      type === "VOICE" ||
+      type === "AUDIO" ||
+      mime.startsWith("audio/") ||
+      /\[áudio\]/i.test(content || "");
+    const isImage =
+      type === "IMAGE" ||
+      mime.startsWith("image/") ||
+      /\[imagem\]/i.test(content || "");
+    const isVideo =
+      type === "VIDEO" ||
+      mime.startsWith("video/") ||
+      /\[vídeo\]/i.test(content || "");
+
+    const fallbackLabel = isVoiceOrAudio
+      ? "Áudio indisponível"
+      : isImage
+        ? "Imagem indisponível"
+        : isVideo
+          ? "Vídeo indisponível"
+          : "Documento indisponível";
+
+    const Icon = isVoiceOrAudio ? Volume2 : isImage ? ImageIcon : isVideo ? Film : FileText;
+
+    return (
+      <div
+        className={cn(
+          "my-1 flex items-center gap-2.5 rounded-xl border p-2.5 text-xs transition-colors",
+          isOutbound
+            ? "border-white/20 bg-white/10 text-white/90 dark:border-black/10 dark:bg-black/5 dark:text-zinc-800"
+            : "border-black/[0.08] bg-black/[0.03] text-ink-secondary dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-300"
+        )}
+      >
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-300">
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{fallbackLabel}</p>
+          {filename && filename !== "arquivo" && (
+            <p className="truncate text-[10.5px] opacity-75">{filename}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const resolvedUrl = resolveMediaUrl(mediaUrl) || mediaUrl;
 
   // Download URL com header de download forçado
   const downloadUrl = resolvedUrl.includes("?")

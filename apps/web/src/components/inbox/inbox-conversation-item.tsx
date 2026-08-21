@@ -48,7 +48,7 @@ export function InboxConversationItem({
       className={cn(
         "relative flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-all duration-150 border-b border-black/[0.035] dark:border-white/[0.035]",
         selected
-          ? "bg-violet-500/[0.08] dark:bg-violet-500/[0.12]"
+          ? "bg-violet-500/[0.045] dark:bg-violet-500/[0.075]"
           : "hover:bg-black/[0.02] dark:hover:bg-white/[0.03]",
         c.isUnread && !selected && "bg-black/[0.012] dark:bg-white/[0.015]"
       )}
@@ -56,7 +56,7 @@ export function InboxConversationItem({
       {/* Indicador de Seleção Ativa */}
       {selected && (
         <span
-          className="absolute bottom-1.5 left-0 top-1.5 w-[2.5px] rounded-full bg-violet-600 dark:bg-violet-400"
+          className="absolute bottom-1.5 left-0 top-1.5 w-[2.5px] rounded-r-full bg-violet-600 dark:bg-violet-400"
           aria-hidden
         />
       )}

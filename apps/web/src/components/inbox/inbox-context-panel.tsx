@@ -225,7 +225,7 @@ export function InboxContextPanel({
                 </div>
                 <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
                   <div
-                    className="h-full rounded-full bg-violet-600 dark:bg-violet-500 transition-all duration-300"
+                    className="h-full rounded-full bg-violet-600/80 dark:bg-violet-400/80 transition-all duration-300"
                     style={{ width: `${scorePct}%` }}
                   />
                 </div>
@@ -258,11 +258,11 @@ export function InboxContextPanel({
 
               {/* Próxima Ação */}
               {contact.nextAction && (
-                <div className="rounded-lg border border-violet-500/15 bg-violet-500/[0.03] p-2.5 dark:bg-violet-500/[0.05]">
-                  <p className="text-[10.5px] font-semibold text-violet-800 dark:text-violet-300">
+                <div className="rounded-lg border border-black/[0.06] bg-black/[0.015] p-2.5 dark:border-white/[0.06] dark:bg-white/[0.02]">
+                  <p className="text-[10.5px] font-semibold text-ink-muted dark:text-zinc-400">
                     Próxima Ação Recomendada
                   </p>
-                  <p className="mt-0.5 text-[11.5px] text-ink dark:text-zinc-200">
+                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink dark:text-zinc-200">
                     {contact.nextAction}
                   </p>
                 </div>

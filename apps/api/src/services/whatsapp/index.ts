@@ -224,10 +224,17 @@ export async function ingestInboundMessage(params: {
 }) {
   const eventTime = params.providerTimestamp || new Date();
   if (params.externalId) {
+    const cleanId = params.externalId.replace(/^waha:/, "");
+    const stanzaId = cleanId.split("_").pop() || cleanId;
     const duplicate = await prisma.message.findFirst({
       where: {
-        externalId: params.externalId,
         conversation: { tenantId: params.tenantId },
+        OR: [
+          { externalId: params.externalId },
+          { externalId: cleanId },
+          { externalId: `waha:${cleanId}` },
+          ...(stanzaId && stanzaId.length >= 8 ? [{ externalId: { contains: stanzaId } }] : []),
+        ],
       },
       include: { conversation: true },
     });
@@ -528,10 +535,17 @@ export async function ingestExternalOutboundMessage(params: {
 }) {
   const eventTime = params.providerTimestamp || new Date();
   if (params.externalId) {
+    const cleanId = params.externalId.replace(/^waha:/, "");
+    const stanzaId = cleanId.split("_").pop() || cleanId;
     const duplicate = await prisma.message.findFirst({
       where: {
-        externalId: params.externalId,
         conversation: { tenantId: params.tenantId },
+        OR: [
+          { externalId: params.externalId },
+          { externalId: cleanId },
+          { externalId: `waha:${cleanId}` },
+          ...(stanzaId && stanzaId.length >= 8 ? [{ externalId: { contains: stanzaId } }] : []),
+        ],
       },
       include: { conversation: true },
     });

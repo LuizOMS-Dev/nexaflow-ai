@@ -53,6 +53,7 @@ import {
 import { InboxComposer } from "@/components/inbox/inbox-composer";
 import { InboxContextPanel } from "@/components/inbox/inbox-context-panel";
 import { InboxConversationItem } from "@/components/inbox/inbox-conversation-item";
+import { WhatsAppFormattedText } from "@/lib/whatsapp-format";
 import { api } from "@/lib/api";
 import {
   cn,
@@ -1225,7 +1226,7 @@ function InboxPageContent() {
                 onClick={() => setFiltersOpen((v) => !v)}
               >
                 <Filter className="h-3 w-3" />
-                <span>{secondaryFilterCount > 0 ? `Filtros (${secondaryFilterCount})` : "Filtros"}</span>
+                <span>{secondaryFilterCount > 0 ? `Filtros · ${secondaryFilterCount}` : "Filtros"}</span>
               </button>
 
               {filtersOpen && (
@@ -1606,23 +1607,27 @@ function InboxPageContent() {
                           )}
                         >
                           {/* Renderização de Mídia */}
-                          {m.mediaUrl && (
+                          {(m.mediaUrl ||
+                            (m.type && m.type !== "TEXT" && m.type !== "NOTE") ||
+                            /^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha)(?::\s*[^\]]+)?\]$/i.test(
+                              m.content?.trim() || ""
+                            )) && (
                             <MediaBubble
                               type={m.type || "FILE"}
                               mediaUrl={m.mediaUrl}
                               metadata={messageMeta(m)}
                               isOutbound={origin === "HUMAN"}
+                              content={m.content}
                               onOpenLightbox={(url) => setLightboxSrc(url)}
                             />
                           )}
 
-                          {/* Conteúdo de Texto */}
+                          {/* Conteúdo de Texto com formatação rica do WhatsApp */}
                           {m.content &&
-                            (!m.mediaUrl ||
-                              !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^|\]]+)?\]$/i.test(
-                                m.content.trim()
-                              )) && (
-                              <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                            !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^|\]]+)?\]$/i.test(
+                              m.content.trim()
+                            ) && (
+                              <WhatsAppFormattedText content={m.content} />
                             )}
 
                           {/* Metadados e Status de Entrega */}

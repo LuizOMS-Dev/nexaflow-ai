@@ -139,11 +139,28 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     return null;
   }
 
+  const rawId =
+    (typeof p.id === "string" && p.id) ||
+    (typeof key?.id === "string" && key.id) ||
+    (typeof dig(p, "id", "_serialized") === "string"
+      ? (dig(p, "id", "_serialized") as string)
+      : undefined) ||
+    (typeof dig(p, "_data", "id", "_serialized") === "string"
+      ? (dig(p, "_data", "id", "_serialized") as string)
+      : undefined);
+
+  const rawIdStr = String(rawId || "");
+  const idFromMe = rawIdStr.startsWith("true_") || rawIdStr.startsWith("waha:true_");
+
   const fromMe = Boolean(
-    p.fromMe ??
-    key?.fromMe ??
-    dig(p, "_data", "key", "fromMe") ??
-    dig(p, "key", "fromMe")
+    p.fromMe === true ||
+    key?.fromMe === true ||
+    dig(p, "_data", "key", "fromMe") === true ||
+    dig(p, "data", "key", "fromMe") === true ||
+    dig(p, "key", "fromMe") === true ||
+    dig(p, "_data", "id", "fromMe") === true ||
+    dig(p, "id", "fromMe") === true ||
+    idFromMe
   );
 
   const to =
@@ -279,12 +296,6 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     mediaType = "FILE";
   }
 
-  const rawId =
-    (typeof p.id === "string" && p.id) ||
-    (typeof key?.id === "string" && key.id) ||
-    (typeof dig(p, "id", "_serialized") === "string"
-      ? (dig(p, "id", "_serialized") as string)
-      : undefined);
 
   const chatId: string =
     (typeof p.chatId === "string" && p.chatId) ||
