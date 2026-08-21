@@ -28,6 +28,11 @@ import {
   X,
   AlertTriangle,
   Calendar,
+  Building2,
+  Search,
+  Bell,
+  User,
+  ChevronDown,
 } from "lucide-react";
 import { useToast } from "@/components/ui";
 import { platformAdminApi } from "../api";
@@ -67,21 +72,21 @@ const SECTION_ICONS: Record<TenantSection, typeof LayoutDashboard> = {
 
 const GROUPS: SectionGroup[] = ["GERAL", "VENDAS", "AUTOMAÇÃO", "GESTÃO"];
 
-function formatFriendlyDateTime(dtStr: string): string {
+function formatFriendlyDateTime(dtStr?: string | null): string {
   if (!dtStr) return "";
   try {
     const d = new Date(dtStr);
-    if (isNaN(d.getTime())) return dtStr;
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    if (isToday) {
-      return `Hoje às ${timeStr}`;
+    if (!isNaN(d.getTime())) {
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      const isTomorrow = new Date(now.getTime() + 86400000).toDateString() === d.toDateString();
+      const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      if (isToday) return `Hoje às ${timeStr}`;
+      if (isTomorrow) return `Amanhã às ${timeStr}`;
+      return `${d.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })} às ${timeStr}`;
     }
-    return `${d.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })} às ${timeStr}`;
-  } catch {
-    return dtStr;
-  }
+  } catch {}
+  return dtStr;
 }
 
 export function MaintenancePanel() {
@@ -292,19 +297,19 @@ export function MaintenancePanel() {
 
   return (
     <div className="space-y-8">
-      {/* 1. SEÇÃO PRINCIPAL: MANUTENÇÃO GLOBAL */}
+      {/* 1. CABEÇALHO DA MANUTENÇÃO GLOBAL */}
       <div
         className={cn(
           "rounded-3xl border p-6 transition-all shadow-sm",
           globalEnabled
-            ? "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:border-amber-400/30 dark:bg-amber-950/40 dark:text-amber-200"
-            : "border-white/[0.08] bg-white/[0.02] text-zinc-900 dark:text-zinc-100"
+            ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+            : "border-white/[0.08] bg-white/[0.02] text-zinc-100"
         )}
       >
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-4">
             {globalEnabled ? (
-              <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-500">
+              <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400">
                 <Wrench className="h-5 w-5 animate-pulse" />
               </div>
             ) : (
@@ -352,7 +357,7 @@ export function MaintenancePanel() {
         </div>
       </div>
 
-      {/* 2. SEÇÃO: MANUTENÇÃO POR SEÇÃO OPERACIONAL */}
+      {/* 2. SEÇÃO: MANUTENÇÃO POR SEÇÃO */}
       <Panel title="Manutenção por seção">
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-white/60 sm:text-sm">
@@ -390,6 +395,7 @@ export function MaintenancePanel() {
                     const state = sectionsState[sec];
                     const isSecEnabled = Boolean(state?.enabled);
                     const Icon = SECTION_ICONS[sec] || Wrench;
+                    const friendlyTime = formatFriendlyDateTime(state?.estimatedEnd);
 
                     return (
                       <div
@@ -424,14 +430,12 @@ export function MaintenancePanel() {
                                     : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
                                 )}
                               >
-                                {isSecEnabled ? "Em manutenção" : "Disponível"}
+                                {isSecEnabled
+                                  ? friendlyTime
+                                    ? `Em manutenção · Retorno previsto ${friendlyTime.toLowerCase()}`
+                                    : "Em manutenção"
+                                  : "Disponível"}
                               </span>
-                              {state?.estimatedEnd ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] text-white/50">
-                                  <Clock className="h-3 w-3" />
-                                  {state.estimatedEnd}
-                                </span>
-                              ) : null}
                             </div>
                             <p className="mt-0.5 text-xs text-white/50 leading-normal">
                               {state?.internalReason
@@ -525,14 +529,14 @@ export function MaintenancePanel() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Previsão de retorno (opcional)"
-              hint="Data/horário de retorno estimado para os clientes."
+              hint="Data/horário estimado ou texto amigável."
             >
               <div className="relative">
                 <input
                   type="text"
                   value={globalEstimatedEnd}
                   onChange={(e) => setGlobalEstimatedEnd(e.target.value)}
-                  placeholder="Ex.: Hoje às 05:30 ou 21 de agosto às 06:00"
+                  placeholder="Ex.: Hoje às 06:00 ou 21 de agosto às 06:00"
                   className={inputClass}
                   maxLength={100}
                 />
@@ -663,7 +667,7 @@ export function MaintenancePanel() {
                     type="text"
                     value={secFormEstimatedEnd}
                     onChange={(e) => setSecFormEstimatedEnd(e.target.value)}
-                    placeholder="Ex.: Hoje às 05:30"
+                    placeholder="Ex.: Hoje às 06:00"
                     className={inputClass}
                   />
                 </Field>
@@ -701,18 +705,21 @@ export function MaintenancePanel() {
         </div>
       ) : null}
 
-      {/* 5. MODAL LIVE PREVIEW */}
+      {/* 5. MODAL LIVE PREVIEW (GLOBAL: TELA CHEIA / SEÇÃO: SHELL REAL COM SIDEBAR) */}
       {previewMode ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/[0.12] bg-zinc-950 p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-white/[0.08] pb-3">
-              <div className="flex items-center gap-2">
-                <Eye className="h-5 w-5 text-brand-400" />
-                <h3 className="text-base font-bold text-white">
-                  Pré-visualização:{" "}
-                  {previewMode === "global"
-                    ? "Tela cheia de manutenção global"
-                    : `Módulo ${TENANT_SECTIONS[previewMode]?.label} (com menu lateral)`}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-6 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative flex max-h-[92vh] w-full max-w-5xl flex-col rounded-3xl border border-white/[0.12] bg-zinc-950 shadow-2xl overflow-hidden">
+            {/* Barra superior do Modal */}
+            <div className="flex shrink-0 items-center justify-between border-b border-white/[0.08] bg-zinc-900/90 px-5 py-3.5">
+              <div className="flex items-center gap-2.5">
+                <Eye className="h-4 w-4 text-brand-400" />
+                <h3 className="text-sm font-bold text-white">
+                  Pré-visualização do Cliente:{" "}
+                  <span className="text-white/60 font-normal">
+                    {previewMode === "global"
+                      ? "Tela cheia de manutenção global"
+                      : `Módulo ${TENANT_SECTIONS[previewMode]?.label} (com layout e sidebar da empresa)`}
+                  </span>
                 </h3>
               </div>
               <button
@@ -724,25 +731,93 @@ export function MaintenancePanel() {
               </button>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-black/50 p-4">
+            {/* Conteúdo do Preview */}
+            <div className="flex-1 overflow-y-auto bg-black">
               {previewMode === "global" ? (
-                <MaintenanceScreen
-                  title={globalTitle || "Estamos em manutenção"}
-                  message={
-                    globalMessage ||
-                    "Estamos realizando melhorias no NexaFlow. Voltaremos em breve."
-                  }
-                  estimatedEnd={globalEstimatedEnd || null}
-                  showAdminLink={true}
-                />
-              ) : (
-                <div className="rounded-2xl border border-white/[0.08] bg-[#0c0d12] p-6">
-                  <SectionMaintenanceView
-                    section={previewMode}
-                    title={sectionsState[previewMode]?.title}
-                    message={sectionsState[previewMode]?.message}
-                    estimatedEnd={sectionsState[previewMode]?.estimatedEnd}
+                <div className="min-h-[500px] p-6 flex items-center justify-center">
+                  <MaintenanceScreen
+                    title={globalTitle || "Estamos em manutenção"}
+                    message={
+                      globalMessage ||
+                      "Estamos realizando melhorias no NexaFlow para oferecer uma experiência ainda melhor. Voltaremos em breve."
+                    }
+                    estimatedEnd={globalEstimatedEnd || null}
+                    showAdminLink={true}
                   />
+                </div>
+              ) : (
+                /* SHELL REAL DA EMPRESA PARA PREVIEW DE SEÇÃO */
+                <div className="flex min-h-[560px] flex-col md:flex-row">
+                  {/* Sidebar simulado realista da empresa */}
+                  <aside className="w-full md:w-60 shrink-0 border-b md:border-b-0 md:border-r border-white/[0.08] bg-[#0c0d12] p-4 flex flex-col justify-between">
+                    <div className="space-y-4">
+                      {/* Logo / Nome da Empresa */}
+                      <div className="flex items-center gap-2.5 px-2 py-1">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white font-bold text-xs">
+                          NF
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">Empresa Exemplo</p>
+                          <p className="text-[10px] text-white/40 truncate">Plano Pro</p>
+                        </div>
+                      </div>
+
+                      {/* Itens do Menu com Grupos */}
+                      <nav className="space-y-3">
+                        {GROUPS.map((grp) => {
+                          const grpSections = ALL_SECTIONS.filter((s) => TENANT_SECTIONS[s].group === grp);
+                          return (
+                            <div key={grp} className="space-y-1">
+                              <p className="px-2 text-[9px] font-semibold uppercase tracking-wider text-white/30">
+                                {grp}
+                              </p>
+                              {grpSections.map((s) => {
+                                const isCurrent = s === previewMode;
+                                const SIcon = SECTION_ICONS[s] || LayoutDashboard;
+                                return (
+                                  <div
+                                    key={s}
+                                    className={cn(
+                                      "flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors select-none",
+                                      isCurrent
+                                        ? "bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30"
+                                        : "text-white/60 hover:bg-white/[0.04] hover:text-white"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0 truncate">
+                                      <SIcon className="h-3.5 w-3.5 shrink-0" />
+                                      <span className="truncate">{TENANT_SECTIONS[s].label}</span>
+                                    </div>
+                                    {isCurrent ? (
+                                      <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[8px] font-bold uppercase text-amber-300">
+                                        Manutenção
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </nav>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/[0.06] flex items-center gap-2 px-2 text-xs text-white/50">
+                      <User className="h-4 w-4 text-white/40" />
+                      <span className="truncate">admin@empresa.com</span>
+                    </div>
+                  </aside>
+
+                  {/* Área Principal Renderizando o SectionMaintenanceView */}
+                  <main className="flex-1 bg-[#090a0f] p-4 sm:p-8 flex items-center justify-center">
+                    <SectionMaintenanceView
+                      section={previewMode}
+                      title={sectionsState[previewMode]?.title}
+                      message={sectionsState[previewMode]?.message}
+                      estimatedEnd={sectionsState[previewMode]?.estimatedEnd}
+                      disabledSections={sectionsState}
+                    />
+                  </main>
                 </div>
               )}
             </div>

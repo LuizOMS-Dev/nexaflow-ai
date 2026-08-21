@@ -1503,6 +1503,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   title={activeSectionDetails?.title}
                   message={activeSectionDetails?.message}
                   estimatedEnd={activeSectionDetails?.estimatedEnd}
+                  disabledSections={publicMaintenance?.sections}
                 />
               ) : (
                 children

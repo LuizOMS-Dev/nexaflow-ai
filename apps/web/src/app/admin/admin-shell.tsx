@@ -158,24 +158,29 @@ function MaintenanceBanner() {
 
   if (!isGlobal && !hasSectionMaint) return null;
 
+  let bannerTitle = "";
+  let bannerDesc = "";
+  if (isGlobal) {
+    bannerTitle = "Manutenção global ativa";
+    bannerDesc = "O acesso de todas as empresas está bloqueado.";
+  } else if (activeSections.length === 1) {
+    bannerTitle = `1 módulo em manutenção · ${activeSections[0]}`;
+    bannerDesc = "Demais áreas disponíveis normalmente.";
+  } else {
+    bannerTitle = `${activeSections.length} módulos em manutenção`;
+    bannerDesc = "Demais áreas disponíveis normalmente.";
+  }
+
   return (
-    <div className="mb-4 flex items-center justify-between rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-400/40 dark:bg-amber-950/60 dark:text-amber-200 shadow-sm animate-in fade-in">
-      <div className="flex items-center gap-2.5 font-medium">
-        <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-        <span className="font-semibold">
-          {isGlobal
-            ? "Modo de manutenção global ativo"
-            : `${activeSections.length} ${activeSections.length === 1 ? "módulo em manutenção" : "módulos em manutenção"}`}
-        </span>
-        <span className="hidden sm:inline text-amber-800/80 dark:text-amber-300/80">
-          {isGlobal
-            ? "— O acesso de todas as empresas está bloqueado."
-            : `— (${activeSections.join(", ")})`}
-        </span>
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200 shadow-sm animate-in fade-in">
+      <div className="flex items-center gap-2.5 font-medium min-w-0">
+        <span className="flex h-2 w-2 shrink-0 rounded-full bg-amber-400 animate-pulse" />
+        <span className="font-semibold text-white truncate">{bannerTitle}</span>
+        <span className="hidden sm:inline text-white/50 truncate">— {bannerDesc}</span>
       </div>
       <Link
         href="/admin/system/maintenance"
-        className="inline-flex items-center gap-1 rounded-xl bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:text-black dark:hover:bg-amber-400 transition-colors"
+        className="inline-flex shrink-0 items-center justify-center rounded-xl bg-amber-500/20 border border-amber-500/30 px-3 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/30 hover:text-white transition-colors"
       >
         Gerenciar
       </Link>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import {
@@ -18,6 +18,7 @@ import {
   Settings,
   Clock,
   ArrowLeft,
+  ArrowRight,
   Wrench,
   ShieldCheck,
 } from "lucide-react";
@@ -41,17 +42,55 @@ const SECTION_ICONS: Record<TenantSection, typeof LayoutDashboard> = {
   SETTINGS: Settings,
 };
 
+const ORDERED_DESTINATIONS: Array<{
+  section: TenantSection;
+  label: string;
+  href: string;
+}> = [
+  { section: "HOME", label: "Início", href: "/app" },
+  { section: "CONVERSATIONS", label: "Conversas", href: "/app/inbox" },
+  { section: "CONTACTS", label: "Contatos", href: "/app/contacts" },
+  { section: "PIPELINE", label: "Funil", href: "/app/crm" },
+  { section: "FINANCE", label: "Financeiro", href: "/app/finance" },
+  { section: "TASKS", label: "Tarefas", href: "/app/tasks" },
+  { section: "CAMPAIGNS", label: "Campanhas", href: "/app/campaigns" },
+  { section: "FLOWS", label: "Fluxos", href: "/app/automations" },
+  { section: "AGENTS", label: "Agentes", href: "/app/ai" },
+  { section: "KNOWLEDGE", label: "Conhecimento", href: "/app/knowledge" },
+  { section: "TEAM", label: "Equipe", href: "/app/team" },
+  { section: "CHANNELS", label: "Canais", href: "/app/whatsapp" },
+  { section: "REPORTS", label: "Relatórios", href: "/app/reports" },
+  { section: "SETTINGS", label: "Configurações", href: "/app/settings" },
+];
+
+function formatEstimatedEnd(dtStr?: string | null): string {
+  if (!dtStr) return "";
+  try {
+    const d = new Date(dtStr);
+    if (!isNaN(d.getTime())) {
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      if (isToday) return `Hoje às ${timeStr}`;
+      return `${d.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })} às ${timeStr}`;
+    }
+  } catch {}
+  return dtStr;
+}
+
 export function SectionMaintenanceView({
   section,
   title,
   message,
   estimatedEnd,
+  disabledSections,
   className,
 }: {
   section: TenantSection;
   title?: string;
   message?: string;
   estimatedEnd?: string | null;
+  disabledSections?: Record<string, { enabled?: boolean }> | Set<TenantSection> | TenantSection[];
   className?: string;
 }) {
   const meta = TENANT_SECTIONS[section];
@@ -62,6 +101,29 @@ export function SectionMaintenanceView({
     message ||
     meta?.defaultMessage ||
     "Estamos realizando melhorias nesta área do NexaFlow. As demais funcionalidades continuam disponíveis normalmente.";
+
+  const formattedEstimated = formatEstimatedEnd(estimatedEnd);
+
+  // Cálculo dinâmico do CTA seguro:
+  // Nunca apontar para a seção atual e nunca apontar para uma seção desativada
+  const isSectionDisabled = (s: TenantSection) => {
+    if (s === section) return true;
+    if (!disabledSections) return false;
+    if (disabledSections instanceof Set) return disabledSections.has(s);
+    if (Array.isArray(disabledSections)) return disabledSections.includes(s);
+    return Boolean(disabledSections[s]?.enabled);
+  };
+
+  let targetDestination = ORDERED_DESTINATIONS.find((dest) => !isSectionDisabled(dest.section));
+
+  const ctaHref = targetDestination ? targetDestination.href : "/app";
+  const ctaLabel =
+    targetDestination?.section === "HOME"
+      ? "Voltar ao Início"
+      : targetDestination
+      ? `Ir para ${targetDestination.label}`
+      : "Ir para uma área disponível";
+  const isReturnHome = targetDestination?.section === "HOME";
 
   return (
     <div
@@ -100,10 +162,10 @@ export function SectionMaintenanceView({
           </p>
 
           {/* Previsão de Retorno */}
-          {estimatedEnd ? (
+          {formattedEstimated ? (
             <div className="mt-5 inline-flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs font-medium text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">
               <Clock className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-              <span>Previsão de retorno: <strong className="font-semibold">{estimatedEnd}</strong></span>
+              <span>Previsão de retorno: <strong className="font-semibold">{formattedEstimated}</strong></span>
             </div>
           ) : null}
 
@@ -113,14 +175,14 @@ export function SectionMaintenanceView({
             <span>Seus dados e processos em segundo plano estão seguros e operando normalmente.</span>
           </div>
 
-          {/* Botão de Ação */}
+          {/* Botão de Ação Dinâmico */}
           <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
             <Link
-              href="/app"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-zinc-800 active:scale-[0.98] dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"
+              href={ctaHref}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-zinc-800 active:scale-[0.98] dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100 cursor-pointer"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Voltar ao Início
+              {isReturnHome ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
+              {ctaLabel}
             </Link>
           </div>
         </div>
