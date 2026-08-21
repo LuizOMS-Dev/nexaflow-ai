@@ -6,7 +6,7 @@ import { emitWebhookEvent } from "../services/webhooks/dispatch";
 import { isTrueSuperadmin } from "../services/security/rbac";
 
 export async function crmRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("PIPELINE"));
 
   app.get("/pipelines", { preHandler: [app.requirePermission("crm.read")] }, async (request) => {
     const pipelines = await prisma.pipeline.findMany({

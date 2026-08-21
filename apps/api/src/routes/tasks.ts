@@ -5,7 +5,7 @@ import { AppError, assertFound } from "../lib/errors";
 import { emitWebhookEvent } from "../services/webhooks/dispatch";
 
 export async function taskRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("TASKS"));
 
   app.get("/tasks", { preHandler: [app.requirePermission("tasks.read")] }, async (request) => {
     const q = z

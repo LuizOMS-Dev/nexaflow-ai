@@ -48,6 +48,8 @@ import { needsCompanyOnboarding } from "@/lib/onboarding";
 import { consumeAppEntrance } from "./auth/auth-transition";
 import { Spinner, Tooltip } from "./ui";
 import { Logo } from "./brand/logo";
+import { SectionMaintenanceView } from "./maintenance/section-maintenance-view";
+import { resolveSectionFromPath, type TenantSection } from "@/lib/maintenance-sections";
 import { CommandPalette } from "./command-palette";
 import { UserAvatar } from "./user-avatar";
 import { NotificationBell } from "./notification-bell";
@@ -195,6 +197,7 @@ function SidebarNavLink({
   disabled,
   disabledReason,
   platform,
+  isUnderMaintenance,
 }: {
   href: string;
   label: string;
@@ -208,11 +211,12 @@ function SidebarNavLink({
   disabledReason?: string;
   /** Contexto Superadmin — estilo violeta mais contido */
   platform?: boolean;
+  isUnderMaintenance?: boolean;
 }) {
   const active = !disabled && isNavActive(pathname, href);
 
   const itemClass = cn(
-    "nf-sb-link group",
+    "nf-sb-link group relative",
     active && "is-active",
     platform && "is-platform",
     disabled && "is-disabled",
@@ -225,6 +229,14 @@ function SidebarNavLink({
         <Icon className="nf-sb-link-svg" strokeWidth={active ? 2.05 : 1.7} />
       </span>
       <span className="nf-sb-link-label nf-sidebar-label">{label}</span>
+      {isUnderMaintenance && !collapsed ? (
+        <span className="ml-auto inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-600 dark:bg-amber-400/15 dark:text-amber-300">
+          Manutenção
+        </span>
+      ) : null}
+      {isUnderMaintenance && collapsed ? (
+        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+      ) : null}
       {active ? <span className="nf-sb-link-rail" aria-hidden /> : null}
     </>
   );
@@ -694,6 +706,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     isPlatformContext || (user?.platformRole === "SUPERADMIN" && !impersonating)
       ? platformNavGroups
       : tenantNavGroups;
+
+  const { data: publicMaintenance } = useQuery({
+    queryKey: ["public-maintenance-status"],
+    queryFn: () =>
+      api<{
+        enabled: boolean;
+        title: string;
+        message: string;
+        estimatedEnd?: string | null;
+        sections: Record<
+          TenantSection,
+          {
+            enabled: boolean;
+            title: string;
+            message: string;
+            estimatedEnd?: string | null;
+          }
+        >;
+      }>("/system/maintenance/status"),
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
+
+  const activeSection = !isPlatformContext ? resolveSectionFromPath(pathname) : null;
+  const isSectionInMaintenance =
+    Boolean(
+      activeSection &&
+      publicMaintenance?.sections?.[activeSection]?.enabled &&
+      (user?.platformRole !== "SUPERADMIN" || impersonating)
+    );
+
+  const activeSectionDetails = activeSection ? publicMaintenance?.sections?.[activeSection] : null;
 
   function CompanyBadge({ size = 28 }: { size?: number }) {
     return (
@@ -1194,18 +1238,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       role="group"
                       aria-label={group.label}
                     >
-                      {group.items.map((item) => (
-                        <SidebarNavLink
-                          key={item.href}
-                          href={item.href}
-                          label={item.label}
-                          group={group.label}
-                          icon={item.icon}
-                          pathname={pathname}
-                          collapsed={isCollapsed}
-                          onNavigate={() => setMobileOpen(false)}
-                        />
-                      ))}
+                      {group.items.map((item) => {
+                        const sec = !isPlatformContext ? resolveSectionFromPath(item.href) : null;
+                        const inMaint = Boolean(sec && publicMaintenance?.sections?.[sec]?.enabled);
+                        return (
+                          <SidebarNavLink
+                            key={item.href}
+                            href={item.href}
+                            label={item.label}
+                            group={group.label}
+                            icon={item.icon}
+                            pathname={pathname}
+                            collapsed={isCollapsed}
+                            isUnderMaintenance={inMaint}
+                            onNavigate={() => setMobileOpen(false)}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1428,7 +1477,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             <div key={pathname} className="page nf-page-enter nf-cq">
-              {children}
+              {isSectionInMaintenance && activeSection ? (
+                <SectionMaintenanceView
+                  section={activeSection}
+                  title={activeSectionDetails?.title}
+                  message={activeSectionDetails?.message}
+                  estimatedEnd={activeSectionDetails?.estimatedEnd}
+                />
+              ) : (
+                children
+              )}
             </div>
           </main>
         </div>

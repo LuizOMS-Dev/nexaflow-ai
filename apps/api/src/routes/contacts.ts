@@ -81,7 +81,7 @@ function parseForceFlag(query: unknown, body: unknown): boolean {
 }
 
 export async function contactRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("CONTACTS"));
 
   app.get(
     "/contacts",

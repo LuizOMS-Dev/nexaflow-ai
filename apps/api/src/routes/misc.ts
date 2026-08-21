@@ -17,14 +17,14 @@ import { env } from "../lib/env";
 
 export async function miscRoutes(app: FastifyInstance) {
   // Tags
-  app.get("/tags", { preHandler: [app.requireTenant, app.requirePermission("contacts.read")] }, async (request) => {
+  app.get("/tags", { preHandler: [app.requireSection("CONTACTS"), app.requirePermission("contacts.read")] }, async (request) => {
     return prisma.tag.findMany({
       where: { tenantId: request.user.tenantId! },
       orderBy: { name: "asc" },
     });
   });
 
-  app.post("/tags", { preHandler: [app.requireTenant, app.requirePermission("contacts.update")] }, async (request) => {
+  app.post("/tags", { preHandler: [app.requireSection("CONTACTS"), app.requirePermission("contacts.update")] }, async (request) => {
     if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);
     const body = z.object({ name: z.string().min(1), color: z.string().default("#6366f1") }).parse(request.body);
     return prisma.tag.create({
@@ -32,7 +32,7 @@ export async function miscRoutes(app: FastifyInstance) {
     });
   });
 
-  app.delete("/tags/:id", { preHandler: [app.requireTenant, app.requirePermission("contacts.update")] }, async (request) => {
+  app.delete("/tags/:id", { preHandler: [app.requireSection("CONTACTS"), app.requirePermission("contacts.update")] }, async (request) => {
     if (!["ADMIN", "SUPERVISOR"].includes(request.user.role || "") && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -43,14 +43,14 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   // Quick replies
-  app.get("/quick-replies", { preHandler: [app.requireTenant, app.requirePermission("conversations.read")] }, async (request) => {
+  app.get("/quick-replies", { preHandler: [app.requireSection("CONVERSATIONS"), app.requirePermission("conversations.read")] }, async (request) => {
     return prisma.quickReply.findMany({
       where: { tenantId: request.user.tenantId! },
       orderBy: { title: "asc" },
     });
   });
 
-  app.post("/quick-replies", { preHandler: [app.requireTenant, app.requirePermission("conversations.reply")] }, async (request) => {
+  app.post("/quick-replies", { preHandler: [app.requireSection("CONVERSATIONS"), app.requirePermission("conversations.reply")] }, async (request) => {
     if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);
     const body = z
       .object({ title: z.string(), content: z.string(), shortcut: z.string().optional() })
@@ -60,7 +60,7 @@ export async function miscRoutes(app: FastifyInstance) {
     });
   });
 
-  app.delete("/quick-replies/:id", { preHandler: [app.requireTenant, app.requirePermission("conversations.reply")] }, async (request) => {
+  app.delete("/quick-replies/:id", { preHandler: [app.requireSection("CONVERSATIONS"), app.requirePermission("conversations.reply")] }, async (request) => {
     const { id } = request.params as { id: string };
     assertFound(await prisma.quickReply.findFirst({ where: { id, tenantId: request.user.tenantId! } }));
     await prisma.quickReply.delete({ where: { id } });
@@ -68,14 +68,14 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   // Channels
-  app.get("/channels", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.get("/channels", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     return prisma.channel.findMany({
       where: { tenantId: request.user.tenantId! },
       orderBy: { createdAt: "asc" },
     });
   });
 
-  app.post("/channels", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.post("/channels", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     if (request.user.role !== "ADMIN" && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -129,7 +129,7 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   // Knowledge — base central multi-tenant + vínculos com agentes
-  app.get("/knowledge", { preHandler: [app.requireTenant, app.requirePermission("ai.manage")] }, async (request) => {
+  app.get("/knowledge", { preHandler: [app.requireSection("KNOWLEDGE"), app.requirePermission("ai.manage")] }, async (request) => {
     const q = request.query as {
       status?: string;
       source?: string;
@@ -146,7 +146,7 @@ export async function miscRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/knowledge", { preHandler: [app.requireTenant, app.requirePermission("ai.manage")] }, async (request) => {
+  app.post("/knowledge", { preHandler: [app.requireSection("KNOWLEDGE"), app.requirePermission("ai.manage")] }, async (request) => {
     if (!["ADMIN", "SUPERVISOR"].includes(request.user.role || "") && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -731,7 +731,7 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   // Automations
-  app.get("/automations", { preHandler: [app.requireTenant, app.requirePermission("ai.manage")] }, async (request) => {
+  app.get("/automations", { preHandler: [app.requireSection("FLOWS"), app.requirePermission("ai.manage")] }, async (request) => {
     // runs recentes: só leitura para saúde no card (não altera motor)
     return prisma.automation.findMany({
       where: { tenantId: request.user.tenantId! },
@@ -747,7 +747,7 @@ export async function miscRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/automations", { preHandler: [app.requireTenant, app.requirePermission("ai.manage")] }, async (request) => {
+  app.post("/automations", { preHandler: [app.requireSection("FLOWS"), app.requirePermission("ai.manage")] }, async (request) => {
     if (!["ADMIN", "SUPERVISOR"].includes(request.user.role || "") && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -881,14 +881,14 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   // Campaigns
-  app.get("/campaigns", { preHandler: [app.requireTenant, app.requirePermission("crm.read")] }, async (request) => {
+  app.get("/campaigns", { preHandler: [app.requireSection("CAMPAIGNS"), app.requirePermission("crm.read")] }, async (request) => {
     return prisma.campaign.findMany({
       where: { tenantId: request.user.tenantId! },
       orderBy: { createdAt: "desc" },
     });
   });
 
-  app.post("/campaigns", { preHandler: [app.requireTenant, app.requirePermission("crm.create")] }, async (request) => {
+  app.post("/campaigns", { preHandler: [app.requireSection("CAMPAIGNS"), app.requirePermission("crm.create")] }, async (request) => {
     if (!["ADMIN", "SUPERVISOR", "SALES"].includes(request.user.role || "") && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -1132,7 +1132,7 @@ export async function miscRoutes(app: FastifyInstance) {
   });
 
   // Team — membros, convites pendentes e vagas do plano
-  app.get("/team", { preHandler: [app.requireTenant, app.requirePermission("team.manage")] }, async (request) => {
+  app.get("/team", { preHandler: [app.requireSection("TEAM"), app.requirePermission("team.manage")] }, async (request) => {
     const tenantId = request.user.tenantId!;
     const now = new Date();
     const [members, pendingInvites, limits] = await Promise.all([
@@ -1187,7 +1187,7 @@ export async function miscRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post("/team/invite", { preHandler: [app.requireTenant, app.requirePermission("team.manage")] }, async (request) => {
+  app.post("/team/invite", { preHandler: [app.requireSection("TEAM"), app.requirePermission("team.manage")] }, async (request) => {
     if (request.user.role !== "ADMIN" && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -1321,7 +1321,7 @@ export async function miscRoutes(app: FastifyInstance) {
   );
 
   // Dashboard
-  app.get("/dashboard", { preHandler: [app.requireTenant, app.requirePermission("reports.read")] }, async (request) => {
+  app.get("/dashboard", { preHandler: [app.requireSection("HOME"), app.requirePermission("reports.read")] }, async (request) => {
     const tenantId = request.user.tenantId!;
     const q = z
       .object({
@@ -1946,7 +1946,7 @@ export async function miscRoutes(app: FastifyInstance) {
   );
 
   // Settings
-  app.get("/settings", { preHandler: [app.requireTenant, app.requirePermission("settings.read")] }, async (request) => {
+  app.get("/settings", { preHandler: [app.requireSection("SETTINGS"), app.requirePermission("settings.read")] }, async (request) => {
     const tenant = assertFound(
       await prisma.tenant.findUnique({
         where: { id: request.user.tenantId! },
@@ -1956,7 +1956,7 @@ export async function miscRoutes(app: FastifyInstance) {
     return tenant;
   });
 
-  app.patch("/settings", { preHandler: [app.requireTenant, app.requirePermission("settings.update")] }, async (request) => {
+  app.patch("/settings", { preHandler: [app.requireSection("SETTINGS"), app.requirePermission("settings.update")] }, async (request) => {
     const body = z
       .object({
         name: z.string().min(2).max(120).optional(),

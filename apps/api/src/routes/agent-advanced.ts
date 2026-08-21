@@ -31,7 +31,7 @@ const testExpectationsSchema = z
   .strict();
 
 export async function agentAdvancedRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("AGENTS"));
 
   const canManage = async (request: {
     user: { role?: string | null; platformRole?: string | null };

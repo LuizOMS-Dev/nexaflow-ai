@@ -8,7 +8,7 @@ import { audit } from "../services/audit";
 import { isTrueSuperadmin } from "../services/security/rbac";
 
 export async function conversationRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("CONVERSATIONS"));
 
   /**
    * Fila "Assumir chat": só conversas com pedido REAL de humano.

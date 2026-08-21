@@ -13,7 +13,7 @@ import {
 import { isTrueSuperadmin } from "../services/security/rbac";
 
 export async function aiAgentRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("AGENTS"));
 
   app.get("/ai-agents", { preHandler: [app.requirePermission("ai.manage")] }, async (request) => {
     const tenantId = request.user.tenantId;

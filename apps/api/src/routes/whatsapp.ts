@@ -163,7 +163,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get("/whatsapp/channels", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.get("/whatsapp/channels", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     const channels = await prisma.channel.findMany({
       where: { tenantId: request.user.tenantId!, type: "WHATSAPP" },
       orderBy: { createdAt: "desc" },
@@ -176,7 +176,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
    * - Usa Evolution/WAHA CENTRAL do servidor NexaFlow
    * - Cliente só clica e escaneia QR (não coloca API)
    */
-  app.post("/whatsapp/connect", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.post("/whatsapp/connect", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     if (request.user.role !== "ADMIN" && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -610,7 +610,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     });
   }
 
-  app.post("/whatsapp/channels/:id/disconnect", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.post("/whatsapp/channels/:id/disconnect", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     if (request.user.role !== "ADMIN" && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -647,7 +647,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
   });
 
   // POST remove (mais compatível com browser que DELETE)
-  app.post("/whatsapp/channels/:id/remove", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.post("/whatsapp/channels/:id/remove", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     if (request.user.role !== "ADMIN" && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
     }
@@ -671,7 +671,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.delete("/whatsapp/channels/:id", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.delete("/whatsapp/channels/:id", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     // alias do remove
     if (request.user.role !== "ADMIN" && !isTrueSuperadmin(request.user)) {
       throw new AppError("Sem permissão", 403);
@@ -693,7 +693,7 @@ export async function whatsappRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post("/qr/generate", { preHandler: [app.requireTenant, app.requirePermission("channels.manage")] }, async (request) => {
+  app.post("/qr/generate", { preHandler: [app.requireSection("CHANNELS"), app.requirePermission("channels.manage")] }, async (request) => {
     const body = z
       .object({
         payload: z.string().min(1).max(2048),

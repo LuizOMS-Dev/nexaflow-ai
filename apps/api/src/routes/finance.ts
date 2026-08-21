@@ -23,7 +23,7 @@ const COST_CATEGORY_LABEL: Record<string, string> = {
 
 export async function financeRoutes(app: FastifyInstance) {
   // Toda rota deste módulo exige tenantId na sessão
-  app.addHook("preHandler", app.requireTenant);
+  app.addHook("preHandler", app.requireSection("FINANCE"));
 
   /**
    * Resumo executivo financeiro da empresa (Tenant)

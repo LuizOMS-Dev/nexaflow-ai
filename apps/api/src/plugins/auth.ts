@@ -215,6 +215,17 @@ export default fp(async (app) => {
       throw new AppError("Empresa não selecionada", 400, "TENANT_REQUIRED");
     }
   });
+
+  app.decorate(
+    "requireSection",
+    (section: import("../services/maintenance-sections").TenantSection) =>
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        await app.requireTenant(request, reply);
+        const user = request.user as JwtUser;
+        const { assertSectionAvailable } = await import("../services/maintenance");
+        await assertSectionAvailable(section, user);
+      }
+  );
 });
 
 declare module "@fastify/jwt" {
@@ -235,5 +246,8 @@ declare module "fastify" {
     ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireSuperadmin: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireTenant: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requireSection: (
+      section: import("../services/maintenance-sections").TenantSection
+    ) => (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }

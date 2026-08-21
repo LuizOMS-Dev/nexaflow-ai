@@ -140,7 +140,84 @@ export const platformAdminApi = {
       internalReason?: string | null;
       updatedAt: string;
       updatedBy?: string | null;
+      sections: Record<
+        import("@/lib/maintenance-sections").TenantSection,
+        {
+          enabled: boolean;
+          title: string;
+          message: string;
+          estimatedEnd?: string | null;
+          internalReason?: string | null;
+          updatedAt: string;
+          updatedBy?: string | null;
+        }
+      >;
     }>("/admin/system/maintenance"),
+
+  updateGlobalMaintenance: (body: {
+    enabled: boolean;
+    title?: string;
+    message?: string;
+    estimatedEnd?: string | null;
+    internalReason?: string | null;
+  }) =>
+    api<{
+      ok: boolean;
+      state: {
+        enabled: boolean;
+        title: string;
+        message: string;
+        estimatedEnd?: string | null;
+        internalReason?: string | null;
+        updatedAt: string;
+        updatedBy?: string | null;
+        sections: Record<
+          import("@/lib/maintenance-sections").TenantSection,
+          {
+            enabled: boolean;
+            title: string;
+            message: string;
+            estimatedEnd?: string | null;
+            internalReason?: string | null;
+            updatedAt: string;
+            updatedBy?: string | null;
+          }
+        >;
+      };
+    }>("/admin/system/maintenance/global", { method: "POST", json: body }),
+
+  updateSectionMaintenance: (body: {
+    section: import("@/lib/maintenance-sections").TenantSection;
+    enabled: boolean;
+    title?: string;
+    message?: string;
+    estimatedEnd?: string | null;
+    internalReason?: string | null;
+  }) =>
+    api<{
+      ok: boolean;
+      state: {
+        enabled: boolean;
+        title: string;
+        message: string;
+        estimatedEnd?: string | null;
+        internalReason?: string | null;
+        updatedAt: string;
+        updatedBy?: string | null;
+        sections: Record<
+          import("@/lib/maintenance-sections").TenantSection,
+          {
+            enabled: boolean;
+            title: string;
+            message: string;
+            estimatedEnd?: string | null;
+            internalReason?: string | null;
+            updatedAt: string;
+            updatedBy?: string | null;
+          }
+        >;
+      };
+    }>("/admin/system/maintenance/section", { method: "POST", json: body }),
 
   updateMaintenance: (body: {
     enabled: boolean;
@@ -159,6 +236,18 @@ export const platformAdminApi = {
         internalReason?: string | null;
         updatedAt: string;
         updatedBy?: string | null;
+        sections: Record<
+          import("@/lib/maintenance-sections").TenantSection,
+          {
+            enabled: boolean;
+            title: string;
+            message: string;
+            estimatedEnd?: string | null;
+            internalReason?: string | null;
+            updatedAt: string;
+            updatedBy?: string | null;
+          }
+        >;
       };
     }>("/admin/system/maintenance", { method: "POST", json: body }),
 };
