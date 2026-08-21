@@ -405,8 +405,14 @@ export async function conversationRoutes(app: FastifyInstance) {
           const meta = (body.metadata || {}) as Record<string, unknown>;
           let absPath: string | undefined = undefined;
 
-          if (body.mediaUrl.startsWith("/api/media/files/")) {
-            const parts = body.mediaUrl.replace("/api/media/files/", "").split("/");
+          if (
+            body.mediaUrl.startsWith("/api/media/files/") ||
+            body.mediaUrl.startsWith("/media/files/") ||
+            body.mediaUrl.startsWith("/media/wa/") ||
+            body.mediaUrl.startsWith("/api/media/wa/")
+          ) {
+            const clean = body.mediaUrl.replace(/^\/(?:api\/)?media\/(?:files|wa)\//, "");
+            const parts = clean.split("/");
             if (parts.length >= 2) {
               const { resolveMediaFilePath } = await import("../services/storage/media-storage");
               const resolved = await resolveMediaFilePath(parts[0], parts[1]);

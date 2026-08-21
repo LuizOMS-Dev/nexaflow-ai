@@ -209,10 +209,12 @@ export async function ingestInboundMessage(params: {
   content: string;
   externalId?: string;
   type?: string;
+  mediaType?: string;
   mediaUrl?: string;
   mediaMime?: string;
   mediaFilename?: string;
   mediaData?: string;
+  caption?: string;
   chatId?: string;
   from?: string;
   remoteJid?: string;
@@ -255,19 +257,36 @@ export async function ingestInboundMessage(params: {
       });
       if (stored) {
         storedMediaUrl = stored.publicUrl;
-        const isVoice = (params.mediaMime || "").includes("ogg") || (params.mediaMime || "").includes("opus");
+        const isVoice =
+          params.mediaType === "VOICE" ||
+          (params.mediaMime || "").includes("ogg") ||
+          (params.mediaMime || "").includes("opus");
         messageType = isVoice && stored.kind === "AUDIO" ? "VOICE" : stored.kind;
         mediaMeta = {
           mimetype: stored.mime,
           filename: stored.filename,
+          originalName: params.mediaFilename || stored.filename,
           sizeBytes: stored.bytes,
+        };
+      } else {
+        // Mídia não pôde ser baixada do gateway (ex.: expirada)
+        if (params.mediaType) {
+          messageType = (params.mediaType as any) || "FILE";
+        }
+        mediaMeta = {
+          mimetype: params.mediaMime,
+          filename: params.mediaFilename,
+          originalName: params.mediaFilename,
+          downloadFailed: true,
         };
       }
     } catch (err) {
       console.warn("[whatsapp] Ingest de mídia falhou ao persistir:", err);
     }
-  } else if (params.type === "image") {
+  } else if (params.type === "image" || params.mediaType === "IMAGE") {
     messageType = "IMAGE";
+  } else if (params.mediaType) {
+    messageType = (params.mediaType as any) || "TEXT";
   }
 
   const { resolveWhatsAppIdentity } = await import("./identity-resolver");
@@ -494,10 +513,12 @@ export async function ingestExternalOutboundMessage(params: {
   content: string;
   externalId?: string;
   type?: string;
+  mediaType?: string;
   mediaUrl?: string;
   mediaMime?: string;
   mediaFilename?: string;
   mediaData?: string;
+  caption?: string;
   chatId?: string;
   from?: string;
   remoteJid?: string;
@@ -557,19 +578,35 @@ export async function ingestExternalOutboundMessage(params: {
       });
       if (stored) {
         storedMediaUrl = stored.publicUrl;
-        const isVoice = (params.mediaMime || "").includes("ogg") || (params.mediaMime || "").includes("opus");
+        const isVoice =
+          params.mediaType === "VOICE" ||
+          (params.mediaMime || "").includes("ogg") ||
+          (params.mediaMime || "").includes("opus");
         messageType = isVoice && stored.kind === "AUDIO" ? "VOICE" : stored.kind;
         mediaMeta = {
           mimetype: stored.mime,
           filename: stored.filename,
+          originalName: params.mediaFilename || stored.filename,
           sizeBytes: stored.bytes,
+        };
+      } else {
+        if (params.mediaType) {
+          messageType = (params.mediaType as any) || "FILE";
+        }
+        mediaMeta = {
+          mimetype: params.mediaMime,
+          filename: params.mediaFilename,
+          originalName: params.mediaFilename,
+          downloadFailed: true,
         };
       }
     } catch (err) {
       console.warn("[whatsapp] Ingest de mídia externa falhou ao persistir:", err);
     }
-  } else if (params.type === "image") {
+  } else if (params.type === "image" || params.mediaType === "IMAGE") {
     messageType = "IMAGE";
+  } else if (params.mediaType) {
+    messageType = (params.mediaType as any) || "TEXT";
   }
 
   const { resolveWhatsAppIdentity } = await import("./identity-resolver");

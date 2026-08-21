@@ -3,12 +3,17 @@ import { mediaPublicUrl, parseMediaPublicUrl, resolveAllowedWahaMediaUrl } from 
 
 describe("waha media paths", () => {
   it("gera URL pública isolada por tenant", () => {
-    expect(mediaPublicUrl("tenant1", "ab12cd.bin")).toBe("/media/wa/tenant1/ab12cd.bin");
+    expect(mediaPublicUrl("tenant1", "ab12cd.bin")).toBe("/api/media/files/tenant1/ab12cd.bin");
   });
 
   it("parse rejeita path traversal", () => {
     expect(parseMediaPublicUrl("/media/wa/t1/../t2/x.bin")).toBeNull();
+    expect(parseMediaPublicUrl("/api/media/files/t1/../t2/x.bin")).toBeNull();
     expect(parseMediaPublicUrl("/media/wa/t1/ok.jpg")).toEqual({
+      tenantId: "t1",
+      filename: "ok.jpg",
+    });
+    expect(parseMediaPublicUrl("/api/media/files/t1/ok.jpg")).toEqual({
       tenantId: "t1",
       filename: "ok.jpg",
     });

@@ -6,34 +6,23 @@ import {
   Pause,
   Download,
   FileText,
+  FileSpreadsheet,
+  FileArchive,
   Film,
   File,
   X,
   Mic,
   Square,
-  Volume2,
-  VolumeX,
   Maximize2,
-  UploadCloud,
   Send,
   Loader2,
+  AlertCircle,
+  ExternalLink,
+  Volume2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui";
-
-function formatSeconds(secs: number) {
-  if (isNaN(secs) || secs < 0) return "0:00";
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes || bytes <= 0) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { resolveMediaUrl, formatBytes, formatSeconds, getFileStyle } from "@/lib/media";
 
 /**
  * Player de áudio e mensagens de voz
@@ -45,11 +34,13 @@ export function AudioVoicePlayer({
   src: string;
   isOutbound?: boolean;
 }) {
+  const resolvedSrc = resolveMediaUrl(src) || src;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -69,8 +60,14 @@ export function AudioVoicePlayer({
     const onPlaying = () => {
       setIsLoading(false);
       setIsPlaying(true);
+      setHasError(false);
     };
     const onPause = () => setIsPlaying(false);
+    const onError = () => {
+      setIsLoading(false);
+      setIsPlaying(false);
+      setHasError(true);
+    };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -78,6 +75,7 @@ export function AudioVoicePlayer({
     audio.addEventListener("waiting", onWaiting);
     audio.addEventListener("playing", onPlaying);
     audio.addEventListener("pause", onPause);
+    audio.addEventListener("error", onError);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
@@ -86,6 +84,7 @@ export function AudioVoicePlayer({
       audio.removeEventListener("waiting", onWaiting);
       audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", onError);
     };
   }, []);
 
@@ -95,7 +94,10 @@ export function AudioVoicePlayer({
     if (isPlaying) {
       audio.pause();
     } else {
-      audio.play().catch(() => setIsPlaying(false));
+      audio.play().catch(() => {
+        setIsPlaying(false);
+        setHasError(true);
+      });
     }
   };
 
@@ -107,19 +109,41 @@ export function AudioVoicePlayer({
     setCurrentTime(nextTime);
   };
 
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  if (hasError) {
+    return (
+      <div className={cn(
+        "flex items-center gap-2 py-1.5 px-2 rounded-lg text-xs",
+        isOutbound
+          ? "bg-white/10 text-white/80 dark:bg-black/5 dark:text-zinc-700"
+          : "bg-red-500/10 text-red-600 dark:text-red-300"
+      )}>
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Áudio indisponível</span>
+        <a
+          href={resolvedSrc}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          className="ml-auto underline text-[11px]"
+        >
+          Baixar
+        </a>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-center gap-2.5 py-1 min-w-[200px] max-w-xs">
-      <audio ref={audioRef} src={src} preload="metadata" />
+    <div className="flex items-center gap-2.5 py-1 min-w-[210px] max-w-xs">
+      <audio ref={audioRef} src={resolvedSrc} preload="metadata" />
       <button
         type="button"
         onClick={togglePlay}
+        aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
         className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform active:scale-95",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
           isOutbound
-            ? "bg-white text-zinc-900 shadow-sm hover:bg-zinc-100"
-            : "bg-sky-500 text-white shadow-sm hover:bg-sky-600 dark:bg-sky-400 dark:text-zinc-950"
+            ? "bg-white text-zinc-900 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-white dark:hover:bg-zinc-800"
+            : "bg-sky-500 text-white hover:bg-sky-600 dark:bg-sky-400 dark:text-zinc-950"
         )}
       >
         {isLoading ? (
@@ -138,19 +162,24 @@ export function AudioVoicePlayer({
           max={duration || 100}
           value={currentTime}
           onChange={handleSeek}
+          aria-label="Progresso do áudio"
           className={cn(
             "h-1.5 w-full cursor-pointer appearance-none rounded-lg accent-sky-500",
-            isOutbound ? "bg-white/25" : "bg-black/10 dark:bg-white/15"
+            isOutbound
+              ? "bg-white/30 dark:bg-black/20"
+              : "bg-black/10 dark:bg-white/15"
           )}
         />
         <div
           className={cn(
-            "mt-1 flex items-center justify-between text-[10.5px] tabular-nums",
-            isOutbound ? "text-white/70 dark:text-zinc-900/70" : "text-ink-faint dark:text-zinc-400"
+            "mt-1 flex items-center justify-between text-[10.5px] tabular-nums font-medium",
+            isOutbound
+              ? "text-white/80 dark:text-zinc-700"
+              : "text-ink-muted dark:text-zinc-400"
           )}
         >
           <span>{formatSeconds(currentTime)}</span>
-          <span>{formatSeconds(duration)}</span>
+          <span>{duration > 0 ? formatSeconds(duration) : "0:00"}</span>
         </div>
       </div>
     </div>
@@ -187,10 +216,14 @@ export function AudioVoiceRecorder({
       streamRef.current = stream;
 
       let mimeType = "audio/webm;codecs=opus";
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")
-          ? "audio/ogg;codecs=opus"
-          : "audio/mp4";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
+          mimeType = "audio/ogg;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        }
       }
 
       const recorder = new MediaRecorder(stream, { mimeType });
@@ -215,7 +248,7 @@ export function AudioVoiceRecorder({
       timerRef.current = setInterval(() => {
         setSeconds((prev) => prev + 1);
       }, 1000);
-    } catch (e) {
+    } catch {
       setErr("Permissão de microfone negada ou indisponível");
     }
   };
@@ -240,7 +273,7 @@ export function AudioVoiceRecorder({
   };
 
   useEffect(() => {
-    startRecording();
+    void startRecording();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (streamRef.current) {
@@ -260,7 +293,7 @@ export function AudioVoiceRecorder({
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/20 bg-sky-50/70 p-2.5 dark:border-sky-400/20 dark:bg-sky-950/20">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/20 bg-sky-50/70 p-2.5 dark:border-sky-400/20 dark:bg-sky-950/30">
       <div className="flex items-center gap-2.5">
         {isRecording ? (
           <div className="flex items-center gap-2">
@@ -286,7 +319,7 @@ export function AudioVoiceRecorder({
           type="button"
           onClick={cancelRecording}
           disabled={isSending}
-          className="btn-ghost h-8 px-2 text-xs text-ink-muted hover:text-ink"
+          className="btn-ghost h-8 px-2 text-xs text-ink-muted hover:text-ink dark:text-zinc-400 dark:hover:text-zinc-100"
         >
           <X className="h-4 w-4 mr-1" />
           Cancelar
@@ -296,7 +329,7 @@ export function AudioVoiceRecorder({
           <button
             type="button"
             onClick={stopRecording}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-red-500 px-3 text-xs font-medium text-white hover:bg-red-600 active:scale-95"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-red-500 px-3 text-xs font-medium text-white hover:bg-red-600 active:scale-95 transition-all shadow-sm"
           >
             <Square className="h-3.5 w-3.5 fill-current" />
             Parar
@@ -306,7 +339,7 @@ export function AudioVoiceRecorder({
             type="button"
             onClick={handleSend}
             disabled={isSending}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-medium text-white hover:bg-sky-700 active:scale-95 disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-medium text-white hover:bg-sky-700 active:scale-95 transition-all shadow-sm disabled:opacity-50"
           >
             {isSending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -333,24 +366,34 @@ export function ImageLightboxModal({
   alt?: string;
   onClose: () => void;
 }) {
+  const resolvedSrc = resolveMediaUrl(src) || src;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-md animate-fade-in"
       onClick={onClose}
     >
-      <div className="relative max-h-full max-w-4xl" onClick={(e) => e.stopPropagation()}>
+      <div className="relative max-h-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
         <img
-          src={src}
+          src={resolvedSrc}
           alt={alt || "Imagem"}
-          className="max-h-[85vh] max-w-full rounded-xl object-contain shadow-2xl"
+          className="max-h-[85vh] max-w-full rounded-2xl object-contain shadow-2xl"
         />
         <div className="absolute right-3 top-3 flex items-center gap-2">
           <a
-            href={src}
+            href={resolvedSrc}
             download
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors shadow-lg"
             title="Baixar imagem"
           >
             <Download className="h-4 w-4" />
@@ -358,7 +401,7 @@ export function ImageLightboxModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors shadow-lg"
             title="Fechar"
           >
             <X className="h-4 w-4" />
@@ -388,6 +431,7 @@ export function AttachmentPreviewModal({
 
   const isImage = file.type.startsWith("image/");
   const isVideo = file.type.startsWith("video/");
+  const style = getFileStyle(file.name, file.type);
 
   useEffect(() => {
     if (isImage || isVideo) {
@@ -431,7 +475,7 @@ export function AttachmentPreviewModal({
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                Enviar arquivo
+                Enviar anexo
               </>
             )}
           </button>
@@ -457,7 +501,7 @@ export function AttachmentPreviewModal({
           </div>
         ) : (
           <div className="flex items-center gap-3.5 rounded-xl border border-black/[0.08] bg-black/[0.02] p-3.5 dark:border-white/[0.08] dark:bg-white/[0.03]">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300">
+            <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl", style.badgeBg, style.iconColor)}>
               <FileText className="h-6 w-6" />
             </div>
             <div className="min-w-0 flex-1">
@@ -465,7 +509,7 @@ export function AttachmentPreviewModal({
                 {file.name}
               </p>
               <p className="text-xs text-ink-muted dark:text-zinc-400">
-                {formatBytes(file.size)} · {file.type || "Documento"}
+                {formatBytes(file.size)} · {style.label}
               </p>
             </div>
           </div>
@@ -505,28 +549,74 @@ export function MediaBubble({
   isOutbound?: boolean;
   onOpenLightbox?: (url: string) => void;
 }) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
   if (!mediaUrl) return null;
 
+  const resolvedUrl = resolveMediaUrl(mediaUrl) || mediaUrl;
   const meta = metadata || {};
-  const filename = (meta.filename as string) || "arquivo";
+  const filename = (meta.originalName as string) || (meta.filename as string) || "arquivo";
   const sizeBytes = Number(meta.sizeBytes) || 0;
   const mime = (meta.mimetype as string) || "";
+  const style = getFileStyle(filename, mime);
 
+  // Download URL com header de download forçado
+  const downloadUrl = resolvedUrl.includes("?")
+    ? `${resolvedUrl}&download=1`
+    : `${resolvedUrl}?download=1`;
+
+  // Imagem
   if (type === "IMAGE" || mime.startsWith("image/")) {
+    if (loadFailed) {
+      return (
+        <div className={cn(
+          "my-1 flex items-center gap-2 p-2.5 rounded-xl border text-xs",
+          isOutbound
+            ? "border-white/15 bg-white/10 text-white dark:border-black/10 dark:bg-black/5 dark:text-zinc-900"
+            : "border-black/[0.08] bg-black/[0.03] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-100"
+        )}>
+          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+          <span className="truncate">Imagem indisponível ({filename})</span>
+          <a
+            href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto underline font-medium text-[11px]"
+          >
+            Baixar
+          </a>
+        </div>
+      );
+    }
+
     return (
       <div className="mt-1.5 mb-1 overflow-hidden rounded-xl">
         <div
           className="group relative cursor-pointer overflow-hidden rounded-xl bg-black/5 dark:bg-white/5"
-          onClick={() => onOpenLightbox?.(mediaUrl)}
+          onClick={() => onOpenLightbox?.(resolvedUrl)}
         >
+          {isLoading && (
+            <div className="h-48 w-64 animate-pulse rounded-xl bg-black/10 dark:bg-white/10 flex items-center justify-center text-ink-muted">
+              <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />
+            </div>
+          )}
           <img
-            src={mediaUrl}
+            src={resolvedUrl}
             alt={filename}
-            className="max-h-72 w-auto max-w-full rounded-xl object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+            onLoad={() => setIsLoading(false)}
+            onError={() => {
+              setIsLoading(false);
+              setLoadFailed(true);
+            }}
+            className={cn(
+              "max-h-72 w-auto max-w-full rounded-xl object-cover transition-transform duration-200 group-hover:scale-[1.02]",
+              isLoading ? "hidden" : "block"
+            )}
             loading="lazy"
           />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg">
               <Maximize2 className="h-4 w-4" />
             </div>
           </div>
@@ -535,68 +625,100 @@ export function MediaBubble({
     );
   }
 
+  // Áudio ou Mensagem de Voz
   if (type === "VOICE" || type === "AUDIO" || mime.startsWith("audio/")) {
     return (
       <div className="my-1">
-        <AudioVoicePlayer src={mediaUrl} isOutbound={isOutbound} />
+        <AudioVoicePlayer src={resolvedUrl} isOutbound={isOutbound} />
       </div>
     );
   }
 
+  // Vídeo
   if (type === "VIDEO" || mime.startsWith("video/")) {
     return (
       <div className="mt-1.5 mb-1 overflow-hidden rounded-xl">
         <video
-          src={mediaUrl}
+          src={resolvedUrl}
           controls
-          className="max-h-72 w-full rounded-xl bg-black"
+          className="max-h-72 w-full rounded-xl bg-black shadow-sm"
           preload="metadata"
         />
       </div>
     );
   }
 
-  // DOCUMENT ou FILE genérico
+  // DOCUMENT ou FILE genérico com contraste perfeito em Light e Dark Mode
   return (
-    <a
-      href={mediaUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      download={filename}
+    <div
       className={cn(
         "my-1 flex items-center gap-3 rounded-xl border p-2.5 transition-colors",
         isOutbound
-          ? "border-white/20 bg-white/10 hover:bg-white/20 text-white"
-          : "border-black/[0.08] bg-black/[0.03] hover:bg-black/[0.06] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:hover:bg-white/[0.08] dark:text-zinc-100"
+          ? "border-white/20 bg-white/10 text-white hover:bg-white/15 dark:border-black/10 dark:bg-black/5 dark:text-zinc-900 dark:hover:bg-black/10"
+          : "border-black/[0.08] bg-black/[0.03] text-ink hover:bg-black/[0.06] dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-100 dark:hover:bg-white/[0.08]"
       )}
     >
       <div
         className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-          isOutbound ? "bg-white/20 text-white" : "bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-300"
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-xs",
+          isOutbound
+            ? "bg-white/20 text-white dark:bg-black/10 dark:text-zinc-800"
+            : style.badgeBg + " " + style.iconColor
         )}
       >
-        <FileText className="h-5 w-5" />
+        {style.ext === "PDF" ? (
+          <FileText className="h-5 w-5" />
+        ) : style.ext === "XLSX" || style.ext === "CSV" ? (
+          <FileSpreadsheet className="h-5 w-5" />
+        ) : style.ext === "ZIP" || style.ext === "RAR" ? (
+          <FileArchive className="h-5 w-5" />
+        ) : (
+          <FileText className="h-5 w-5" />
+        )}
       </div>
+
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-semibold">{filename}</p>
         <p
           className={cn(
-            "text-[10.5px]",
-            isOutbound ? "text-white/70" : "text-ink-muted dark:text-zinc-400"
+            "truncate text-xs font-semibold leading-tight",
+            isOutbound
+              ? "text-white dark:text-zinc-900"
+              : "text-ink dark:text-zinc-100"
+          )}
+          title={filename}
+        >
+          {filename}
+        </p>
+        <p
+          className={cn(
+            "text-[10.5px] mt-0.5 font-medium",
+            isOutbound
+              ? "text-white/75 dark:text-zinc-600"
+              : "text-ink-muted dark:text-zinc-400"
           )}
         >
-          {sizeBytes ? formatBytes(sizeBytes) : "Documento"}
+          {sizeBytes ? formatBytes(sizeBytes) : style.label} · {style.ext}
         </p>
       </div>
-      <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          isOutbound ? "bg-white/15 hover:bg-white/25" : "bg-black/5 hover:bg-black/10 dark:bg-white/10"
-        )}
-      >
-        <Download className="h-4 w-4" />
+
+      <div className="flex items-center gap-1">
+        <a
+          href={downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download={filename}
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all shadow-xs",
+            isOutbound
+              ? "bg-white/20 hover:bg-white/30 text-white dark:bg-black/10 dark:hover:bg-black/20 dark:text-zinc-900"
+              : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-100"
+          )}
+          title="Baixar arquivo"
+          aria-label={`Baixar ${filename}`}
+        >
+          <Download className="h-4 w-4" />
+        </a>
       </div>
-    </a>
+    </div>
   );
 }

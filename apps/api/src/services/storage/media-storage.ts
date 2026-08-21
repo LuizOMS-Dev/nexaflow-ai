@@ -37,6 +37,10 @@ const MIME_MAP: Record<string, { ext: string; kind: MediaKind; maxSize: number }
   "image/webp": { ext: "webp", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
   "image/gif": { ext: "gif", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
   "image/svg+xml": { ext: "svg", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
+  "image/heic": { ext: "heic", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
+  "image/heif": { ext: "heif", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
+  "image/bmp": { ext: "bmp", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
+  "image/x-ms-bmp": { ext: "bmp", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
   // Áudios e Voz
   "audio/ogg": { ext: "ogg", kind: "VOICE", maxSize: MAX_AUDIO_SIZE },
   "audio/opus": { ext: "opus", kind: "VOICE", maxSize: MAX_AUDIO_SIZE },
@@ -44,15 +48,23 @@ const MIME_MAP: Record<string, { ext: string; kind: MediaKind; maxSize: number }
   "audio/mp3": { ext: "mp3", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/mp4": { ext: "m4a", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/m4a": { ext: "m4a", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
+  "audio/x-m4a": { ext: "m4a", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/wav": { ext: "wav", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/x-wav": { ext: "wav", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
+  "audio/wave": { ext: "wav", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/webm": { ext: "webm", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/aac": { ext: "aac", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
+  "audio/x-aac": { ext: "aac", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
+  "audio/amr": { ext: "amr", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   // Vídeos
   "video/mp4": { ext: "mp4", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
   "video/webm": { ext: "webm", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
   "video/quicktime": { ext: "mov", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
   "video/3gpp": { ext: "3gp", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
+  "video/3gpp2": { ext: "3g2", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
+  "video/x-matroska": { ext: "mkv", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
+  "video/avi": { ext: "avi", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
+  "video/x-msvideo": { ext: "avi", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE },
   // Documentos
   "application/pdf": { ext: "pdf", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE },
   "application/msword": { ext: "doc", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE },
@@ -75,12 +87,19 @@ const MIME_MAP: Record<string, { ext: string; kind: MediaKind; maxSize: number }
   },
   "text/plain": { ext: "txt", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE },
   "text/csv": { ext: "csv", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE },
+  "application/rtf": { ext: "rtf", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE },
+  "application/json": { ext: "json", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE },
   // Arquivos compactados
   "application/zip": { ext: "zip", kind: "FILE", maxSize: MAX_FILE_SIZE },
   "application/x-zip-compressed": { ext: "zip", kind: "FILE", maxSize: MAX_FILE_SIZE },
   "application/x-rar-compressed": { ext: "rar", kind: "FILE", maxSize: MAX_FILE_SIZE },
+  "application/vnd.rar": { ext: "rar", kind: "FILE", maxSize: MAX_FILE_SIZE },
   "application/x-7z-compressed": { ext: "7z", kind: "FILE", maxSize: MAX_FILE_SIZE },
-};export function sanitizeFilename(original: string): string {
+  "application/x-tar": { ext: "tar", kind: "FILE", maxSize: MAX_FILE_SIZE },
+  "application/gzip": { ext: "gz", kind: "FILE", maxSize: MAX_FILE_SIZE },
+};
+
+export function sanitizeFilename(original: string): string {
   const base = path.basename(original || "arquivo");
   const ext = path.extname(base).toLowerCase();
   if (DANGEROUS_EXTENSIONS.has(ext)) {
@@ -111,14 +130,27 @@ export function classifyFile(mimetype: string, filename: string): { mime: string
   if (ext === "mp3") return { mime: "audio/mpeg", ext: "mp3", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE };
   if (ext === "m4a") return { mime: "audio/mp4", ext: "m4a", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE };
   if (ext === "wav") return { mime: "audio/wav", ext: "wav", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE };
+  if (ext === "aac") return { mime: "audio/aac", ext: "aac", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE };
   if (ext === "jpg" || ext === "jpeg") return { mime: "image/jpeg", ext: "jpg", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE };
   if (ext === "png") return { mime: "image/png", ext: "png", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE };
   if (ext === "webp") return { mime: "image/webp", ext: "webp", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE };
+  if (ext === "gif") return { mime: "image/gif", ext: "gif", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE };
+  if (ext === "svg") return { mime: "image/svg+xml", ext: "svg", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE };
   if (ext === "mp4") return { mime: "video/mp4", ext: "mp4", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE };
+  if (ext === "webm") return { mime: "video/webm", ext: "webm", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE };
+  if (ext === "mov") return { mime: "video/quicktime", ext: "mov", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE };
+  if (ext === "3gp") return { mime: "video/3gpp", ext: "3gp", kind: "VIDEO", maxSize: MAX_VIDEO_SIZE };
+  if (ext === "doc") return { mime: "application/msword", ext: "doc", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
   if (ext === "docx") return { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ext: "docx", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
+  if (ext === "xls") return { mime: "application/vnd.ms-excel", ext: "xls", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
   if (ext === "xlsx") return { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: "xlsx", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
+  if (ext === "ppt") return { mime: "application/vnd.ms-powerpoint", ext: "ppt", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
+  if (ext === "pptx") return { mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation", ext: "pptx", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
   if (ext === "txt") return { mime: "text/plain", ext: "txt", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
+  if (ext === "csv") return { mime: "text/csv", ext: "csv", kind: "DOCUMENT", maxSize: MAX_DOC_SIZE };
   if (ext === "zip") return { mime: "application/zip", ext: "zip", kind: "FILE", maxSize: MAX_FILE_SIZE };
+  if (ext === "rar") return { mime: "application/x-rar-compressed", ext: "rar", kind: "FILE", maxSize: MAX_FILE_SIZE };
+  if (ext === "7z") return { mime: "application/x-7z-compressed", ext: "7z", kind: "FILE", maxSize: MAX_FILE_SIZE };
 
   // Genérico permitido
   if (normMime.startsWith("image/")) return { mime: normMime, ext: ext || "jpg", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE };
@@ -135,6 +167,11 @@ export function classifyFile(mimetype: string, filename: string): { mime: string
 
 export function getTenantMediaDir(tenantId: string): string {
   const root = path.resolve(env.storagePath, "media", tenantId);
+  return root;
+}
+
+export function getTenantWaDir(tenantId: string): string {
+  const root = path.resolve(env.storagePath, "wa", tenantId);
   return root;
 }
 
@@ -196,19 +233,33 @@ export async function resolveMediaFilePath(tenantId: string, filename: string): 
     return { absPath: "", exists: false };
   }
 
-  const root = getTenantMediaDir(tenantId);
-  const absPath = path.join(root, base);
+  // 1. Procura na pasta media/
+  const mediaRoot = getTenantMediaDir(tenantId);
+  const absPathMedia = path.join(mediaRoot, base);
 
-  if (!absPath.startsWith(root + path.sep)) {
-    return { absPath: "", exists: false };
+  if (absPathMedia.startsWith(mediaRoot + path.sep)) {
+    try {
+      const s = await stat(absPathMedia);
+      if (s.isFile()) return { absPath: absPathMedia, exists: true };
+    } catch {
+      /* tenta fallback wa */
+    }
   }
 
-  try {
-    const s = await stat(absPath);
-    return { absPath, exists: s.isFile() };
-  } catch {
-    return { absPath, exists: false };
+  // 2. Procura na pasta wa/ (mídias recebidas do WhatsApp/WAHA)
+  const waRoot = getTenantWaDir(tenantId);
+  const absPathWa = path.join(waRoot, base);
+
+  if (absPathWa.startsWith(waRoot + path.sep)) {
+    try {
+      const s = await stat(absPathWa);
+      if (s.isFile()) return { absPath: absPathWa, exists: true };
+    } catch {
+      /* não encontrado */
+    }
   }
+
+  return { absPath: "", exists: false };
 }
 
 export async function deleteMediaFile(tenantId: string, filename: string): Promise<void> {

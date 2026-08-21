@@ -12,8 +12,11 @@ export type ParsedInboundMessage = {
   externalId?: string;
   fromMe: boolean;
   mediaUrl?: string;
+  mediaData?: string;
   mediaMime?: string;
   mediaFilename?: string;
+  mediaType?: string;
+  caption?: string;
   chatId?: string;
   from?: string;
   remoteJid?: string;
@@ -177,27 +180,77 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
 
   const media =
     asRecord(p.media) ||
+    asRecord(dig(p, "data", "media")) ||
+    asRecord(dig(p, "_data", "media")) ||
     asRecord(dig(p, "message", "imageMessage")) ||
     asRecord(dig(p, "message", "documentMessage")) ||
+    asRecord(dig(p, "message", "documentWithCaptionMessage", "message", "documentMessage")) ||
     asRecord(dig(p, "message", "audioMessage")) ||
-    asRecord(dig(p, "message", "videoMessage"));
+    asRecord(dig(p, "message", "pttMessage")) ||
+    asRecord(dig(p, "message", "videoMessage")) ||
+    asRecord(dig(p, "message", "stickerMessage")) ||
+    asRecord(dig(rawMsg, "imageMessage")) ||
+    asRecord(dig(rawMsg, "documentMessage")) ||
+    asRecord(dig(rawMsg, "documentWithCaptionMessage", "message", "documentMessage")) ||
+    asRecord(dig(rawMsg, "audioMessage")) ||
+    asRecord(dig(rawMsg, "pttMessage")) ||
+    asRecord(dig(rawMsg, "videoMessage")) ||
+    asRecord(dig(rawMsg, "stickerMessage"));
+
+  const imgMsg = asRecord(p.imageMessage) || asRecord(dig(rawMsg, "imageMessage"));
+  const vidMsg = asRecord(p.videoMessage) || asRecord(dig(rawMsg, "videoMessage"));
+  const docMsg =
+    asRecord(p.documentMessage) ||
+    asRecord(dig(rawMsg, "documentMessage")) ||
+    asRecord(dig(rawMsg, "documentWithCaptionMessage", "message", "documentMessage"));
+  const audMsg =
+    asRecord(p.audioMessage) ||
+    asRecord(p.pttMessage) ||
+    asRecord(dig(rawMsg, "audioMessage")) ||
+    asRecord(dig(rawMsg, "pttMessage"));
+  const stkMsg = asRecord(p.stickerMessage) || asRecord(dig(rawMsg, "stickerMessage"));
+
+  const hasMedia = Boolean(
+    p.hasMedia ||
+    p.mediaUrl ||
+    media ||
+    imgMsg ||
+    vidMsg ||
+    docMsg ||
+    audMsg ||
+    stkMsg
+  );
 
   const mediaUrl =
-    media && typeof media.url === "string"
-      ? media.url
-      : typeof p.mediaUrl === "string"
-        ? p.mediaUrl
-        : undefined;
+    (media && typeof media.url === "string" && media.url) ||
+    (typeof p.mediaUrl === "string" && p.mediaUrl) ||
+    (typeof dig(p, "_data", "mediaUrl") === "string" && (dig(p, "_data", "mediaUrl") as string)) ||
+    (imgMsg && typeof imgMsg.url === "string" && imgMsg.url) ||
+    (vidMsg && typeof vidMsg.url === "string" && vidMsg.url) ||
+    (docMsg && typeof docMsg.url === "string" && docMsg.url) ||
+    (audMsg && typeof audMsg.url === "string" && audMsg.url) ||
+    undefined;
+
+  const mediaData =
+    (media && typeof media.data === "string" && media.data) ||
+    (typeof p.data === "string" && p.data) ||
+    (typeof dig(p, "_data", "body") === "string" && (dig(p, "_data", "body") as string).startsWith("data:") ? (dig(p, "_data", "body") as string) : undefined) ||
+    undefined;
 
   const mediaMime =
-    media && typeof media.mimetype === "string"
-      ? media.mimetype
-      : typeof p.mimetype === "string"
-        ? p.mimetype
-        : undefined;
+    (media && typeof media.mimetype === "string" && media.mimetype) ||
+    (typeof p.mimetype === "string" && p.mimetype) ||
+    (typeof dig(p, "_data", "mimetype") === "string" && (dig(p, "_data", "mimetype") as string)) ||
+    (imgMsg && typeof imgMsg.mimetype === "string" ? imgMsg.mimetype : imgMsg ? "image/jpeg" : undefined) ||
+    (vidMsg && typeof vidMsg.mimetype === "string" ? vidMsg.mimetype : vidMsg ? "video/mp4" : undefined) ||
+    (docMsg && typeof docMsg.mimetype === "string" ? docMsg.mimetype : docMsg ? "application/pdf" : undefined) ||
+    (audMsg && typeof audMsg.mimetype === "string" ? audMsg.mimetype : audMsg ? "audio/ogg; codecs=opus" : undefined) ||
+    (stkMsg && typeof stkMsg.mimetype === "string" ? stkMsg.mimetype : stkMsg ? "image/webp" : undefined) ||
+    undefined;
 
   const mediaFilename =
     (media && typeof media.filename === "string" && media.filename) ||
+    (docMsg && typeof docMsg.fileName === "string" && docMsg.fileName) ||
     (typeof dig(p, "message", "documentMessage", "fileName") === "string"
       ? (dig(p, "message", "documentMessage", "fileName") as string)
       : undefined) ||
@@ -206,6 +259,25 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
       : undefined) ||
     (typeof p.filename === "string" && p.filename) ||
     undefined;
+
+  const caption =
+    (typeof p.caption === "string" && p.caption.trim()) ||
+    (media && typeof media.caption === "string" && (media.caption as string).trim()) ||
+    (imgMsg && typeof imgMsg.caption === "string" && imgMsg.caption.trim()) ||
+    (vidMsg && typeof vidMsg.caption === "string" && vidMsg.caption.trim()) ||
+    (docMsg && typeof docMsg.caption === "string" && docMsg.caption.trim()) ||
+    undefined;
+
+  let mediaType: string | undefined = undefined;
+  if (imgMsg || (mediaMime && mediaMime.startsWith("image/"))) mediaType = "IMAGE";
+  else if (audMsg || (mediaMime && mediaMime.startsWith("audio/"))) {
+    mediaType = (mediaMime && (mediaMime.includes("ogg") || mediaMime.includes("opus"))) || audMsg ? "VOICE" : "AUDIO";
+  } else if (vidMsg || (mediaMime && mediaMime.startsWith("video/"))) mediaType = "VIDEO";
+  else if (docMsg || (mediaMime && (mediaMime.includes("pdf") || mediaMime.includes("document") || mediaMime.includes("sheet") || mediaMime.includes("excel") || mediaMime.includes("word") || mediaMime.includes("text")))) {
+    mediaType = "DOCUMENT";
+  } else if (hasMedia) {
+    mediaType = "FILE";
+  }
 
   const rawId =
     (typeof p.id === "string" && p.id) ||
@@ -296,15 +368,28 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     }
   }
 
+  // Define conteúdo limpo
+  let content = "";
+  if (caption) {
+    content = caption;
+  } else if (bodyText && !/^\[(?:imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mídia|midia)\]$/i.test(bodyText.trim())) {
+    content = bodyText.trim();
+  } else if (!hasMedia && !mediaUrl && !mediaData) {
+    content = bodyText || "[mensagem]";
+  }
+
   return {
     phone: phone || chatId,
     name,
-    content: bodyText || (mediaUrl ? "[mídia]" : "[mensagem]"),
+    content,
     externalId: rawId ? (rawId.startsWith("waha:") ? rawId : `waha:${rawId}`) : undefined,
     fromMe,
     mediaUrl,
+    mediaData,
     mediaMime,
     mediaFilename,
+    mediaType,
+    caption,
     chatId,
     from,
     remoteJid,

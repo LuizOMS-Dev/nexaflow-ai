@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { createReadStream } from "fs";
+import { stat } from "fs/promises";
 import { prisma } from "../lib/prisma";
 import { AppError, assertFound } from "../lib/errors";
 import {
@@ -11,33 +12,96 @@ import {
   type MediaKind,
 } from "../services/storage/media-storage";
 
-export async function mediaRoutes(app: FastifyInstance) {
-  // Endpoint de download/streaming de arquivos do tenant
-  app.get(
-    "/media/files/:tenantId/:filename",
-    async (
-      request: FastifyRequest<{ Params: { tenantId: string; filename: string } }>,
-      reply: FastifyReply
-    ) => {
-      const { tenantId, filename } = request.params;
-      if (!tenantId || !filename) {
-        throw new AppError("Parâmetros inválidos", 400);
-      }
+async function handleMediaStreamRequest(
+  request: FastifyRequest<{
+    Params: { tenantId: string; filename: string };
+    Querystring: { download?: string; dl?: string };
+  }>,
+  reply: FastifyReply
+) {
+  const { tenantId, filename } = request.params;
+  if (!tenantId || !filename) {
+    throw new AppError("Parâmetros inválidos", 400);
+  }
 
-      const { absPath, exists } = await resolveMediaFilePath(tenantId, filename);
-      if (!exists) {
-        throw new AppError("Arquivo não encontrado", 404);
-      }
+  // Prevenir path traversal e caracteres perigosos
+  if (
+    tenantId.includes("..") ||
+    tenantId.includes("/") ||
+    tenantId.includes("\\") ||
+    filename.includes("..") ||
+    filename.includes("/") ||
+    filename.includes("\\")
+  ) {
+    throw new AppError("Caminho de arquivo inválido", 400);
+  }
 
-      const classification = classifyFile("", filename);
-      reply.header("Content-Type", classification.mime);
-      reply.header("X-Content-Type-Options", "nosniff");
-      reply.header("Cache-Control", "public, max-age=604800, immutable");
+  const { absPath, exists } = await resolveMediaFilePath(tenantId, filename);
+  if (!exists) {
+    throw new AppError("Arquivo não encontrado", 404);
+  }
 
-      const stream = createReadStream(absPath);
-      return reply.send(stream);
+  let fileStat;
+  try {
+    fileStat = await stat(absPath);
+  } catch {
+    throw new AppError("Arquivo não encontrado", 404);
+  }
+
+  const fileSize = fileStat.size;
+  const classification = classifyFile("", filename);
+  const isDownload = request.query.download === "true" || request.query.download === "1" || request.query.dl === "1";
+  const range = request.headers.range;
+
+  // Extrai nome amigável do arquivo para download (removendo prefixo hash randômico se houver)
+  const cleanOriginalName = filename.replace(/^[a-f0-9]+-[a-f0-9]+-/, "");
+
+  if (range && !isDownload) {
+    const parts = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (isNaN(start) || start >= fileSize || (parts[1] && (isNaN(end) || end >= fileSize || start > end))) {
+      reply.status(416).header("Content-Range", `bytes */${fileSize}`);
+      return reply.send();
     }
-  );
+
+    const chunksize = end - start + 1;
+    const stream = createReadStream(absPath, { start, end });
+
+    reply.status(206);
+    reply.header("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+    reply.header("Accept-Ranges", "bytes");
+    reply.header("Content-Length", chunksize);
+    reply.header("Content-Type", classification.mime);
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("Cache-Control", "public, max-age=604800, immutable");
+    return reply.send(stream);
+  }
+
+  reply.header("Content-Length", fileSize);
+  reply.header("Accept-Ranges", "bytes");
+  reply.header("Content-Type", classification.mime);
+  reply.header("X-Content-Type-Options", "nosniff");
+  reply.header("Cache-Control", "public, max-age=604800, immutable");
+
+  if (isDownload) {
+    reply.header(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(cleanOriginalName)}"`
+    );
+  }
+
+  const stream = createReadStream(absPath);
+  return reply.send(stream);
+}
+
+export async function mediaRoutes(app: FastifyInstance) {
+  // Endpoints de download e streaming de arquivos (mídias gerais e mídias WhatsApp)
+  app.get("/media/files/:tenantId/:filename", handleMediaStreamRequest);
+  app.get("/media/wa/:tenantId/:filename", handleMediaStreamRequest);
+  app.get("/api/media/files/:tenantId/:filename", handleMediaStreamRequest);
+  app.get("/api/media/wa/:tenantId/:filename", handleMediaStreamRequest);
 
   // Rotas autenticadas por tenant
   app.register(async (tenantScope) => {

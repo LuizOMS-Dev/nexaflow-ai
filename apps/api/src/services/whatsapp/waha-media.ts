@@ -13,24 +13,65 @@ import { WahaClient } from "./waha-client";
 const MAX_BYTES = 16 * 1024 * 1024;
 
 const ALLOWED: Record<string, { ext: string; kind: "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" }> = {
+  // Imagens
   "image/jpeg": { ext: "jpg", kind: "IMAGE" },
   "image/jpg": { ext: "jpg", kind: "IMAGE" },
   "image/png": { ext: "png", kind: "IMAGE" },
   "image/webp": { ext: "webp", kind: "IMAGE" },
   "image/gif": { ext: "gif", kind: "IMAGE" },
+  "image/svg+xml": { ext: "svg", kind: "IMAGE" },
+  "image/heic": { ext: "heic", kind: "IMAGE" },
+  "image/heif": { ext: "heif", kind: "IMAGE" },
+  "image/bmp": { ext: "bmp", kind: "IMAGE" },
+  // Áudios e Mensagens de Voz
   "audio/ogg": { ext: "ogg", kind: "AUDIO" },
   "audio/opus": { ext: "opus", kind: "AUDIO" },
   "audio/mpeg": { ext: "mp3", kind: "AUDIO" },
+  "audio/mp3": { ext: "mp3", kind: "AUDIO" },
   "audio/mp4": { ext: "m4a", kind: "AUDIO" },
+  "audio/m4a": { ext: "m4a", kind: "AUDIO" },
   "audio/aac": { ext: "aac", kind: "AUDIO" },
+  "audio/x-aac": { ext: "aac", kind: "AUDIO" },
+  "audio/wav": { ext: "wav", kind: "AUDIO" },
+  "audio/x-wav": { ext: "wav", kind: "AUDIO" },
   "audio/webm": { ext: "webm", kind: "AUDIO" },
+  "audio/amr": { ext: "amr", kind: "AUDIO" },
+  // Vídeos
   "video/mp4": { ext: "mp4", kind: "VIDEO" },
+  "video/webm": { ext: "webm", kind: "VIDEO" },
+  "video/quicktime": { ext: "mov", kind: "VIDEO" },
+  "video/3gpp": { ext: "3gp", kind: "VIDEO" },
+  "video/3gpp2": { ext: "3g2", kind: "VIDEO" },
+  "video/x-matroska": { ext: "mkv", kind: "VIDEO" },
+  // Documentos e Planilhas
   "application/pdf": { ext: "pdf", kind: "DOCUMENT" },
   "application/msword": { ext: "doc", kind: "DOCUMENT" },
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
     ext: "docx",
     kind: "DOCUMENT",
   },
+  "application/vnd.ms-excel": { ext: "xls", kind: "DOCUMENT" },
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+    ext: "xlsx",
+    kind: "DOCUMENT",
+  },
+  "application/vnd.ms-powerpoint": { ext: "ppt", kind: "DOCUMENT" },
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": {
+    ext: "pptx",
+    kind: "DOCUMENT",
+  },
+  "text/plain": { ext: "txt", kind: "DOCUMENT" },
+  "text/csv": { ext: "csv", kind: "DOCUMENT" },
+  "application/rtf": { ext: "rtf", kind: "DOCUMENT" },
+  "application/json": { ext: "json", kind: "DOCUMENT" },
+  // Arquivos compactados
+  "application/zip": { ext: "zip", kind: "DOCUMENT" },
+  "application/x-zip-compressed": { ext: "zip", kind: "DOCUMENT" },
+  "application/x-rar-compressed": { ext: "rar", kind: "DOCUMENT" },
+  "application/vnd.rar": { ext: "rar", kind: "DOCUMENT" },
+  "application/x-7z-compressed": { ext: "7z", kind: "DOCUMENT" },
+  "application/x-tar": { ext: "tar", kind: "DOCUMENT" },
+  "application/gzip": { ext: "gz", kind: "DOCUMENT" },
 };
 
 export type StoredMedia = {
@@ -47,9 +88,9 @@ function classifyMime(raw?: string | null): { mime: string; ext: string; kind: S
   const mime = raw.split(";")[0].trim().toLowerCase();
   const hit = ALLOWED[mime];
   if (hit) return { mime, ext: hit.ext, kind: hit.kind };
-  if (mime.startsWith("image/")) return { mime, ext: "bin", kind: "IMAGE" };
-  if (mime.startsWith("audio/")) return { mime, ext: "bin", kind: "AUDIO" };
-  if (mime.startsWith("video/")) return { mime, ext: "bin", kind: "VIDEO" };
+  if (mime.startsWith("image/")) return { mime, ext: "jpg", kind: "IMAGE" };
+  if (mime.startsWith("audio/")) return { mime, ext: "ogg", kind: "AUDIO" };
+  if (mime.startsWith("video/")) return { mime, ext: "mp4", kind: "VIDEO" };
   if (mime.startsWith("application/") || mime === "text/plain") {
     return { mime, ext: "bin", kind: "DOCUMENT" };
   }
@@ -61,12 +102,13 @@ function tenantDir(tenantId: string) {
 }
 
 export function mediaPublicUrl(tenantId: string, filename: string) {
-  return `/media/wa/${tenantId}/${filename}`;
+  return `/api/media/files/${tenantId}/${filename}`;
 }
 
 export function parseMediaPublicUrl(url: string): { tenantId: string; filename: string } | null {
-  const m = url.match(/^\/media\/wa\/([a-z0-9]+)\/([a-zA-Z0-9._-]+)$/);
+  const m = url.match(/^\/(?:api\/)?media\/(?:wa|files)\/([a-z0-9_-]+)\/([a-zA-Z0-9._-]+)$/);
   if (!m) return null;
+  if (m[2].includes("..") || m[2].includes("/") || m[2].includes("\\")) return null;
   return { tenantId: m[1], filename: m[2] };
 }
 
@@ -94,10 +136,13 @@ async function persistBuffer(
     kind: "DOCUMENT" as const,
   };
   const safeHint = (filenameHint || "")
-    .replace(/[^a-zA-Z0-9._-]/g, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
     .slice(0, 40);
   const hash = createHash("sha256").update(buf).digest("hex").slice(0, 16);
-  const filename = `${randomBytes(6).toString("hex")}-${hash}${safeHint ? `-${safeHint}` : ""}.${classified.ext}`;
+  const ext = safeHint && path.extname(safeHint) ? path.extname(safeHint).replace(/^\./, "") : classified.ext;
+  const filename = `${randomBytes(6).toString("hex")}-${hash}${safeHint ? `-${safeHint}` : ""}.${ext}`;
   const dir = tenantDir(tenantId);
   await mkdir(dir, { recursive: true });
   const absPath = path.join(dir, filename);
@@ -132,14 +177,26 @@ export function resolveAllowedWahaMediaUrl(raw: string): string | null {
   } catch {
     /* default waha */
   }
+
+  // Se o caminho aponta para arquivos do WAHA (/api/files/...) ou host é gateway/waha/localhost
   const host = target.hostname.toLowerCase();
-  const ok =
+  const isWahaPath = target.pathname.startsWith("/api/files/") || target.pathname.includes("/files/");
+  const okHost =
     host === allowedHost.toLowerCase() ||
     host === "waha" ||
     host === "localhost" ||
     host === "127.0.0.1";
-  if (!ok) return null;
-  return target.toString();
+
+  if (okHost) {
+    return target.toString();
+  }
+
+  // Em Docker, se a URL do webhook contiver IP externo do host com /api/files/, reescreve para a base interna do container
+  if (isWahaPath) {
+    return `${base}${target.pathname}${target.search}`;
+  }
+
+  return null;
 }
 
 /** Baixa mídia do WAHA (URL autenticada ou data URL) para storage do tenant. */
@@ -152,7 +209,8 @@ export async function downloadWahaMedia(opts: {
   client?: WahaClient;
 }): Promise<StoredMedia | null> {
   if (opts.dataBase64) {
-    const buf = Buffer.from(opts.dataBase64, "base64");
+    const cleanBase64 = opts.dataBase64.replace(/^data:[^;]+;base64,/, "");
+    const buf = Buffer.from(cleanBase64, "base64");
     if (!buf.length) return null;
     return persistBuffer(opts.tenantId, buf, opts.mime, opts.filename);
   }
@@ -166,9 +224,9 @@ export async function downloadWahaMedia(opts: {
   if (key && !/^sha512:/i.test(key)) headers["X-Api-Key"] = key;
 
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 25_000);
+  const t = setTimeout(() => ctrl.abort(), 30_000);
   try {
-    const res = await fetch(safeUrl, { headers, signal: ctrl.signal, redirect: "error" });
+    const res = await fetch(safeUrl, { headers, signal: ctrl.signal, redirect: "follow" });
     if (!res.ok) return null;
     const ct = res.headers.get("content-type") || opts.mime || "";
     const buf = Buffer.from(await res.arrayBuffer());

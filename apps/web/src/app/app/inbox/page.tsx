@@ -969,12 +969,26 @@ function InboxInner() {
         body: formData,
       });
 
+      const mediaType =
+        res.kind === "PDF" || res.kind === "DOCUMENT"
+          ? "DOCUMENT"
+          : res.kind === "IMAGE"
+            ? "IMAGE"
+            : res.kind === "VOICE"
+              ? "VOICE"
+              : res.kind === "AUDIO"
+                ? "AUDIO"
+                : res.kind === "VIDEO"
+                  ? "VIDEO"
+                  : "FILE";
+
       await sendMutation.mutateAsync({
         content: caption || "",
-        type: res.kind === "PDF" ? "DOCUMENT" : res.kind,
+        type: mediaType,
         mediaUrl: res.url,
         metadata: {
           filename: res.filename,
+          originalName: file.name,
           mimetype: res.mimetype,
           sizeBytes: res.sizeBytes,
         },
@@ -2513,7 +2527,11 @@ function InboxInner() {
                               onOpenLightbox={(url) => setLightboxSrc(url)}
                             />
                           )}
-                          {m.content && m.content !== "[mídia]" && (
+                          {m.content &&
+                          (!m.mediaUrl ||
+                            !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^\]]+)?\]$/i.test(
+                              m.content.trim()
+                            )) && (
                             <p className="whitespace-pre-wrap break-words">{m.content}</p>
                           )}
                           {messageMeta(m).deliveryError || messageMeta(m).sendError ? (
