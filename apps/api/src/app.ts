@@ -17,7 +17,8 @@ import { taskRoutes } from "./routes/tasks";
 import { aiAgentRoutes } from "./routes/ai-agents";
 import { agentAdvancedRoutes } from "./routes/agent-advanced";
 import { miscRoutes } from "./routes/misc";
-import { adminRoutes, impersonationStopRoutes } from "./routes/admin";
+import { adminRoutes } from "./routes/admin";
+import { adminImpersonationRoutes } from "./routes/platform-admin/impersonation";
 import { whatsappRoutes } from "./routes/whatsapp";
 import { integrationRoutes } from "./routes/integrations";
 import { publicApiV1Routes } from "./routes/public-api-v1";
@@ -354,7 +355,7 @@ export async function buildApp() {
   await app.register(miscRoutes);
   await app.register(integrationRoutes);
   await app.register(whatsappRoutes);
-  await app.register(impersonationStopRoutes);
+  await app.register(adminImpersonationRoutes);
   await app.register(adminRoutes);
   const { adminDeployRoutes } = await import("./routes/admin-deploy");
   await app.register(adminDeployRoutes);

@@ -1171,10 +1171,3 @@ export async function adminRoutes(app: FastifyInstance) {
     });
   });
 }
-
-/**
- * Encerrar impersonação — já registrado sob platform-admin/impersonation.ts
- */
-export async function impersonationStopRoutes(_app: FastifyInstance) {
-  // No-op para compatibilidade de import
-}

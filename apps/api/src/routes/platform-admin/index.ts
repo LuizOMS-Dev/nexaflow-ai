@@ -10,5 +10,4 @@ export async function platformAdminRoutes(app: FastifyInstance) {
   await app.register(adminTenantsRoutes);
   await app.register(adminMembershipsRoutes);
   await app.register(adminBillingRoutes);
-  await app.register(adminImpersonationRoutes);
 }
