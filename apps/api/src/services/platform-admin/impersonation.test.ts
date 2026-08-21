@@ -179,8 +179,83 @@ describe("Impersonation Support Mode Service", () => {
         metadata: expect.objectContaining({
           durationMs: expect.any(Number),
           reason: "Atendimento de suporte para configuração de canais",
+          returnPath: "/admin/companies/ten_company_1",
         }),
       })
     );
+    expect(result.returnPath).toBe("/admin/companies/ten_company_1");
+  });
+
+  it("sanitiza returnPath evitando open redirect malicioso", async () => {
+    const impersonatedUser: JwtUser = {
+      sub: "usr_client_admin",
+      email: "admin@empresa.com",
+      name: "Cliente Admin",
+      platformRole: "USER",
+      tenantId: "ten_company_1",
+      role: "ADMIN",
+      sid: "ses_imp_1",
+      imp: true,
+      impBy: "usr_super_1",
+    };
+
+    vi.spyOn(prisma.authSession, "findUnique").mockResolvedValue({
+      id: "ses_imp_1",
+      createdAt: new Date(),
+      tenantId: "ten_company_1",
+      impersonationReason: "Suporte",
+    } as any);
+
+    vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
+      id: "usr_super_1",
+      email: "superadmin@nexaflow.ai",
+      name: "Super Admin",
+      platformRole: "SUPERADMIN",
+      memberships: [],
+    } as any);
+
+    vi.spyOn(sessionModule, "revokeSession").mockResolvedValue(undefined as any);
+    vi.spyOn(sessionModule, "createAuthSession").mockResolvedValue({
+      session: { id: "ses_restored_super_2" } as any,
+      refreshToken: "rf_super_restored_2",
+    });
+
+    const jwtSign = vi.fn().mockReturnValue("jwt_token");
+
+    // Tentativa de open redirect para site externo
+    const resultMalicious = await stopImpersonationSession(
+      impersonatedUser,
+      { ip: "127.0.0.1", jwtSign },
+      { returnPath: "https://evil.com/phish" }
+    );
+    expect(resultMalicious.returnPath).toBe("/admin/companies/ten_company_1");
+
+    // Rota administrativa segura válida
+    const resultValid = await stopImpersonationSession(
+      impersonatedUser,
+      { ip: "127.0.0.1", jwtSign },
+      { returnPath: "/admin/companies/ten_company_1/settings" }
+    );
+    expect(resultValid.returnPath).toBe("/admin/companies/ten_company_1/settings");
+  });
+
+  it("impede que usuário comum inicie modo suporte (HTTP 403)", async () => {
+    const commonUser: JwtUser = {
+      sub: "usr_common_1",
+      email: "user@empresa.com",
+      name: "Usuário Comum",
+      platformRole: "USER",
+      tenantId: "ten_1",
+      role: "AGENT",
+      imp: false,
+    };
+
+    await expect(
+      startImpersonationSession(
+        commonUser,
+        { tenantId: "ten_target", reason: "Tentativa de suporte indevida" },
+        { ip: "127.0.0.1", jwtSign: vi.fn() }
+      )
+    ).rejects.toThrow("Apenas Superadministradores podem iniciar sessões de impersonação.");
   });
 });

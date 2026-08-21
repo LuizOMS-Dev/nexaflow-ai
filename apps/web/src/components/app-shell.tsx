@@ -323,10 +323,9 @@ function readImpersonatingFlag(): boolean {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, tenant, memberships, hydrated, logout, switchTenant, setSession, clearTenant } =
+  const { user, tenant, memberships, impersonating, hydrated, logout, switchTenant, setSession, clearTenant, hydrate } =
     useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [impersonating, setImpersonating] = useState(false);
   const [dark, setDark] = useState(false);
   const [appTheme, setAppThemeState] = useState<"light" | "dark" | "system">("system");
   const [enterAnim, setEnterAnim] = useState(false);
@@ -365,6 +364,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (onboarding && !isOnboardingRoute) router.replace("/app/onboarding");
   }, [hydrated, user, tenant, pathname, router, onboarding, isOnboardingRoute]);
 
+  // Sincronização multi-aba do estado de suporte/impersonação
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "nexaflow_impersonation_event" || e.key === "nexaflow_impersonating") {
+        void hydrate();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [hydrate]);
+
   useEffect(() => {
     const pref = getStoredThemePreference();
     const effective = applyTheme(pref);
@@ -378,7 +388,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setUserMenuPortalReady(true);
     try {
       setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1");
-      setImpersonating(readImpersonatingFlag());
     } catch {
       /* ignore */
     }
@@ -389,13 +398,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // SUPERADMIN global: limpa tenant residual e não usa /app operacional
   useEffect(() => {
     if (!hydrated || !user) return;
-    const imp = readImpersonatingFlag();
-    if (user.platformRole !== "SUPERADMIN" || imp) return;
+    if (user.platformRole !== "SUPERADMIN" || impersonating) return;
     if (tenant) clearTenant();
     if (pathname.startsWith("/app") && !pathname.startsWith("/app/account")) {
       router.replace("/admin");
     }
-  }, [hydrated, user, tenant, pathname, router, clearTenant]);
+  }, [hydrated, user, tenant, pathname, router, clearTenant, impersonating]);
 
   // Trava scroll do body no painel — scroll só no main
   useEffect(() => {
@@ -1314,7 +1322,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             role: string;
             tenant: { id: string; name: string; slug: string };
           }>;
-        }>("/admin/stop-impersonation", { method: "POST" });
+          returnPath?: string;
+        }>("/admin/stop-impersonation", {
+          method: "POST",
+          json: { returnPath },
+        });
         if (res.accessToken) setMemToken(res.accessToken);
         return res;
       });
@@ -1322,6 +1334,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       try {
         sessionStorage.removeItem("nexaflow_impersonating");
         sessionStorage.removeItem("nexaflow_admin_return_path");
+        localStorage.setItem("nexaflow_impersonation_event", String(Date.now()));
       } catch {
         /* ignore */
       }
@@ -1334,11 +1347,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         impersonating: false,
       });
 
-      window.location.replace(returnPath);
+      const destination = data.returnPath || returnPath || "/admin/companies";
+      window.location.replace(destination);
     } catch (err) {
       try {
         sessionStorage.removeItem("nexaflow_impersonating");
         sessionStorage.removeItem("nexaflow_admin_return_path");
+        localStorage.setItem("nexaflow_impersonation_event", String(Date.now()));
       } catch {
         /* ignore */
       }

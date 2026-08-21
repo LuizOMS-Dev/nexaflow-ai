@@ -670,6 +670,7 @@ export default function AdminTenantPage() {
     onSuccess: (data) => {
       try {
         sessionStorage.setItem("nexaflow_impersonating", "1");
+        sessionStorage.setItem("nexaflow_admin_return_path", `/admin/companies/${id}`);
       } catch {
         /* ignore */
       }
@@ -682,6 +683,7 @@ export default function AdminTenantPage() {
           platformRole: "SUPERADMIN",
         },
         tenant: data.tenant,
+        impersonating: true,
       });
       setImpOpen(false);
       setStepUpOpen(false);

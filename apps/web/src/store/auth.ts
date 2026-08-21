@@ -88,10 +88,9 @@ function syncImpersonationFlag(
   try {
     if (active) {
       sessionStorage.setItem("nexaflow_impersonating", "1");
-    } else if (platformRole === "SUPERADMIN" && !tenant) {
+    } else {
       sessionStorage.removeItem("nexaflow_impersonating");
-    } else if (!active) {
-      sessionStorage.removeItem("nexaflow_impersonating");
+      sessionStorage.removeItem("nexaflow_admin_return_path");
     }
   } catch {
     /* ignore */
@@ -104,6 +103,7 @@ type AuthState = {
   user: UserInfo | null;
   tenant: TenantInfo | null;
   memberships: MembershipEntry[];
+  impersonating: boolean;
   hydrated: boolean;
   setSession: (data: {
     token: string;
@@ -124,6 +124,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   tenant: null,
   memberships: [],
+  impersonating: false,
   hydrated: false,
 
   setSession: ({ token, user, tenant, memberships, impersonating }) => {
@@ -146,6 +147,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         memberships !== undefined ? memberships : get().memberships,
         imp
       ),
+      impersonating: imp,
     });
   },
 
@@ -164,7 +166,7 @@ export const useAuth = create<AuthState>((set, get) => ({
           "/auth/session-status"
         );
         if (!status.authenticated && !status.refreshAvailable) {
-          set({ hydrated: true, token: null, user: null, tenant: null, memberships: [] });
+          set({ hydrated: true, token: null, user: null, tenant: null, memberships: [], impersonating: false });
           return;
         }
         if (!status.authenticated && status.refreshAvailable) {
@@ -174,7 +176,7 @@ export const useAuth = create<AuthState>((set, get) => ({
             });
             if (refreshed.accessToken) setAccessToken(refreshed.accessToken);
           } catch {
-            set({ hydrated: true, token: null, user: null, tenant: null, memberships: [] });
+            set({ hydrated: true, token: null, user: null, tenant: null, memberships: [], impersonating: false });
             return;
           }
         }
@@ -196,11 +198,12 @@ export const useAuth = create<AuthState>((set, get) => ({
             user: me.user,
             tenant: sanitizeTenantForUser(me.user, me.tenant, imp),
             memberships: sanitizeMembershipsForUser(me.user, me.memberships, imp),
+            impersonating: imp,
             hydrated: true,
           });
           return;
         } catch {
-          set({ hydrated: true, token: null, user: null, tenant: null, memberships: [] });
+          set({ hydrated: true, token: null, user: null, tenant: null, memberships: [], impersonating: false });
           return;
         }
       }
@@ -218,11 +221,12 @@ export const useAuth = create<AuthState>((set, get) => ({
         user: me.user,
         tenant: sanitizeTenantForUser(me.user, me.tenant, imp),
         memberships: sanitizeMembershipsForUser(me.user, me.memberships, imp),
+        impersonating: imp,
         hydrated: true,
       });
     } catch {
       setAccessToken(null);
-      set({ token: null, user: null, tenant: null, memberships: [], hydrated: true });
+      set({ token: null, user: null, tenant: null, memberships: [], impersonating: false, hydrated: true });
     }
   },
 

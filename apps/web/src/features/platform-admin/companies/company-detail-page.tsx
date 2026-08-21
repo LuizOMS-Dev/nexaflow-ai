@@ -406,6 +406,7 @@ function ImpersonateModal({
         user: data.user,
         tenant: data.tenant,
         memberships: [],
+        impersonating: true,
       });
       toast({
         title: "Acesso iniciado",

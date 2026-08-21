@@ -12,6 +12,7 @@ export async function startImpersonationSession(
     tenantId: string;
     userId?: string;
     reason: string;
+    returnPath?: string;
   },
   context: { ip?: string; userAgent?: string; jwtSign: (payload: any) => string }
 ) {
@@ -56,9 +57,17 @@ export async function startImpersonationSession(
     throw new AppError("O usuário selecionado não possui vínculo ativo com esta empresa.", 400, "INVALID_MEMBERSHIP");
   }
 
+  let safeReturnPath = `/admin/companies/${tenant.id}`;
+  if (input.returnPath && typeof input.returnPath === "string") {
+    const trimmed = input.returnPath.trim();
+    if (trimmed.startsWith("/admin") && !trimmed.includes("//") && !trimmed.startsWith("/admin/login")) {
+      safeReturnPath = trimmed;
+    }
+  }
+
   // Revoga a sessão de login anterior do superadmin para dar lugar à sessão de impersonação
   if (superadmin.sid) {
-    await revokeSession(superadmin.sid, "impersonation_start");
+    await revokeSession(superadmin.sid, "impersonation_start").catch(() => null);
   }
 
   // Cria a sessão de impersonação com TTL de 2 horas (hard cap)
@@ -99,6 +108,7 @@ export async function startImpersonationSession(
       reason,
       actorReal: superadmin.sub,
       actorEffective: targetUser.id,
+      returnPath: safeReturnPath,
       expiresAt: session.impersonationExpiresAt,
     },
     ip: context.ip,
@@ -116,6 +126,7 @@ export async function startImpersonationSession(
       reason,
       actorReal: superadmin.sub,
       actorEffective: targetUser.id,
+      returnPath: safeReturnPath,
       expiresAt: session.impersonationExpiresAt,
     },
     ip: context.ip,
@@ -130,6 +141,7 @@ export async function startImpersonationSession(
     metadata: {
       targetUserId: targetUser.id,
       reason,
+      returnPath: safeReturnPath,
       expiresAt: session.impersonationExpiresAt,
     },
   });
@@ -142,6 +154,7 @@ export async function startImpersonationSession(
       active: true,
       by: superadmin.sub,
       reason,
+      returnPath: safeReturnPath,
       expiresAt: session.impersonationExpiresAt,
     },
     tenant: {
@@ -157,14 +170,16 @@ export async function startImpersonationSession(
       id: targetUser.id,
       name: targetUser.name,
       email: targetUser.email,
-      platformRole: "SUPERADMIN",
+      platformRole: targetUser.platformRole || null,
     },
+    returnPath: safeReturnPath,
   };
 }
 
 export async function stopImpersonationSession(
   jwtUser: JwtUser,
-  context: { ip?: string; userAgent?: string; jwtSign: (payload: any) => string }
+  context: { ip?: string; userAgent?: string; jwtSign: (payload: any) => string },
+  input?: { returnPath?: string }
 ) {
   let superadminId = jwtUser.impBy;
 
@@ -246,6 +261,14 @@ export async function stopImpersonationSession(
     await revokeSession(jwtUser.sid, "impersonation_stop").catch(() => null);
   }
 
+  let safeReturnPath = sessionTenantId ? `/admin/companies/${sessionTenantId}` : "/admin/companies";
+  if (input?.returnPath && typeof input.returnPath === "string") {
+    const trimmed = input.returnPath.trim();
+    if (trimmed.startsWith("/admin") && !trimmed.includes("//") && !trimmed.startsWith("/admin/login")) {
+      safeReturnPath = trimmed;
+    }
+  }
+
   // Cria sessão restaurada limpa de Superadmin
   const { session, refreshToken } = await createAuthSession({
     userId: superadmin.id,
@@ -279,6 +302,7 @@ export async function stopImpersonationSession(
       previousUserId: jwtUser.sub,
       previousTenantId: sessionTenantId,
       actorReal: superadmin.id,
+      returnPath: safeReturnPath,
     },
     ip: context.ip,
   }).catch(() => null);
@@ -292,6 +316,7 @@ export async function stopImpersonationSession(
       previousUserId: jwtUser.sub,
       previousTenantId: sessionTenantId,
       actorReal: superadmin.id,
+      returnPath: safeReturnPath,
     },
     ip: context.ip,
   }).catch(() => null);
@@ -301,7 +326,7 @@ export async function stopImpersonationSession(
     userId: superadmin.id,
     tenantId: sessionTenantId || undefined,
     ip: context.ip,
-    metadata: { previousUserId: jwtUser.sub, durationMs },
+    metadata: { previousUserId: jwtUser.sub, durationMs, returnPath: safeReturnPath },
   }).catch(() => null);
 
   return {
@@ -331,5 +356,6 @@ export async function stopImpersonationSession(
     })),
     impersonation: { active: false },
     security: await getSecurityFlags(superadmin.id, superadmin.platformRole),
+    returnPath: safeReturnPath,
   };
 }

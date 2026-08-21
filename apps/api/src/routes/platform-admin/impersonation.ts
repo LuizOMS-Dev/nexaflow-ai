@@ -49,6 +49,7 @@ export async function adminImpersonationRoutes(app: FastifyInstance) {
           tenantId: z.string(),
           userId: z.string().optional(),
           reason: z.string().min(8, "O motivo da impersonação deve ter pelo menos 8 caracteres").max(500),
+          returnPath: z.string().optional(),
         })
         .parse(request.body);
 
@@ -74,6 +75,14 @@ export async function adminImpersonationRoutes(app: FastifyInstance) {
   app.post(
     "/admin/stop-impersonation",
     async (request: FastifyRequest, reply: FastifyReply) => {
+      let bodyReturnPath: string | undefined;
+      try {
+        if (request.body && typeof request.body === "object") {
+          const parsed = z.object({ returnPath: z.string().optional() }).safeParse(request.body);
+          if (parsed.success) bodyReturnPath = parsed.data.returnPath;
+        }
+      } catch {}
+
       let jwtUser: JwtUser | null = null;
       try {
         const auth = request.headers.authorization;
@@ -134,7 +143,8 @@ export async function adminImpersonationRoutes(app: FastifyInstance) {
           ip: request.ip,
           userAgent: request.headers["user-agent"],
           jwtSign: (payload) => app.jwt.sign(payload),
-        }
+        },
+        { returnPath: bodyReturnPath }
       );
 
       setRefreshCookie(reply, result.refreshToken);
