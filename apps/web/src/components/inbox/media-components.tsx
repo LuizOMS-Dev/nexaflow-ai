@@ -186,7 +186,7 @@ export function AudioVoicePlayer({
         )}
       </button>
 
-      <div className="flex flex-1 flex-col justify-center">
+      <div className="flex flex-1 flex-col justify-center min-w-0">
         <input
           type="range"
           min={0}
@@ -195,28 +195,28 @@ export function AudioVoicePlayer({
           onChange={handleSeek}
           aria-label="Progresso do áudio"
           className={cn(
-            "h-1.5 w-full cursor-pointer appearance-none rounded-lg accent-sky-500",
+            "h-1.5 w-full cursor-pointer appearance-none rounded-full focus:outline-none focus-visible:ring-1",
             isOutbound
-              ? "bg-white/30 dark:bg-black/20"
-              : "bg-black/10 dark:bg-white/15"
+              ? "accent-white bg-white/30 dark:bg-black/20 focus-visible:ring-white/50"
+              : "accent-violet-600 bg-black/10 dark:bg-white/15 focus-visible:ring-violet-500/40"
           )}
         />
         <div
           className={cn(
-            "mt-1 flex items-center justify-between text-[10.5px] tabular-nums font-medium",
+            "mt-1 flex items-center justify-between text-[10.5px] tabular-nums font-mono",
             isOutbound
               ? "text-white/80 dark:text-zinc-700"
               : "text-ink-muted dark:text-zinc-400"
           )}
         >
-          <span>{formatSeconds(currentTime)}</span>
+          <span className="font-semibold">{formatSeconds(currentTime)}</span>
           <div className="flex items-center gap-1.5">
             <span>{duration > 0 ? formatSeconds(duration) : "0:00"}</span>
             <button
               type="button"
               onClick={cycleSpeed}
               className={cn(
-                "rounded px-1.5 py-0.5 text-[9.5px] font-bold transition-all tabular-nums",
+                "rounded px-1.5 py-0.5 text-[9.5px] font-bold transition-all tabular-nums cursor-pointer",
                 isOutbound
                   ? "bg-white/20 hover:bg-white/30 text-white dark:bg-black/10 dark:hover:bg-black/20 dark:text-zinc-900"
                   : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-100"

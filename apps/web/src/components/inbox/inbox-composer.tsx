@@ -138,8 +138,29 @@ export function InboxComposer({
   const startRecording = async () => {
     if (internal) return;
     setMicError(null);
+
+    // Reseta completamente qualquer estado e timer de gravação anterior
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current.src = "";
+    }
+    if (previewAudioUrl) {
+      URL.revokeObjectURL(previewAudioUrl);
+      setPreviewAudioUrl(null);
+    }
+    chunksRef.current = [];
+    setRecordedBlob(null);
+    setRecordedDuration(0);
+    setPreviewPlaying(false);
+    setPreviewCurrentTime(0);
+    setRecordSeconds(0);
+    recordSecondsRef.current = 0;
+
     try {
-      chunksRef.current = [];
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
@@ -182,10 +203,10 @@ export function InboxComposer({
       setIsRecording(true);
 
       timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        const elapsed = Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000));
         recordSecondsRef.current = elapsed;
         setRecordSeconds(elapsed);
-      }, 250);
+      }, 200);
     } catch {
       setMicError("Não foi possível acessar o microfone. Verifique a permissão do navegador.");
     }
@@ -197,9 +218,9 @@ export function InboxComposer({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    const finalSecs = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
-    recordSecondsRef.current = finalSecs;
-    setRecordSeconds(finalSecs);
+    const elapsed = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
+    recordSecondsRef.current = elapsed;
+    setRecordSeconds(elapsed);
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
@@ -424,9 +445,21 @@ export function InboxComposer({
                 ref={previewAudioRef}
                 src={previewAudioUrl}
                 preload="metadata"
+                onLoadedMetadata={() => {
+                  const audio = previewAudioRef.current;
+                  if (
+                    audio &&
+                    isFinite(audio.duration) &&
+                    audio.duration > 0 &&
+                    Math.abs(audio.duration - recordSecondsRef.current) <= 1.5
+                  ) {
+                    setRecordedDuration(Math.round(audio.duration));
+                  }
+                }}
                 onTimeUpdate={() => {
                   if (previewAudioRef.current) {
-                    setPreviewCurrentTime(previewAudioRef.current.currentTime);
+                    const ct = previewAudioRef.current.currentTime;
+                    setPreviewCurrentTime(Math.min(ct, recordedDuration || ct));
                   }
                 }}
                 onEnded={() => {
@@ -440,9 +473,13 @@ export function InboxComposer({
                   onClick={togglePreviewAudio}
                   aria-label={previewPlaying ? "Pausar prévia" : "Reproduzir prévia"}
                   title={previewPlaying ? "Pausar prévia" : "Reproduzir prévia"}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-colors shadow-xs active:scale-95"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-colors shadow-xs active:scale-95 cursor-pointer"
                 >
-                  {previewPlaying ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current ml-0.5" />}
+                  {previewPlaying ? (
+                    <Pause className="h-3.5 w-3.5 fill-current" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                  )}
                 </button>
 
                 <div className="flex flex-1 flex-col justify-center min-w-0">
@@ -450,14 +487,16 @@ export function InboxComposer({
                     type="range"
                     min={0}
                     max={recordedDuration || 1}
-                    step={0.1}
+                    step={0.05}
                     value={previewCurrentTime}
                     onChange={handlePreviewSeek}
                     aria-label="Progresso do áudio"
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full accent-violet-600 bg-black/10 dark:bg-white/15 focus:outline-none"
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full accent-violet-600 bg-black/10 dark:bg-white/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40"
                   />
                   <div className="mt-0.5 flex items-center justify-between text-[10px] tabular-nums font-mono text-ink-muted/80 dark:text-zinc-400">
-                    <span>{formatSeconds(previewCurrentTime)}</span>
+                    <span className="font-semibold text-ink dark:text-zinc-200">
+                      {formatSeconds(previewCurrentTime)}
+                    </span>
                     <span>{formatSeconds(recordedDuration)}</span>
                   </div>
                 </div>
@@ -468,7 +507,7 @@ export function InboxComposer({
                   type="button"
                   onClick={discardRecording}
                   disabled={isSendingVoice}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-ink-muted hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 transition-colors"
+                  className="rounded-md px-2 py-1 text-xs font-medium text-ink-muted hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 transition-colors cursor-pointer"
                 >
                   Descartar
                 </button>
@@ -476,9 +515,13 @@ export function InboxComposer({
                   type="button"
                   onClick={submitVoice}
                   disabled={isSendingVoice}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 shadow-xs active:scale-95 transition-all"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 shadow-xs active:scale-95 transition-all cursor-pointer"
                 >
-                  {isSendingVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3 w-3" />}
+                  {isSendingVoice ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3 w-3" />
+                  )}
                   <span>Enviar áudio</span>
                 </button>
               </div>
