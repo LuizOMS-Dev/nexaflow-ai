@@ -1,4 +1,4 @@
-﻿export type TenantSection =
+export type TenantSection =
   | "HOME"
   | "CONVERSATIONS"
   | "CONTACTS"
@@ -20,6 +20,7 @@ export type SectionMeta = {
   id: TenantSection;
   label: string;
   group: SectionGroup;
+  shortDescription: string;
   defaultTitle: string;
   defaultMessage: string;
   routePrefixes: string[];
@@ -30,6 +31,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "HOME",
     label: "Início",
     group: "GERAL",
+    shortDescription: "Painel inicial e visão geral da empresa.",
     defaultTitle: "Início temporariamente indisponível",
     defaultMessage: "Estamos realizando melhorias na tela inicial. As demais áreas continuam funcionando normalmente.",
     routePrefixes: ["/app", "/app/dashboard", "/app/overview"],
@@ -38,6 +40,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "CONVERSATIONS",
     label: "Conversas",
     group: "GERAL",
+    shortDescription: "Atendimento e histórico de conversas.",
     defaultTitle: "Conversas temporariamente indisponíveis",
     defaultMessage: "Estamos realizando melhorias no módulo de atendimento. As demais áreas do NexaFlow continuam funcionando normalmente.",
     routePrefixes: ["/app/inbox", "/app/conversations"],
@@ -46,6 +49,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "CONTACTS",
     label: "Contatos",
     group: "VENDAS",
+    shortDescription: "Gestão e segmentação de contatos.",
     defaultTitle: "Contatos temporariamente indisponíveis",
     defaultMessage: "Estamos atualizando o módulo de contatos. As demais funcionalidades continuam disponíveis.",
     routePrefixes: ["/app/contacts"],
@@ -54,6 +58,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "PIPELINE",
     label: "Funil",
     group: "VENDAS",
+    shortDescription: "Funil de vendas e oportunidades.",
     defaultTitle: "Funil de vendas temporariamente indisponível",
     defaultMessage: "Estamos realizando manutenção no módulo de CRM. As demais áreas continuam operando normalmente.",
     routePrefixes: ["/app/crm", "/app/pipelines", "/app/deals"],
@@ -62,6 +67,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "FINANCE",
     label: "Financeiro",
     group: "VENDAS",
+    shortDescription: "Faturamento e cobranças da empresa.",
     defaultTitle: "Módulo financeiro em manutenção",
     defaultMessage: "Estamos realizando melhorias no faturamento e cobranças da empresa.",
     routePrefixes: ["/app/finance", "/app/billing"],
@@ -70,6 +76,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "TASKS",
     label: "Tarefas",
     group: "VENDAS",
+    shortDescription: "Gerenciamento de tarefas e lembretes.",
     defaultTitle: "Tarefas temporariamente indisponíveis",
     defaultMessage: "Estamos atualizando o módulo de tarefas. As demais áreas continuam funcionando normalmente.",
     routePrefixes: ["/app/tasks"],
@@ -78,6 +85,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "CAMPAIGNS",
     label: "Campanhas",
     group: "VENDAS",
+    shortDescription: "Disparos em massa e campanhas.",
     defaultTitle: "Campanhas temporariamente indisponíveis",
     defaultMessage: "Estamos realizando melhorias na gestão de campanhas. Disparos agendados continuam sendo processados.",
     routePrefixes: ["/app/campaigns"],
@@ -86,6 +94,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "FLOWS",
     label: "Fluxos",
     group: "AUTOMAÇÃO",
+    shortDescription: "Engine de automações e fluxos.",
     defaultTitle: "Editor de fluxos em manutenção",
     defaultMessage: "Estamos atualizando a engine de automações. Fluxos já ativos continuam rodando normalmente.",
     routePrefixes: ["/app/automations"],
@@ -94,6 +103,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "AGENTS",
     label: "Agentes",
     group: "AUTOMAÇÃO",
+    shortDescription: "Agentes de inteligência artificial.",
     defaultTitle: "Configuração de agentes em manutenção",
     defaultMessage: "Estamos atualizando a gestão de agentes. Agentes já publicados continuam respondendo normalmente.",
     routePrefixes: ["/app/ai", "/app/ai-agents", "/app/agents"],
@@ -102,6 +112,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "KNOWLEDGE",
     label: "Conhecimento",
     group: "AUTOMAÇÃO",
+    shortDescription: "Bases e documentos utilizados pelos agentes.",
     defaultTitle: "Base de conhecimento em manutenção",
     defaultMessage: "Estamos atualizando a gestão de documentos. Os documentos indexados continuam disponíveis para consulta da IA.",
     routePrefixes: ["/app/knowledge"],
@@ -110,6 +121,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "TEAM",
     label: "Equipe",
     group: "GESTÃO",
+    shortDescription: "Administração de membros e permissões.",
     defaultTitle: "Gestão de equipe temporariamente indisponível",
     defaultMessage: "Estamos atualizando a administração de membros e permissões.",
     routePrefixes: ["/app/team"],
@@ -118,6 +130,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "CHANNELS",
     label: "Canais",
     group: "GESTÃO",
+    shortDescription: "Configuração dos canais de comunicação.",
     defaultTitle: "Gerenciador de canais em manutenção",
     defaultMessage: "Estamos realizando melhorias na conexão de canais. Canais já conectados continuam funcionando e recebendo mensagens.",
     routePrefixes: ["/app/integrations", "/app/channels", "/app/whatsapp"],
@@ -126,6 +139,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "REPORTS",
     label: "Relatórios",
     group: "GESTÃO",
+    shortDescription: "Central de métricas e relatórios.",
     defaultTitle: "Relatórios temporariamente indisponíveis",
     defaultMessage: "Estamos atualizando a central de métricas e relatórios.",
     routePrefixes: ["/app/reports", "/app/analytics"],
@@ -134,6 +148,7 @@ export const TENANT_SECTIONS: Record<TenantSection, SectionMeta> = {
     id: "SETTINGS",
     label: "Configurações",
     group: "GESTÃO",
+    shortDescription: "Opções de configuração da empresa.",
     defaultTitle: "Configurações em manutenção",
     defaultMessage: "Estamos realizando melhorias nas opções de configuração da empresa.",
     routePrefixes: ["/app/settings", "/app/account"],

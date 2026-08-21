@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Wrench,
-  AlertTriangle,
   CheckCircle2,
   Clock,
   ShieldAlert,
@@ -27,17 +26,16 @@ import {
   ChartColumn,
   Settings,
   X,
-  Edit3,
+  AlertTriangle,
+  Calendar,
 } from "lucide-react";
 import { useToast } from "@/components/ui";
 import { platformAdminApi } from "../api";
 import {
-  EmptyHint,
   ErrorHint,
   Field,
   Panel,
   Skeleton,
-  ToneBadge,
   inputClass,
 } from "../ui";
 import { cn } from "@/lib/utils";
@@ -68,6 +66,23 @@ const SECTION_ICONS: Record<TenantSection, typeof LayoutDashboard> = {
 };
 
 const GROUPS: SectionGroup[] = ["GERAL", "VENDAS", "AUTOMAÇÃO", "GESTÃO"];
+
+function formatFriendlyDateTime(dtStr: string): string {
+  if (!dtStr) return "";
+  try {
+    const d = new Date(dtStr);
+    if (isNaN(d.getTime())) return dtStr;
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    if (isToday) {
+      return `Hoje às ${timeStr}`;
+    }
+    return `${d.toLocaleDateString("pt-BR", { day: "numeric", month: "long" })} às ${timeStr}`;
+  } catch {
+    return dtStr;
+  }
+}
 
 export function MaintenancePanel() {
   const { toast } = useToast();
@@ -100,7 +115,7 @@ export function MaintenancePanel() {
   const [secFormEstimatedEnd, setSecFormEstimatedEnd] = useState("");
   const [secFormInternalReason, setSecFormInternalReason] = useState("");
 
-  // Live Preview Tab
+  // Live Preview Modal
   const [previewMode, setPreviewMode] = useState<"global" | TenantSection | null>(null);
 
   useEffect(() => {
@@ -130,10 +145,10 @@ export function MaintenancePanel() {
       queryClient.invalidateQueries({ queryKey: ["public-maintenance-status"] });
       toast({
         title: res.state.enabled
-          ? "Modo de manutenção global ATIVADO"
-          : "Modo de manutenção global DESATIVADO",
+          ? "Manutenção global ativada"
+          : "Manutenção global encerrada",
         description: res.state.enabled
-          ? "O acesso de todas as empresas foi bloqueado com sucesso."
+          ? "O acesso das empresas foi bloqueado com sucesso."
           : "O acesso de todas as empresas foi restabelecido.",
         kind: "success",
       });
@@ -166,10 +181,10 @@ export function MaintenancePanel() {
       const secMeta = TENANT_SECTIONS[vars.section];
       toast({
         title: vars.enabled
-          ? `Manutenção de ${secMeta?.label || vars.section} ATIVADA`
-          : `Manutenção de ${secMeta?.label || vars.section} DESATIVADA`,
+          ? `Módulo ${secMeta?.label || vars.section} em manutenção`
+          : `Módulo ${secMeta?.label || vars.section} disponível`,
         description: vars.enabled
-          ? `O acesso interativo ao módulo de ${secMeta?.label} foi bloqueado para as empresas.`
+          ? `O acesso ao módulo de ${secMeta?.label} foi pausado para as empresas.`
           : `O módulo de ${secMeta?.label} voltou a operar normalmente.`,
         kind: "success",
       });
@@ -283,71 +298,80 @@ export function MaintenancePanel() {
           "rounded-3xl border p-6 transition-all shadow-sm",
           globalEnabled
             ? "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:border-amber-400/30 dark:bg-amber-950/40 dark:text-amber-200"
-            : "border-black/[0.08] bg-white text-zinc-900 dark:border-white/[0.08] dark:bg-zinc-900/60 dark:text-zinc-100"
+            : "border-white/[0.08] bg-white/[0.02] text-zinc-900 dark:text-zinc-100"
         )}
       >
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-4">
             {globalEnabled ? (
-              <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                <Wrench className="h-6 w-6 animate-pulse" />
+              <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-500">
+                <Wrench className="h-5 w-5 animate-pulse" />
               </div>
             ) : (
-              <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-6 w-6" />
+              <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="h-5 w-5" />
               </div>
             )}
             <div>
-              <div className="flex items-center gap-2.5">
-                <h3 className="text-lg font-bold sm:text-xl">
-                  {globalEnabled ? "Modo de Manutenção Global ATIVO" : "Manutenção Global Desativada"}
-                </h3>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-lg font-bold text-white">Manutenção global</h3>
                 <span
                   className={cn(
-                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide",
+                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold tracking-wide",
                     globalEnabled
-                      ? "bg-amber-500 text-white dark:bg-amber-400 dark:text-black"
-                      : "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                      : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25"
                   )}
                 >
-                  {globalEnabled ? "TODA PLATAFORMA BLOQUEADA" : "GLOBAL OFF"}
+                  {globalEnabled ? "Em manutenção" : "Disponível"}
                 </span>
               </div>
-              <p className="mt-1 text-xs opacity-90 sm:text-sm max-w-2xl leading-relaxed">
+              <p className="mt-1 text-xs text-white/60 sm:text-sm max-w-2xl leading-relaxed">
                 {globalEnabled
-                  ? "O acesso de todas as empresas e usuários comuns está bloqueado (tela cheia 503). O Superadmin mantém acesso total a /admin/*."
-                  : "As empresas têm acesso liberado à plataforma, exceto módulos específicos configurados abaixo."}
+                  ? "O acesso das empresas está temporariamente bloqueado. O Superadmin mantém acesso total a /admin/*."
+                  : "Todas as áreas das empresas estão disponíveis para acesso operacional."}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 self-start sm:self-auto shrink-0">
             <button
               type="button"
               onClick={handleGlobalToggleClick}
               disabled={globalMutation.isPending}
               className={cn(
-                "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold shadow-sm transition-all disabled:opacity-50",
+                "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-xs font-semibold shadow-sm transition-all disabled:opacity-50 cursor-pointer",
                 globalEnabled
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
-                  : "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                  ? "bg-zinc-800 text-white hover:bg-zinc-700 border border-white/10"
+                  : "bg-brand-600 text-white hover:bg-brand-500"
               )}
             >
-              {globalEnabled ? "Encerrar Manutenção Global" : "Ativar Manutenção Global"}
+              {globalEnabled ? "Encerrar manutenção" : "Ativar manutenção global"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. SEÇÃO: MANUTENÇÃO POR SEÇÃO REAL DO NEXAFLOW */}
-      <Panel title="Manutenção por Seção Operacional">
+      {/* 2. SEÇÃO: MANUTENÇÃO POR SEÇÃO OPERACIONAL */}
+      <Panel title="Manutenção por seção">
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-white/60 sm:text-sm">
-            Coloque módulos específicos em manutenção sem afetar o restante da empresa. Webhooks, agentes em atendimento e jobs de fundo continuam funcionando normalmente.
+            Coloque módulos específicos em manutenção sem afetar o restante da empresa. Webhooks e processos internos continuam ativos.
           </p>
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-xs text-white/80">
-            <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-            <span><strong>{activeSectionsCount}</strong> de 14 seções em manutenção</span>
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1 text-xs text-white/80 shrink-0 self-start sm:self-auto">
+            {activeSectionsCount > 0 ? (
+              <>
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <span>
+                  <strong>{activeSectionsCount}</strong> {activeSectionsCount === 1 ? "módulo em manutenção" : "módulos em manutenção"}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                <span>Todos os módulos disponíveis</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -355,8 +379,8 @@ export function MaintenancePanel() {
           {GROUPS.map((group) => {
             const groupSections = ALL_SECTIONS.filter((sec) => TENANT_SECTIONS[sec].group === group);
             return (
-              <div key={group} className="space-y-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">
+              <div key={group} className="space-y-2.5">
+                <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-1">
                   {group}
                 </h4>
 
@@ -371,30 +395,30 @@ export function MaintenancePanel() {
                       <div
                         key={sec}
                         className={cn(
-                          "flex flex-col gap-3 p-4 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                          "flex flex-col gap-3 p-3.5 transition-colors sm:flex-row sm:items-center sm:justify-between",
                           isSecEnabled ? "bg-amber-500/[0.04]" : "hover:bg-white/[0.02]"
                         )}
                       >
                         <div className="flex items-center gap-3.5 min-w-0">
                           <div
                             className={cn(
-                              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors",
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
                               isSecEnabled
                                 ? "border-amber-500/30 bg-amber-500/15 text-amber-400"
                                 : "border-white/[0.08] bg-white/[0.04] text-white/70"
                             )}
                           >
-                            <Icon className="h-5 w-5" />
+                            <Icon className="h-4 w-4" />
                           </div>
 
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-sm text-white">
+                              <span className="font-semibold text-xs text-white sm:text-sm">
                                 {meta.label}
                               </span>
                               <span
                                 className={cn(
-                                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                                  "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide",
                                   isSecEnabled
                                     ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                                     : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/20"
@@ -409,31 +433,33 @@ export function MaintenancePanel() {
                                 </span>
                               ) : null}
                             </div>
-                            <p className="mt-0.5 text-xs text-white/50 truncate max-w-lg">
+                            <p className="mt-0.5 text-xs text-white/50 leading-normal">
                               {state?.internalReason
                                 ? `Motivo interno: ${state.internalReason}`
-                                : meta.defaultMessage}
+                                : meta.shortDescription || meta.defaultMessage}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2.5 self-end sm:self-auto shrink-0">
+                        {/* Ações da linha */}
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0 pt-1 sm:pt-0">
                           <button
                             type="button"
                             onClick={() => setPreviewMode(sec)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/[0.08] transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
+                            title="Visualizar tela do usuário"
                           >
                             <Eye className="h-3.5 w-3.5" />
-                            Visualizar
+                            <span className="hidden md:inline">Visualizar</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleOpenSectionModal(sec)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/[0.08] transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors cursor-pointer"
                           >
-                            <Edit3 className="h-3.5 w-3.5" />
-                            Configurar
+                            <Sliders className="h-3.5 w-3.5" />
+                            <span>Configurar</span>
                           </button>
 
                           <button
@@ -441,10 +467,10 @@ export function MaintenancePanel() {
                             onClick={() => handleQuickToggleSection(sec)}
                             disabled={sectionMutation.isPending}
                             className={cn(
-                              "inline-flex items-center justify-center rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-50",
+                              "inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50 cursor-pointer",
                               isSecEnabled
-                                ? "bg-emerald-600/90 text-white hover:bg-emerald-600"
-                                : "bg-amber-600/90 text-white hover:bg-amber-600"
+                                ? "bg-zinc-800 text-white hover:bg-zinc-700 border border-white/10"
+                                : "bg-brand-600 text-white hover:bg-brand-500"
                             )}
                           >
                             {isSecEnabled ? "Desativar" : "Ativar"}
@@ -461,14 +487,14 @@ export function MaintenancePanel() {
       </Panel>
 
       {/* 3. FORMULÁRIO DE TEXTOS DA MANUTENÇÃO GLOBAL */}
-      <Panel title="Textos da Manutenção Global (Tela Cheia)">
+      <Panel title="Tela de manutenção global">
         <p className="mb-4 text-xs text-white/50">
-          Textos apresentados aos usuários das empresas quando toda a plataforma estiver em manutenção global.
+          Personalize as informações apresentadas aos usuários das empresas quando a plataforma estiver em manutenção global.
         </p>
         <form onSubmit={handleSaveGlobalConfigOnly} className="space-y-4">
           <Field
-            label="Título da tela de manutenção global"
-            hint="Exemplo padrão: Estamos em manutenção"
+            label="Título"
+            hint="Exemplo: Estamos em manutenção"
           >
             <input
               type="text"
@@ -482,8 +508,8 @@ export function MaintenancePanel() {
           </Field>
 
           <Field
-            label="Mensagem explicativa"
-            hint="Explique brevemente que a plataforma está recebendo melhorias e voltará em breve."
+            label="Mensagem"
+            hint="Explique brevemente que a plataforma está em atualização e retornará em breve."
           >
             <textarea
               value={globalMessage}
@@ -499,24 +525,24 @@ export function MaintenancePanel() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Previsão de retorno (opcional)"
-              hint="Exemplo: Hoje às 05:30 ou Em 15 minutos"
+              hint="Data/horário de retorno estimado para os clientes."
             >
               <div className="relative">
                 <input
                   type="text"
                   value={globalEstimatedEnd}
                   onChange={(e) => setGlobalEstimatedEnd(e.target.value)}
-                  placeholder="Ex.: Hoje às 05:30"
+                  placeholder="Ex.: Hoje às 05:30 ou 21 de agosto às 06:00"
                   className={inputClass}
                   maxLength={100}
                 />
-                <Clock className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                <Calendar className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
               </div>
             </Field>
 
             <Field
               label="Motivo interno (confidencial)"
-              hint="Visível somente ao Superadmin. Nunca é exibido aos clientes."
+              hint="Visível somente ao Superadmin no painel de controle."
             >
               <div className="relative">
                 <input
@@ -536,19 +562,19 @@ export function MaintenancePanel() {
             <button
               type="button"
               onClick={() => setPreviewMode("global")}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-semibold text-white/90 hover:bg-white/[0.08]"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-xs font-semibold text-white/90 hover:bg-white/[0.08] cursor-pointer"
             >
               <Eye className="h-4 w-4" />
-              Pré-visualizar Tela Global
+              Pré-visualizar
             </button>
 
             <button
               type="submit"
               disabled={globalMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50 cursor-pointer"
             >
               <Save className="h-4 w-4" />
-              {globalMutation.isPending ? "Salvando..." : "Salvar Textos Globais"}
+              {globalMutation.isPending ? "Salvando..." : "Salvar alterações"}
             </button>
           </div>
         </form>
@@ -556,7 +582,7 @@ export function MaintenancePanel() {
 
       {/* 4. MODAL DE CONFIGURAÇÃO DE SEÇÃO */}
       {editingSection ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xl rounded-3xl border border-white/[0.12] bg-zinc-900 p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
               <div className="flex items-center gap-3">
@@ -565,7 +591,7 @@ export function MaintenancePanel() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    Configurar Manutenção: {TENANT_SECTIONS[editingSection]?.label}
+                    Configurar: {TENANT_SECTIONS[editingSection]?.label}
                   </h3>
                   <p className="text-xs text-white/50">
                     Defina status, textos personalizados e motivo interno para este módulo.
@@ -575,7 +601,7 @@ export function MaintenancePanel() {
               <button
                 type="button"
                 onClick={() => setEditingSection(null)}
-                className="rounded-lg p-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white"
+                className="rounded-lg p-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -584,7 +610,7 @@ export function MaintenancePanel() {
             <form onSubmit={handleSaveSectionModal} className="space-y-4">
               <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
                 <div>
-                  <p className="font-semibold text-sm text-white">Status da Seção</p>
+                  <p className="font-semibold text-sm text-white">Status do módulo</p>
                   <p className="text-xs text-white/50">
                     {secFormEnabled ? "Em manutenção (acesso bloqueado)" : "Disponível (acesso normal)"}
                   </p>
@@ -593,19 +619,19 @@ export function MaintenancePanel() {
                   type="button"
                   onClick={() => setSecFormEnabled((v) => !v)}
                   className={cn(
-                    "rounded-xl px-4 py-2 text-xs font-semibold transition-colors",
+                    "rounded-xl px-4 py-2 text-xs font-semibold transition-colors cursor-pointer",
                     secFormEnabled
                       ? "bg-amber-600 text-white hover:bg-amber-700"
-                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                      : "bg-brand-600 text-white hover:bg-brand-500"
                   )}
                 >
-                  {secFormEnabled ? "Em Manutenção" : "Disponível"}
+                  {secFormEnabled ? "Em manutenção" : "Disponível"}
                 </button>
               </div>
 
               <Field
-                label="Título para as Empresas"
-                hint="Aparecerá no cabeçalho do módulo quando bloqueado"
+                label="Título para as empresas"
+                hint="Exibido no cabeçalho do módulo quando estiver indisponível."
               >
                 <input
                   type="text"
@@ -618,8 +644,8 @@ export function MaintenancePanel() {
               </Field>
 
               <Field
-                label="Mensagem Explicativa"
-                hint="Explique aos clientes o motivo ou que o restante da plataforma segue normal"
+                label="Mensagem explicativa"
+                hint="Explique aos clientes o motivo e que as demais áreas continuam normais."
               >
                 <textarea
                   value={secFormMessage}
@@ -632,7 +658,7 @@ export function MaintenancePanel() {
               </Field>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Previsão de Retorno (opcional)">
+                <Field label="Previsão de retorno (opcional)">
                   <input
                     type="text"
                     value={secFormEstimatedEnd}
@@ -642,12 +668,12 @@ export function MaintenancePanel() {
                   />
                 </Field>
 
-                <Field label="Motivo Interno (confidencial)">
+                <Field label="Motivo interno (confidencial)">
                   <input
                     type="text"
                     value={secFormInternalReason}
                     onChange={(e) => setSecFormInternalReason(e.target.value)}
-                    placeholder="Ex.: Upgrade do gateway WAHA"
+                    placeholder="Ex.: Upgrade do gateway de IA"
                     className={inputClass}
                   />
                 </Field>
@@ -657,17 +683,17 @@ export function MaintenancePanel() {
                 <button
                   type="button"
                   onClick={() => setEditingSection(null)}
-                  className="rounded-xl px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06]"
+                  className="rounded-xl px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06] cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={sectionMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-50 cursor-pointer"
                 >
                   <Save className="h-4 w-4" />
-                  {sectionMutation.isPending ? "Salvando..." : "Salvar Configuração"}
+                  {sectionMutation.isPending ? "Salvando..." : "Salvar alterações"}
                 </button>
               </div>
             </form>
@@ -677,28 +703,28 @@ export function MaintenancePanel() {
 
       {/* 5. MODAL LIVE PREVIEW */}
       {previewMode ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/[0.12] bg-zinc-950 p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/[0.12] bg-zinc-950 p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-2">
                 <Eye className="h-5 w-5 text-brand-400" />
                 <h3 className="text-base font-bold text-white">
                   Pré-visualização:{" "}
                   {previewMode === "global"
-                    ? "Tela Cheia Global"
-                    : `Módulo ${TENANT_SECTIONS[previewMode]?.label}`}
+                    ? "Tela cheia de manutenção global"
+                    : `Módulo ${TENANT_SECTIONS[previewMode]?.label} (com menu lateral)`}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setPreviewMode(null)}
-                className="rounded-lg p-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white"
+                className="rounded-lg p-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="rounded-2xl border border-white/[0.08] bg-black/40 p-4">
+            <div className="rounded-2xl border border-white/[0.08] bg-black/50 p-4">
               {previewMode === "global" ? (
                 <MaintenanceScreen
                   title={globalTitle || "Estamos em manutenção"}
@@ -710,12 +736,14 @@ export function MaintenancePanel() {
                   showAdminLink={true}
                 />
               ) : (
-                <SectionMaintenanceView
-                  section={previewMode}
-                  title={sectionsState[previewMode]?.title}
-                  message={sectionsState[previewMode]?.message}
-                  estimatedEnd={sectionsState[previewMode]?.estimatedEnd}
-                />
+                <div className="rounded-2xl border border-white/[0.08] bg-[#0c0d12] p-6">
+                  <SectionMaintenanceView
+                    section={previewMode}
+                    title={sectionsState[previewMode]?.title}
+                    message={sectionsState[previewMode]?.message}
+                    estimatedEnd={sectionsState[previewMode]?.estimatedEnd}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -724,30 +752,30 @@ export function MaintenancePanel() {
 
       {/* 6. MODAL DE CONFIRMAÇÃO DE ATIVAÇÃO GLOBAL */}
       {showGlobalEnableModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl border border-amber-500/30 bg-zinc-900 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3 text-amber-500">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-3xl border border-white/[0.12] bg-zinc-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-500/20 text-brand-400">
                 <ShieldAlert className="h-6 w-6" />
               </div>
               <div>
                 <h3 className="font-bold text-base text-white">
-                  Ativar Modo de Manutenção Global?
+                  Ativar modo de manutenção global?
                 </h3>
-                <p className="text-xs text-white/60">Ação de alto impacto na plataforma</p>
+                <p className="text-xs text-white/60">Acesso das empresas será bloqueado</p>
               </div>
             </div>
 
             <p className="text-xs leading-relaxed text-white/70">
-              Ao ativar, <strong>todas as empresas e usuários comuns</strong> serão imediatamente bloqueados da plataforma (recebendo tela cheia de manutenção com código HTTP 503). O Superadmin continuará com acesso total.
+              Todas as empresas e usuários comuns receberão a tela de manutenção com código HTTP 503. O Superadmin continuará com acesso total a /admin/*.
             </p>
 
-            <label className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200 cursor-pointer">
+            <label className="flex items-start gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-xs text-white/80 cursor-pointer">
               <input
                 type="checkbox"
                 checked={ackGlobalBlock}
                 onChange={(e) => setAckGlobalBlock(e.target.checked)}
-                className="mt-0.5 rounded border-amber-500/50 bg-black/40 text-amber-500 focus:ring-amber-500"
+                className="mt-0.5 rounded border-white/20 bg-black/40 text-brand-600 focus:ring-brand-500"
               />
               <span>
                 Entendo que o acesso de todas as empresas será temporariamente bloqueado.
@@ -761,7 +789,7 @@ export function MaintenancePanel() {
                   setShowGlobalEnableModal(false);
                   setAckGlobalBlock(false);
                 }}
-                className="rounded-xl px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06]"
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06] cursor-pointer"
               >
                 Cancelar
               </button>
@@ -769,9 +797,9 @@ export function MaintenancePanel() {
                 type="button"
                 onClick={handleConfirmGlobalEnable}
                 disabled={!ackGlobalBlock || globalMutation.isPending}
-                className="rounded-xl bg-amber-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-500 disabled:opacity-40"
+                className="rounded-xl bg-brand-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-brand-500 disabled:opacity-40 cursor-pointer"
               >
-                {globalMutation.isPending ? "Ativando..." : "Confirmar Ativação Global"}
+                {globalMutation.isPending ? "Ativando..." : "Confirmar ativação"}
               </button>
             </div>
           </div>
@@ -780,7 +808,7 @@ export function MaintenancePanel() {
 
       {/* 7. MODAL DE CONFIRMAÇÃO DE DESATIVAÇÃO GLOBAL */}
       {showGlobalDisableModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-3xl border border-emerald-500/30 bg-zinc-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-emerald-400">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/20">
@@ -788,7 +816,7 @@ export function MaintenancePanel() {
               </div>
               <div>
                 <h3 className="font-bold text-base text-white">
-                  Encerrar Manutenção Global?
+                  Encerrar manutenção global?
                 </h3>
                 <p className="text-xs text-white/60">Restabelecer acesso às empresas</p>
               </div>
@@ -802,7 +830,7 @@ export function MaintenancePanel() {
               <button
                 type="button"
                 onClick={() => setShowGlobalDisableModal(false)}
-                className="rounded-xl px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06]"
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-white/70 hover:bg-white/[0.06] cursor-pointer"
               >
                 Cancelar
               </button>
@@ -810,9 +838,9 @@ export function MaintenancePanel() {
                 type="button"
                 onClick={handleConfirmGlobalDisable}
                 disabled={globalMutation.isPending}
-                className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50"
+                className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50 cursor-pointer"
               >
-                {globalMutation.isPending ? "Encerrando..." : "Encerrar e Liberar Acesso"}
+                {globalMutation.isPending ? "Encerrando..." : "Encerrar e liberar acesso"}
               </button>
             </div>
           </div>
