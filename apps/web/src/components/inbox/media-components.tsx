@@ -191,14 +191,17 @@ export function AudioVoicePlayer({
           type="range"
           min={0}
           max={duration || 100}
+          step="any"
           value={currentTime}
           onChange={handleSeek}
           aria-label="Progresso do áudio"
+          aria-valuemin={0}
+          aria-valuemax={duration || 100}
+          aria-valuenow={currentTime}
+          aria-valuetext={formatSeconds(currentTime)}
           className={cn(
-            "h-1.5 w-full cursor-pointer appearance-none rounded-full focus:outline-none focus-visible:ring-1",
-            isOutbound
-              ? "accent-white bg-white/30 dark:accent-violet-400 dark:bg-white/15 focus-visible:ring-white/50"
-              : "accent-violet-600 bg-black/10 dark:accent-violet-400 dark:bg-white/15 focus-visible:ring-violet-500/40"
+            "nf-audio-slider w-full focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40",
+            isOutbound && "nf-audio-slider--outbound bg-white/30 dark:bg-white/15"
           )}
         />
         <div

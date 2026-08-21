@@ -24,7 +24,7 @@ function formatConversationPreview(rawPreview?: string | null): React.ReactNode 
   const trimmed = rawPreview.trim();
 
   // 1. Áudio / Mensagem de voz
-  if (/^([áudio]|[audio]|🎤|áudio|mensagem de voz)/i.test(trimmed)) {
+  if (/^\[(?:áudio|audio|mensagem de voz)(?::.*?)?\]$/i.test(trimmed) || /^🎤/i.test(trimmed) || /^\bmensagem de voz\b/i.test(trimmed)) {
     return (
       <span className="inline-flex items-center gap-1">
         <Mic className="h-3 w-3 shrink-0 text-violet-600 dark:text-violet-400" />
@@ -34,8 +34,9 @@ function formatConversationPreview(rawPreview?: string | null): React.ReactNode 
   }
 
   // 2. Foto / Imagem
-  if (/^([imagem]|📷|foto|imagem)/i.test(trimmed)) {
-    const caption = trimmed.replace(/^([imagem(?::s*)?]?|📷|foto|imagem)[:s-]*/i, "").trim();
+  const imageMatch = trimmed.match(/^\[imagem(?::\s*(.+?))?\]$/i);
+  if (imageMatch || /^📷/i.test(trimmed) || /^\[foto\]/i.test(trimmed)) {
+    const caption = imageMatch?.[1]?.trim() || "";
     return (
       <span className="inline-flex items-center gap-1">
         <Camera className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400" />
@@ -45,8 +46,9 @@ function formatConversationPreview(rawPreview?: string | null): React.ReactNode 
   }
 
   // 3. Vídeo
-  if (/^([vídeo]|[video]|🎥|vídeo|video)/i.test(trimmed)) {
-    const caption = trimmed.replace(/^([v[íi]deo(?::s*)?]?|🎥|v[íi]deo)[:s-]*/i, "").trim();
+  const videoMatch = trimmed.match(/^\[v[íi]deo(?::\s*(.+?))?\]$/i);
+  if (videoMatch || /^🎥/i.test(trimmed)) {
+    const caption = videoMatch?.[1]?.trim() || "";
     return (
       <span className="inline-flex items-center gap-1">
         <Film className="h-3 w-3 shrink-0 text-rose-600 dark:text-rose-400" />
@@ -56,8 +58,9 @@ function formatConversationPreview(rawPreview?: string | null): React.ReactNode 
   }
 
   // 4. Documento
-  if (/^([documento]|📄|documento|pdf)/i.test(trimmed)) {
-    const docName = trimmed.replace(/^([documento(?::s*)?]?|📄|documento)[:s-]*/i, "").trim();
+  const docMatch = trimmed.match(/^\[documento(?::\s*(.+?))?\]$/i);
+  if (docMatch || /^📄/i.test(trimmed)) {
+    const docName = docMatch?.[1]?.trim() || "";
     return (
       <span className="inline-flex items-center gap-1">
         <FileText className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -66,9 +69,20 @@ function formatConversationPreview(rawPreview?: string | null): React.ReactNode 
     );
   }
 
-  // 5. Arquivo
-  if (/^([arquivo]|[mídia]|[midia]|📎|arquivo)/i.test(trimmed)) {
-    const fileName = trimmed.replace(/^([arquivo(?::s*)?]?|[m[íi]dia(?::s*)?]?|📎|arquivo)[:s-]*/i, "").trim();
+  // 5. Sticker / Figurinha
+  if (/^\[(?:sticker|figurinha)(?::.*?)?\]$/i.test(trimmed)) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Sparkles className="h-3 w-3 shrink-0 text-amber-500 dark:text-amber-400" />
+        <span>Figurinha</span>
+      </span>
+    );
+  }
+
+  // 6. Arquivo / Mídia genérica
+  const fileMatch = trimmed.match(/^\[(?:arquivo|m[íi]dia|midia)(?::\s*(.+?))?\]$/i);
+  if (fileMatch || /^📎/i.test(trimmed)) {
+    const fileName = fileMatch?.[1]?.trim() || "";
     return (
       <span className="inline-flex items-center gap-1">
         <Paperclip className="h-3 w-3 shrink-0 text-zinc-500 dark:text-zinc-400" />
@@ -77,7 +91,7 @@ function formatConversationPreview(rawPreview?: string | null): React.ReactNode 
     );
   }
 
-  // 6. Texto normal
+  // 7. Texto normal
   return <span>{trimmed}</span>;
 }
 

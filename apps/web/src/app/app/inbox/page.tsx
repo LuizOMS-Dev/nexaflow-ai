@@ -1180,15 +1180,10 @@ function InboxPageContent() {
         >
           {/* Header da Lista */}
           <div className="shrink-0 space-y-2 border-b border-black/[0.06] p-3 dark:border-white/[0.06]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center">
               <h2 className="text-sm font-semibold tracking-tight text-ink dark:text-white">
                 Conversas
               </h2>
-              {listTotal > 0 && (
-                <span className="tabular-nums text-[11px] font-medium text-ink-muted/80 dark:text-zinc-400">
-                  {listTotal}
-                </span>
-              )}
             </div>
 
             {/* Busca Rápida */}
@@ -1270,18 +1265,18 @@ function InboxPageContent() {
               open={filtersOpen}
               onOpenChange={setFiltersOpen}
               align="left"
-              minWidth={220}
-              maxWidth={280}
+              minWidth={240}
+              maxWidth={300}
               triggerClassName="w-full"
-              className="p-1.5 shadow-xl border-black/[0.08] dark:border-white/[0.08] dark:bg-[#12141c] rounded-xl"
+              className="p-2 shadow-xl border-black/[0.08] dark:border-white/[0.08] dark:bg-[#12141c] rounded-xl"
               trigger={
                 <button
                   type="button"
                   className={cn(
-                    "inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors",
+                    "flex h-7 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer",
                     secondaryFilterCount > 0 || filtersOpen
                       ? "border-violet-500/25 bg-violet-500/[0.04] text-violet-800 dark:border-violet-400/25 dark:bg-violet-500/[0.06] dark:text-violet-200"
-                      : "border-black/[0.06] bg-black/[0.015] text-ink-secondary hover:bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.04]"
+                      : "border-black/[0.06] bg-black/[0.015] text-ink-secondary hover:bg-black/[0.04] dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.05]"
                   )}
                 >
                   <Filter className="h-3 w-3" />

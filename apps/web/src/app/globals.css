@@ -10654,3 +10654,63 @@ html:not(.dark) .nf-asb {
   min-height: 0;
   overflow: hidden;
 }
+
+/* Audio Player Custom Range Slider (NexaFlow Design System) */
+.nf-audio-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.1);
+  outline: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.dark .nf-audio-slider {
+  background: rgba(255, 255, 255, 0.15);
+}
+.nf-audio-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgb(124, 58, 237);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  border: 1.5px solid #ffffff;
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+.nf-audio-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgb(124, 58, 237);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  border: 1.5px solid #ffffff;
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+.nf-audio-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+.nf-audio-slider:hover::-moz-range-thumb {
+  transform: scale(1.25);
+}
+.nf-audio-slider--outbound::-webkit-slider-thumb {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+.nf-audio-slider--outbound::-moz-range-thumb {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+.dark .nf-audio-slider--outbound::-webkit-slider-thumb {
+  background: rgb(167, 139, 250);
+  border-color: #ffffff;
+}
+.dark .nf-audio-slider--outbound::-moz-range-thumb {
+  background: rgb(167, 139, 250);
+  border-color: #ffffff;
+}
