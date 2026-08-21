@@ -63,18 +63,18 @@ export function Checkbox({
         }
       }}
       className={cn(
-        "relative flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border text-white transition-all duration-150",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0d12]",
+        "relative flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition-all duration-150",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2",
         checked
-          ? "border-amber-500 bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]"
-          : "border-white/20 bg-white/[0.04] hover:border-white/30 hover:bg-white/[0.07]",
+          ? "border-violet-600 bg-violet-600 text-white shadow-xs dark:border-violet-500 dark:bg-violet-500"
+          : "border-black/20 bg-black/[0.02] hover:border-black/30 dark:border-white/20 dark:bg-white/[0.03] dark:hover:border-white/30",
         disabled && "cursor-not-allowed opacity-40",
         className
       )}
     >
       <svg
         className={cn(
-          "h-3 w-3 stroke-[2.5] transition-transform duration-150",
+          "h-2.5 w-2.5 stroke-[3] transition-transform duration-150",
           checked ? "scale-100 opacity-100" : "scale-50 opacity-0"
         )}
         viewBox="0 0 24 24"

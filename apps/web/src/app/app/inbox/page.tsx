@@ -65,6 +65,7 @@ import {
   statusLabel,
 } from "@/lib/utils";
 import {
+  Checkbox,
   Dropdown,
   DropdownItem,
   FormField,
@@ -74,6 +75,7 @@ import {
   Spinner,
   useToast,
 } from "@/components/ui";
+import { Popover } from "@/components/ui-menu";
 import { useAuth } from "@/store/auth";
 import {
   getContactDisplayName,
@@ -498,7 +500,6 @@ function InboxPageContent() {
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesCountRef = useRef(0);
-  const filtersRef = useRef<HTMLDivElement | null>(null);
 
   const canHardDelete =
     user?.platformRole === "SUPERADMIN" ||
@@ -509,16 +510,6 @@ function InboxPageContent() {
     const t = setTimeout(() => setSearch(searchInput), 250);
     return () => clearTimeout(t);
   }, [searchInput]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
-        setFiltersOpen(false);
-      }
-    };
-    if (filtersOpen) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [filtersOpen]);
 
   const listParamsKey = useMemo(
     () =>
@@ -1274,69 +1265,109 @@ function InboxPageContent() {
               })}
             </nav>
 
-            {/* Filtros Secundários */}
-            <div className="relative" ref={filtersRef}>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors",
-                  secondaryFilterCount > 0 || filtersOpen
-                    ? "border-violet-500/25 bg-violet-500/[0.04] text-violet-800 dark:border-violet-400/25 dark:bg-violet-500/[0.06] dark:text-violet-200"
-                    : "border-black/[0.06] bg-black/[0.015] text-ink-secondary hover:bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.04]"
-                )}
-                onClick={() => setFiltersOpen((v) => !v)}
-              >
-                <Filter className="h-3 w-3" />
-                <span>{secondaryFilterCount > 0 ? `Filtros · ${secondaryFilterCount}` : "Filtros"}</span>
-              </button>
-
-              {filtersOpen && (
-                <div className="absolute left-0 right-0 z-20 mt-1 space-y-1 rounded-xl border border-black/[0.08] bg-white p-2 shadow-xl dark:border-white/[0.1] dark:bg-[#161a22]">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-black/[0.03] dark:hover:bg-white/[0.04]">
-                    <input
-                      type="checkbox"
-                      className="rounded border-black/20"
-                      checked={unreadOnly}
-                      onChange={(e) => setUnreadOnly(e.target.checked)}
-                    />
-                    Não lidas
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-black/[0.03] dark:hover:bg-white/[0.04]">
-                    <input
-                      type="checkbox"
-                      className="rounded border-black/20"
-                      checked={needsApproval}
-                      onChange={(e) => setNeedsApproval(e.target.checked)}
-                    />
-                    Aguardando aprovação IA
-                  </label>
-                  {opsNav === "closed" && (
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-black/[0.03] dark:hover:bg-white/[0.04]">
-                      <input
-                        type="checkbox"
-                        className="rounded border-black/20"
-                        checked={archivedView}
-                        onChange={(e) => setArchivedView(e.target.checked)}
-                      />
-                      Arquivadas
-                    </label>
+            {/* Filtros Secundários com Popover Flutuante */}
+            <Popover
+              open={filtersOpen}
+              onOpenChange={setFiltersOpen}
+              align="left"
+              minWidth={220}
+              maxWidth={280}
+              triggerClassName="w-full"
+              className="p-1.5 shadow-xl border-black/[0.08] dark:border-white/[0.08] dark:bg-[#12141c] rounded-xl"
+              trigger={
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition-colors",
+                    secondaryFilterCount > 0 || filtersOpen
+                      ? "border-violet-500/25 bg-violet-500/[0.04] text-violet-800 dark:border-violet-400/25 dark:bg-violet-500/[0.06] dark:text-violet-200"
+                      : "border-black/[0.06] bg-black/[0.015] text-ink-secondary hover:bg-black/[0.03] dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.04]"
                   )}
-                  {secondaryFilterCount > 0 && (
+                >
+                  <Filter className="h-3 w-3" />
+                  <span>{secondaryFilterCount > 0 ? `Filtros · ${secondaryFilterCount}` : "Filtros"}</span>
+                </button>
+              }
+            >
+              {() => (
+                <div className="space-y-0.5 text-xs">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint dark:text-zinc-500">
+                    Filtrar por
+                  </div>
+
+                  {/* Row 1: Não lidas */}
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={unreadOnly}
+                    onClick={() => setUnreadOnly((v) => !v)}
+                    className="flex w-full cursor-pointer select-none items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-ink transition-colors hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
+                  >
+                    <Checkbox
+                      checked={unreadOnly}
+                      onCheckedChange={setUnreadOnly}
+                      aria-label="Não lidas"
+                      className="pointer-events-none"
+                    />
+                    <span className="flex-1">Não lidas</span>
+                  </button>
+
+                  {/* Row 2: Aguardando aprovação IA */}
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={needsApproval}
+                    onClick={() => setNeedsApproval((v) => !v)}
+                    className="flex w-full cursor-pointer select-none items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-ink transition-colors hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
+                  >
+                    <Checkbox
+                      checked={needsApproval}
+                      onCheckedChange={setNeedsApproval}
+                      aria-label="Aguardando aprovação IA"
+                      className="pointer-events-none"
+                    />
+                    <span className="flex-1">Aguardando aprovação IA</span>
+                  </button>
+
+                  {/* Row 3 (se em Encerradas): Arquivadas */}
+                  {opsNav === "closed" && (
                     <button
                       type="button"
-                      className="w-full rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
-                      onClick={() => {
-                        setUnreadOnly(false);
-                        setNeedsApproval(false);
-                        setArchivedView(false);
-                      }}
+                      role="checkbox"
+                      aria-checked={archivedView}
+                      onClick={() => setArchivedView((v) => !v)}
+                      className="flex w-full cursor-pointer select-none items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-ink transition-colors hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
                     >
-                      Limpar filtros
+                      <Checkbox
+                        checked={archivedView}
+                        onCheckedChange={setArchivedView}
+                        aria-label="Arquivadas"
+                        className="pointer-events-none"
+                      />
+                      <span className="flex-1">Arquivadas</span>
                     </button>
+                  )}
+
+                  {/* Limpar filtros */}
+                  {secondaryFilterCount > 0 && (
+                    <div className="pt-1 mt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-lg px-2 py-1 text-left text-[11px] font-medium text-violet-600 hover:bg-violet-500/10 dark:text-violet-400"
+                        onClick={() => {
+                          setUnreadOnly(false);
+                          setNeedsApproval(false);
+                          setArchivedView(false);
+                        }}
+                      >
+                        <span>Limpar filtros</span>
+                        <span className="text-[10px] text-ink-faint dark:text-zinc-500">Resetar</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
-            </div>
+            </Popover>
           </div>
 
           {/* Lista com Scroll */}
@@ -1360,8 +1391,27 @@ function InboxPageContent() {
               />
             ))}
             {items.length === 0 && !listQuery.isLoading && (
-              <div className="p-8 text-center text-xs text-ink-muted dark:text-zinc-500">
-                Nenhuma conversa encontrada nesta fila.
+              <div className="flex flex-col items-center justify-center p-8 text-center text-xs">
+                {secondaryFilterCount > 0 || search.trim() ? (
+                  <>
+                    <p className="text-ink-muted dark:text-zinc-400">Nenhuma conversa corresponde aos filtros.</p>
+                    {secondaryFilterCount > 0 && (
+                      <button
+                        type="button"
+                        className="mt-2 text-xs font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300 underline cursor-pointer"
+                        onClick={() => {
+                          setUnreadOnly(false);
+                          setNeedsApproval(false);
+                          setArchivedView(false);
+                        }}
+                      >
+                        Limpar filtros
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-ink-muted dark:text-zinc-500">Nenhuma conversa encontrada nesta fila.</p>
+                )}
               </div>
             )}
           </div>
