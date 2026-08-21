@@ -37,8 +37,15 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   // IP real se disponível (rate limit)
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) headers.set("x-forwarded-for", fwd);
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp) headers.set("x-real-ip", realIp);
+  // Suporte a streaming de áudio/vídeo (HTTP Range)
+  const range = req.headers.get("range");
+  if (range) headers.set("range", range);
+  const ifRange = req.headers.get("if-range");
+  if (ifRange) headers.set("if-range", ifRange);
+  const ifNoneMatch = req.headers.get("if-none-match");
+  if (ifNoneMatch) headers.set("if-none-match", ifNoneMatch);
+  const ifModifiedSince = req.headers.get("if-modified-since");
+  if (ifModifiedSince) headers.set("if-modified-since", ifModifiedSince);
 
   const init: RequestInit = {
     method: req.method,
@@ -63,7 +70,20 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
     const out = new Headers();
     const ct = upstream.headers.get("content-type");
     if (ct) out.set("content-type", ct);
-    out.set("cache-control", "no-store");
+    const cr = upstream.headers.get("content-range");
+    if (cr) out.set("content-range", cr);
+    const ar = upstream.headers.get("accept-ranges");
+    if (ar) out.set("accept-ranges", ar);
+    const cl = upstream.headers.get("content-length");
+    if (cl) out.set("content-length", cl);
+    const cd = upstream.headers.get("content-disposition");
+    if (cd) out.set("content-disposition", cd);
+    const cc = upstream.headers.get("cache-control");
+    if (cc) out.set("cache-control", cc);
+    const et = upstream.headers.get("etag");
+    if (et) out.set("etag", et);
+    const lm = upstream.headers.get("last-modified");
+    if (lm) out.set("last-modified", lm);
 
     // repassa Set-Cookie (pode haver vários)
     const getSetCookie = (upstream.headers as Headers & { getSetCookie?: () => string[] })

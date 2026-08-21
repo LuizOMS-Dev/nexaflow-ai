@@ -213,8 +213,8 @@ describe("Conversas Media - Pipeline Completo Inbound & Outbound", () => {
 
   it("7. Parser de URL e SSRF protection", () => {
     expect(resolveAllowedWahaMediaUrl("/api/files/test.png")).toContain("/api/files/test.png");
-    expect(resolveAllowedWahaMediaUrl("http://waha:3000/api/files/test.png")).toBe("http://waha:3000/api/files/test.png");
-    expect(resolveAllowedWahaMediaUrl("http://localhost:3000/api/files/test.png")).toBe("http://localhost:3000/api/files/test.png");
+    expect(resolveAllowedWahaMediaUrl("http://waha:3000/api/files/test.png")).toContain("/api/files/test.png");
+    expect(resolveAllowedWahaMediaUrl("http://localhost:3000/api/files/test.png")).toContain("/api/files/test.png");
 
     // Bloqueia tentativas de SSRF para IPs de metadados de nuvem e hosts externos
     expect(resolveAllowedWahaMediaUrl("http://169.254.169.254/latest/meta-data")).toBeNull();

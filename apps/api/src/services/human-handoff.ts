@@ -679,6 +679,11 @@ export async function resumeAiAttendance(params: {
     );
   }
 
+  // Idempotente: se já estiver sem atendente e aberto, não duplica evento
+  if (!conv.assignedToId && conv.status === "OPEN") {
+    return { ok: true, conversationId: conv.id };
+  }
+
   await prisma.conversation.update({
     where: { id: conv.id },
     data: {

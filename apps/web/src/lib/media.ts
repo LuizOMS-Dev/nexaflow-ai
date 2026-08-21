@@ -22,7 +22,7 @@ export function resolveMediaUrl(url?: string | null): string | null {
     return `/nexa-avatars/${trimmed}.svg`;
   }
 
-  // Mídias do backend (/media/... ou /api/media/...)
+  // Mídias do backend (/media/... ou /api/media/... ou /storage/...)
   const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
   const base = apiUrl.startsWith("http") || apiUrl.startsWith("/") ? apiUrl : "/nexa-api";
 
@@ -37,11 +37,20 @@ export function resolveMediaUrl(url?: string | null): string | null {
     return base === "/nexa-api" ? `/nexa-api${normalized}` : `${base}${normalized}`;
   }
 
+  if (normalized.startsWith("/storage/wa/") || normalized.startsWith("/storage/media/")) {
+    const subPath = normalized.replace(/^\/storage/, "/media");
+    return base === "/nexa-api" ? `/nexa-api${subPath}` : `${base}${subPath}`;
+  }
+
+  if (normalized.startsWith("/wa/") || normalized.startsWith("/files/")) {
+    return base === "/nexa-api" ? `/nexa-api/media${normalized}` : `${base}/media${normalized}`;
+  }
+
   if (normalized.startsWith("/nexa-api/")) {
     return normalized;
   }
 
-  return normalized;
+  return base === "/nexa-api" ? `/nexa-api${normalized}` : `${base}${normalized}`;
 }
 
 export function formatBytes(bytes?: number | null): string {

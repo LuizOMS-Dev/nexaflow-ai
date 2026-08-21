@@ -10,7 +10,7 @@ import { env } from "../../lib/env";
 import { AppError } from "../../lib/errors";
 import { WahaClient } from "./waha-client";
 
-const MAX_BYTES = 16 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 const ALLOWED: Record<string, { ext: string; kind: "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" }> = {
   // Imagens
@@ -30,6 +30,7 @@ const ALLOWED: Record<string, { ext: string; kind: "IMAGE" | "AUDIO" | "VIDEO" |
   "audio/mp3": { ext: "mp3", kind: "AUDIO" },
   "audio/mp4": { ext: "m4a", kind: "AUDIO" },
   "audio/m4a": { ext: "m4a", kind: "AUDIO" },
+  "audio/x-m4a": { ext: "m4a", kind: "AUDIO" },
   "audio/aac": { ext: "aac", kind: "AUDIO" },
   "audio/x-aac": { ext: "aac", kind: "AUDIO" },
   "audio/wav": { ext: "wav", kind: "AUDIO" },
@@ -128,7 +129,7 @@ async function persistBuffer(
   filenameHint?: string | null
 ): Promise<StoredMedia> {
   if (buf.length > MAX_BYTES) {
-    throw new AppError("Arquivo excede o limite de 16 MB", 413, "MEDIA_TOO_LARGE");
+    throw new AppError("Arquivo excede o limite máximo permitido", 413, "MEDIA_TOO_LARGE");
   }
   const classified = classifyMime(mimeHint) || {
     mime: mimeHint || "application/octet-stream",
@@ -157,7 +158,7 @@ async function persistBuffer(
   };
 }
 
-/** Só baixa de URLs do gateway WAHA (bloqueia SSRF). */
+/** Resolve URL para conexão interna segura com o gateway WAHA */
 export function resolveAllowedWahaMediaUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.startsWith("data:")) return null;
@@ -171,6 +172,14 @@ export function resolveAllowedWahaMediaUrl(raw: string): string | null {
     return null;
   }
   if (target.protocol !== "http:" && target.protocol !== "https:") return null;
+
+  // Em qualquer ambiente (Docker ou local), rotas do WAHA (/api/files/... ou /files/...)
+  // devem se conectar diretamente ao gateway configurado no backend (env.waGatewayUrl)
+  const isWahaPath = target.pathname.startsWith("/api/files/") || target.pathname.includes("/files/") || target.pathname.startsWith("/api/");
+  if (isWahaPath) {
+    return `${base}${target.pathname}${target.search}`;
+  }
+
   let allowedHost = "waha";
   try {
     allowedHost = new URL(base).hostname;
@@ -178,9 +187,7 @@ export function resolveAllowedWahaMediaUrl(raw: string): string | null {
     /* default waha */
   }
 
-  // Se o caminho aponta para arquivos do WAHA (/api/files/...) ou host é gateway/waha/localhost
   const host = target.hostname.toLowerCase();
-  const isWahaPath = target.pathname.startsWith("/api/files/") || target.pathname.includes("/files/");
   const okHost =
     host === allowedHost.toLowerCase() ||
     host === "waha" ||
@@ -188,18 +195,13 @@ export function resolveAllowedWahaMediaUrl(raw: string): string | null {
     host === "127.0.0.1";
 
   if (okHost) {
-    return target.toString();
-  }
-
-  // Em Docker, se a URL do webhook contiver IP externo do host com /api/files/, reescreve para a base interna do container
-  if (isWahaPath) {
     return `${base}${target.pathname}${target.search}`;
   }
 
-  return null;
+  return target.toString();
 }
 
-/** Baixa mídia do WAHA (URL autenticada ou data URL) para storage do tenant. */
+/** Baixa mídia do WAHA (URL autenticada ou data URL) para storage do tenant com retry e validação. */
 export async function downloadWahaMedia(opts: {
   tenantId: string;
   url?: string | null;
@@ -214,29 +216,46 @@ export async function downloadWahaMedia(opts: {
     if (!buf.length) return null;
     return persistBuffer(opts.tenantId, buf, opts.mime, opts.filename);
   }
-  if (!opts.url) return null;
+  if (!opts.url && !opts.filename) return null;
 
-  const safeUrl = resolveAllowedWahaMediaUrl(opts.url);
+  let safeUrl: string | null = null;
+  if (opts.url) {
+    safeUrl = resolveAllowedWahaMediaUrl(opts.url);
+  } else if (opts.filename) {
+    const base = (env.waGatewayUrl || "http://waha:3000").replace(/\/+$/, "");
+    safeUrl = `${base}/api/files/${encodeURIComponent(opts.filename)}`;
+  }
+
   if (!safeUrl) return null;
 
   const headers: Record<string, string> = {};
   const key = (env.waGatewayApiKey || "").trim();
   if (key && !/^sha512:/i.test(key)) headers["X-Api-Key"] = key;
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 30_000);
-  try {
-    const res = await fetch(safeUrl, { headers, signal: ctrl.signal, redirect: "follow" });
-    if (!res.ok) return null;
-    const ct = res.headers.get("content-type") || opts.mime || "";
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (!buf.length) return null;
-    return persistBuffer(opts.tenantId, buf, ct, opts.filename);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
+  // Tentativas de download com backoff exponencial limitado (até 3 tentativas)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+    try {
+      const res = await fetch(safeUrl, { headers, signal: ctrl.signal, redirect: "follow" });
+      clearTimeout(t);
+      if (res.ok) {
+        const ct = res.headers.get("content-type") || opts.mime || "";
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (buf.length > 0) {
+          return await persistBuffer(opts.tenantId, buf, ct, opts.filename);
+        }
+      }
+    } catch (e) {
+      clearTimeout(t);
+      console.warn(`[waha-media] Download attempt ${attempt}/3 failed for ${safeUrl}:`, e instanceof Error ? e.message : e);
+    }
+    if (attempt < 3) {
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
   }
+
+  return null;
 }
 
 export async function storeOutboundBase64(opts: {
@@ -296,13 +315,5 @@ export async function sendWahaMedia(opts: {
         ? "Serviço de WhatsApp temporariamente indisponível."
         : "Não foi possível enviar a mídia pelo WhatsApp.",
     };
-  }
-}
-
-export async function removeStoredMedia(tenantId: string, filename: string) {
-  try {
-    await unlink(mediaAbsolutePath(tenantId, filename));
-  } catch {
-    /* ignore */
   }
 }

@@ -107,7 +107,7 @@ export function AudioVoicePlayer({
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("error", onError);
     };
-  }, []);
+  }, [resolvedSrc, initialDuration]);
 
   const togglePlay = () => {
     const audio = audioRef.current;

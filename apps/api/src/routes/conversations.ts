@@ -218,6 +218,23 @@ export async function conversationRoutes(app: FastifyInstance) {
       conversation.isUnread = false;
     }
 
+    // Auto-recuperação de mídias com URL pendente
+    const hasPendingMedia = conversation.messages.some(
+      (m) =>
+        !m.mediaUrl &&
+        ["AUDIO", "VOICE", "IMAGE", "VIDEO", "DOCUMENT", "FILE"].includes(m.type)
+    );
+    if (hasPendingMedia) {
+      setImmediate(async () => {
+        try {
+          const { recoverConversationMedia } = await import("../services/whatsapp");
+          await recoverConversationMedia(request.user.tenantId!, id);
+        } catch {
+          /* best-effort */
+        }
+      });
+    }
+
     return conversation;
   });
 

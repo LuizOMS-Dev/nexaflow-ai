@@ -258,10 +258,18 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     (audMsg && typeof audMsg.url === "string" && audMsg.url) ||
     undefined;
 
+  const rawBody =
+    (typeof dig(p, "_data", "body") === "string" && (dig(p, "_data", "body") as string)) ||
+    (typeof p.body === "string" && p.body.startsWith("data:") ? p.body : undefined);
+
   const mediaData =
     (media && typeof media.data === "string" && media.data) ||
     (typeof p.data === "string" && p.data) ||
-    (typeof dig(p, "_data", "body") === "string" && (dig(p, "_data", "body") as string).startsWith("data:") ? (dig(p, "_data", "body") as string) : undefined) ||
+    (rawBody && rawBody.startsWith("data:")
+      ? rawBody
+      : rawBody && rawBody.length > 50 && /^[A-Za-z0-9+/=]+$/.test(rawBody.slice(0, 100))
+        ? `data:${(media && media.mimetype) || (audMsg ? "audio/ogg; codecs=opus" : "application/octet-stream")};base64,${rawBody}`
+        : undefined) ||
     undefined;
 
   const mediaMime =
@@ -285,6 +293,7 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
       ? (dig(p, "_data", "filename") as string)
       : undefined) ||
     (typeof p.filename === "string" && p.filename) ||
+    (typeof dig(p, "media", "filename") === "string" ? (dig(p, "media", "filename") as string) : undefined) ||
     undefined;
 
   const caption =

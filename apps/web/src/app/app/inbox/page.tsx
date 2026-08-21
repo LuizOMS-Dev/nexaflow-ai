@@ -377,11 +377,12 @@ function resolveMessageOrigin(m: ConversationMessage): MessageOrigin {
   const meta = messageMeta(m);
   if (
     m.type === "SYSTEM" ||
-    meta.systemNotice ||
-    meta.systemEvent ||
-    meta.eventKind === "attendance_closed" ||
-    meta.eventKind === "attendance_reopened" ||
-    meta.eventKind === "close_suggestion"
+    (m.direction === "INTERNAL" &&
+      (meta.systemNotice ||
+        meta.systemEvent ||
+        meta.eventKind === "attendance_closed" ||
+        meta.eventKind === "attendance_reopened" ||
+        meta.eventKind === "close_suggestion"))
   ) {
     return "SYSTEM";
   }
@@ -409,13 +410,13 @@ function aiDisplayName(m: ConversationMessage): string {
 function systemEventLabel(m: ConversationMessage): string {
   const meta = messageMeta(m);
   const who = (meta.agentName || m.author?.name || "").trim().split(" ")[0];
-  if (meta.noticeKind === "human_takeover") {
+  if (meta.noticeKind === "human_takeover" || meta.assumedByHuman) {
     return who ? `${who} assumiu o atendimento` : "Atendente humano assumiu";
   }
   if (meta.noticeKind === "ai_resumed_by_human" || meta.noticeKind === "ai_resumed_customer_return") {
     return who ? `${who} devolveu o atendimento para a IA` : "IA reassumiu o atendimento";
   }
-  if (meta.eventKind === "attendance_closed") {
+  if (meta.eventKind === "attendance_closed" || meta.noticeKind === "attendance_closed") {
     const reason = meta.closeReason ? CLOSE_REASON_LABEL[meta.closeReason] || meta.closeReason : null;
     return reason ? `Atendimento finalizado (${reason})` : "Atendimento finalizado";
   }
@@ -969,6 +970,8 @@ function InboxPageContent() {
         }
     > = [];
     let lastDay = "";
+    let lastSystemLabel = "";
+    let lastSystemTime = 0;
     const msgs = conversation.messages;
 
     for (let i = 0; i < msgs.length; i++) {
@@ -981,6 +984,18 @@ function InboxPageContent() {
       const origin = resolveMessageOrigin(m);
       const bucket = messageGroupKey(m);
       const msgTime = new Date(m.createdAt).getTime();
+
+      // Deduplica eventos de sistema idênticos consecutivos (tolerância de 5 segundos)
+      if (origin === "SYSTEM") {
+        const lbl = systemEventLabel(m);
+        if (lbl === lastSystemLabel && Math.abs(msgTime - lastSystemTime) < 5000) {
+          continue;
+        }
+        lastSystemLabel = lbl;
+        lastSystemTime = msgTime;
+      } else {
+        lastSystemLabel = "";
+      }
 
       const prevMsg = msgs[i - 1];
       const nextMsg = msgs[i + 1];

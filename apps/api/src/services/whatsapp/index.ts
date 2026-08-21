@@ -833,7 +833,7 @@ async function sendStandardChatNotice(params: {
       externalId,
       isAiGenerated: false,
       metadata: {
-        systemNotice: true,
+        chatNotice: true,
         noticeKind: params.kind,
         ...(params.meta || {}),
         ...(sendError ? { sendError } : {}),
@@ -1770,4 +1770,65 @@ async function sendAiOutboundAndHandoff(params: {
       err instanceof Error ? err.message : err
     );
   }
+}
+
+/**
+ * Recuperação e backfill de mídias para mensagens que ficaram sem mediaUrl.
+ */
+export async function recoverConversationMedia(tenantId: string, conversationId?: string) {
+  const { env } = await import("../../lib/env");
+  const path = await import("path");
+  const { existsSync } = await import("fs");
+
+  const where: Record<string, unknown> = {
+    conversation: { tenantId },
+    type: { in: ["AUDIO", "VOICE", "IMAGE", "VIDEO", "DOCUMENT", "FILE"] },
+    mediaUrl: null,
+  };
+  if (conversationId) where.conversationId = conversationId;
+
+  const msgs = await prisma.message.findMany({
+    where,
+    take: 50,
+  });
+
+  let recovered = 0;
+  for (const m of msgs) {
+    const meta = (m.metadata || {}) as Record<string, unknown>;
+    const filename = (meta.filename || meta.originalName) as string | undefined;
+    if (!filename) continue;
+
+    const storagePath = env.storagePath || path.resolve(process.cwd(), "storage");
+    const waPath = path.resolve(storagePath, "wa", tenantId, filename);
+    const mediaPath = path.resolve(storagePath, "media", tenantId, filename);
+
+    if (existsSync(waPath) || existsSync(mediaPath)) {
+      const publicUrl = `/api/media/files/${tenantId}/${filename}`;
+      await prisma.message.update({
+        where: { id: m.id },
+        data: { mediaUrl: publicUrl },
+      });
+      recovered++;
+    } else {
+      // Tenta download do WAHA se ainda disponível no buffer do gateway
+      try {
+        const { downloadWahaMedia } = await import("./waha-media");
+        const stored = await downloadWahaMedia({
+          tenantId,
+          filename,
+        });
+        if (stored) {
+          await prisma.message.update({
+            where: { id: m.id },
+            data: { mediaUrl: stored.publicUrl },
+          });
+          recovered++;
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+
+  return { recovered, totalChecked: msgs.length };
 }
