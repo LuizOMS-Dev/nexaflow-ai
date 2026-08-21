@@ -14,7 +14,8 @@ export type AccessCode =
   | "COMPANY_SUSPENDED"
   | "COMPANY_CANCELLED"
   | "COMPANY_PENDING_DELETION"
-  | "MEMBERSHIP_INACTIVE";
+  | "MEMBERSHIP_INACTIVE"
+  | "MAINTENANCE_MODE";
 
 export type AccessState = {
   level: AccessLevel;
@@ -69,5 +70,6 @@ export function isAccessGateCode(code?: string): boolean {
     "TENANT_SUSPENDED",
     "TENANT_PENDING_DELETION",
     "TENANT_UNAVAILABLE",
+    "MAINTENANCE_MODE",
   ].includes(code);
 }

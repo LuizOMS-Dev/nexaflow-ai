@@ -201,6 +201,16 @@ export default fp(async (app) => {
   app.decorate("requireTenant", async (request: FastifyRequest, _reply: FastifyReply) => {
     await app.authenticate(request, _reply);
     const user = request.user as JwtUser;
+
+    // Maintenance Guard: Superadmin pode prosseguir, empresas recebem 503
+    if (user.platformRole !== "SUPERADMIN" || user.imp) {
+      const { getMaintenanceState, createMaintenanceError } = await import("../services/maintenance");
+      const mState = await getMaintenanceState();
+      if (mState.enabled) {
+        throw createMaintenanceError(mState);
+      }
+    }
+
     if (!user.tenantId && (user.platformRole !== "SUPERADMIN" || user.imp)) {
       throw new AppError("Empresa não selecionada", 400, "TENANT_REQUIRED");
     }

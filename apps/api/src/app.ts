@@ -368,6 +368,9 @@ export async function buildApp() {
   await app.register(platformDiagnosticsRoutes);
   const { tenantAiRoutes } = await import("./routes/tenant-ai");
   await app.register(tenantAiRoutes);
+  const { adminMaintenanceRoutes, publicMaintenanceRoutes } = await import("./routes/platform-admin/maintenance");
+  await app.register(adminMaintenanceRoutes);
+  await app.register(publicMaintenanceRoutes);
 
   app.get("/ws", { websocket: true }, (socket, request) => {
     let client: {

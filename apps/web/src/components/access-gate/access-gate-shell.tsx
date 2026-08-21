@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { AccessState } from "@/lib/access-gate";
 import { Logo } from "@/components/brand/logo";
 import { Spinner } from "@/components/ui";
+import { MaintenanceScreen } from "@/components/maintenance/maintenance-screen";
 
 /**
  * Envolve o shell do tenant: consulta Access Gate e mostra
@@ -48,9 +49,16 @@ export function AccessGateShell({ children }: { children: React.ReactNode }) {
 
   const state = access.data;
 
-  // Fallback se 403 com código de gate
+  // Fallback se erro com código de manutenção ou gate
   if (access.isError && access.error instanceof ApiError) {
     const code = access.error.code || "USER_DISABLED";
+    if (code === "MAINTENANCE_MODE") {
+      return (
+        <MaintenanceScreen
+          onClearMaintenance={() => void access.refetch()}
+        />
+      );
+    }
     if (
       code.startsWith("USER_") ||
       code.startsWith("COMPANY_") ||
@@ -70,6 +78,18 @@ export function AccessGateShell({ children }: { children: React.ReactNode }) {
   }
 
   if (!state) return <>{children}</>;
+
+  // Modo de Manutenção Global Ativo
+  if (state.code === "MAINTENANCE_MODE") {
+    return (
+      <MaintenanceScreen
+        title={state.title}
+        message={state.message}
+        estimatedEnd={state.publicReason ? state.publicReason.replace("Previsão de retorno: ", "") : null}
+        onClearMaintenance={() => void access.refetch()}
+      />
+    );
+  }
 
   // Bloqueio total — sem sidebar/painel
   if (state.level === "BLOCKED") {

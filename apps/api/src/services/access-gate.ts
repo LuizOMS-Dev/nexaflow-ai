@@ -44,7 +44,8 @@ export type AccessCode =
   | "COMPANY_SUSPENDED"
   | "COMPANY_CANCELLED"
   | "COMPANY_PENDING_DELETION"
-  | "MEMBERSHIP_INACTIVE";
+  | "MEMBERSHIP_INACTIVE"
+  | "MAINTENANCE_MODE";
 
 export type AccessLevel = "FULL" | "WARNING" | "RESTRICTED" | "BLOCKED";
 
@@ -358,6 +359,28 @@ export async function evaluateAccessGate(
 ): Promise<AccessGateDecision> {
   const policy = await getAccessPolicy();
   const impersonating = Boolean(input.impersonating);
+
+  // Modo de Manutenção Global: Superadmin pode continuar, empresas recebem bloqueio
+  if (input.platformRole !== "SUPERADMIN" || impersonating) {
+    const { getMaintenanceState } = await import("./maintenance");
+    const mState = await getMaintenanceState();
+    if (mState.enabled) {
+      return makeDecision({
+        level: "BLOCKED",
+        code: "MAINTENANCE_MODE",
+        title: mState.title,
+        message: mState.message,
+        userStatus: "ACTIVE",
+        companyStatus: null,
+        financial: { code: "UNKNOWN", label: "—", snapshot: null, daysOverdue: null },
+        capabilities: blockedCaps(),
+        operationalPaused: true,
+        impersonating,
+        policy,
+        publicReason: mState.estimatedEnd ? `Previsão de retorno: ${mState.estimatedEnd}` : null,
+      });
+    }
+  }
 
   const user =
     input.user ||

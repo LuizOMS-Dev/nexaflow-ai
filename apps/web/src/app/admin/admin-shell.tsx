@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Activity, Shield } from "lucide-react";
+import { Activity, Shield, Wrench } from "lucide-react";
 import { Spinner } from "@/components/ui";
 import { SuperadminMfaGate } from "@/components/superadmin-mfa-gate";
 import { AdminEmptyState } from "@/components/admin";
@@ -9,6 +9,7 @@ import { useAuth } from "@/store/auth";
 import { api } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 
 function isClientImpersonating() {
   try {
@@ -105,9 +106,41 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return <SuperadminMfaGate />;
   }
 
+  const isMaintenanceActive = Boolean(mfaStatus.data) /* trigger after auth */ ;
+
   return (
     <div className="admin-platform mx-auto w-full min-w-0 max-w-[1440px] px-0 pb-10 pt-1">
+      <MaintenanceBanner />
       <div className="admin-surface min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function MaintenanceBanner() {
+  const m = useQuery({
+    queryKey: ["admin-maintenance-banner"],
+    queryFn: () => api<{ enabled: boolean; title?: string }>("/system/maintenance/status"),
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
+
+  if (!m.data?.enabled) return null;
+
+  return (
+    <div className="mb-4 flex items-center justify-between rounded-2xl border border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-xs text-amber-900 dark:border-amber-400/40 dark:bg-amber-950/60 dark:text-amber-200 shadow-sm animate-in fade-in">
+      <div className="flex items-center gap-2.5 font-medium">
+        <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+        <span className="font-semibold">Modo de manutenção ativo</span>
+        <span className="hidden sm:inline text-amber-800/80 dark:text-amber-300/80">
+          — O acesso das empresas está bloqueado.
+        </span>
+      </div>
+      <Link
+        href="/admin/system/maintenance"
+        className="inline-flex items-center gap-1 rounded-xl bg-amber-600 px-3 py-1 text-xs font-semibold text-white shadow-sm hover:bg-amber-700 dark:bg-amber-500 dark:text-black dark:hover:bg-amber-400 transition-colors"
+      >
+        Gerenciar
+      </Link>
     </div>
   );
 }

@@ -17,15 +17,17 @@ import {
   inputClass,
 } from "../ui";
 
-type Tab = "saude" | "diagnostico" | "politica";
+import { MaintenancePanel } from "./maintenance-panel";
 
-export function SystemPage() {
-  const [tab, setTab] = useState<Tab>("saude");
+type Tab = "saude" | "diagnostico" | "politica" | "manutencao";
+
+export function SystemPage({ initialTab = "saude" }: { initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   return (
     <div>
       <PageHeader
         title="Sistema"
-        description="Saúde da instância, diagnóstico e política de acesso."
+        description="Saúde da instância, diagnóstico, política de acesso e modo de manutenção global."
       />
       <div className="admin-tabs">
         {(
@@ -33,6 +35,7 @@ export function SystemPage() {
             ["saude", "Saúde"],
             ["diagnostico", "Diagnóstico"],
             ["politica", "Política de acesso"],
+            ["manutencao", "Modo de Manutenção"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -55,6 +58,7 @@ export function SystemPage() {
         />
       ) : null}
       {tab === "politica" ? <PolicyPanel /> : null}
+      {tab === "manutencao" ? <MaintenancePanel /> : null}
     </div>
   );
 }

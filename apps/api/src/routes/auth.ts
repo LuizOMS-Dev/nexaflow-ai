@@ -318,6 +318,15 @@ export async function authRoutes(app: FastifyInstance) {
       return;
     }
 
+    // Maintenance Mode Check: Se manutenção ativa, apenas SUPERADMIN pode logar
+    if (!isTrueSuperadmin(user)) {
+      const { getMaintenanceState, createMaintenanceError } = await import("../services/maintenance");
+      const mState = await getMaintenanceState();
+      if (mState.enabled) {
+        throw createMaintenanceError(mState);
+      }
+    }
+
     // Access Gate: login permitido mesmo com empresa restrita — a UI mostra a tela correta.
     // Usuário individual bloqueado/suspenso já foi barrado acima.
     // (decision completa em GET /auth/access-state após sessão)

@@ -28,6 +28,8 @@ import {
   markAppEntrance,
   type AuthTransitionMode,
 } from "@/components/auth/auth-transition";
+import { useQuery } from "@tanstack/react-query";
+import { MaintenanceScreen } from "@/components/maintenance/maintenance-screen";
 import { needsCompanyOnboarding } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import type { TenantInfo } from "@/store/auth";
@@ -74,8 +76,32 @@ export default function LoginPage() {
   const [inviteName, setInviteName] = useState("");
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [capsLock, setCapsLock] = useState(false);
+  const [showSuperadminLogin, setShowSuperadminLogin] = useState(false);
+
+  const maintenance = useQuery({
+    queryKey: ["public-maintenance-status"],
+    queryFn: () =>
+      api<{
+        enabled: boolean;
+        title?: string;
+        message?: string;
+        estimatedEnd?: string | null;
+      }>("/system/maintenance/status"),
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  });
 
   const inFlow = phase !== "idle";
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined" && window.location.search.includes("admin=1")) {
+        setShowSuperadminLogin(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     if (!hydrated || !user || inFlow || inviteToken || view === "reset") return;
@@ -517,6 +543,24 @@ export default function LoginPage() {
             ? "Salvar nova senha"
             : "Entrar";
 
+  if (
+    maintenance.data?.enabled &&
+    !showSuperadminLogin &&
+    view === "login" &&
+    !inviteToken &&
+    !resetToken
+  ) {
+    return (
+      <MaintenanceScreen
+        title={maintenance.data.title}
+        message={maintenance.data.message}
+        estimatedEnd={maintenance.data.estimatedEnd}
+        onSuperadminLogin={() => setShowSuperadminLogin(true)}
+        onClearMaintenance={() => void maintenance.refetch()}
+      />
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -572,6 +616,22 @@ export default function LoginPage() {
           <div className="nf-anim-up mb-8 flex flex-col items-center lg:hidden">
             <Logo variant="full-white" size="md" withAi />
           </div>
+
+          {maintenance.data?.enabled && (
+            <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <span>Modo de manutenção ativo (Acesso exclusivo Superadmin)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSuperadminLogin(false)}
+                className="text-[11px] underline hover:text-white"
+              >
+                Ver tela de manutenção
+              </button>
+            </div>
+          )}
 
           <div
             className={cn(

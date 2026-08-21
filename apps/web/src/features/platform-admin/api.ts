@@ -130,4 +130,35 @@ export const platformAdminApi = {
   diagnostics: () => api<Record<string, unknown>>("/admin/diagnostics/overview"),
 
   releases: () => api<unknown>("/admin/changelog"),
+
+  maintenance: () =>
+    api<{
+      enabled: boolean;
+      title: string;
+      message: string;
+      estimatedEnd?: string | null;
+      internalReason?: string | null;
+      updatedAt: string;
+      updatedBy?: string | null;
+    }>("/admin/system/maintenance"),
+
+  updateMaintenance: (body: {
+    enabled: boolean;
+    title?: string;
+    message?: string;
+    estimatedEnd?: string | null;
+    internalReason?: string | null;
+  }) =>
+    api<{
+      ok: boolean;
+      state: {
+        enabled: boolean;
+        title: string;
+        message: string;
+        estimatedEnd?: string | null;
+        internalReason?: string | null;
+        updatedAt: string;
+        updatedBy?: string | null;
+      };
+    }>("/admin/system/maintenance", { method: "POST", json: body }),
 };
