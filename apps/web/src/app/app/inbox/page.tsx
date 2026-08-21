@@ -37,7 +37,18 @@ import {
   Inbox,
   ListTodo,
   Hourglass,
+  Paperclip,
+  Image as ImageIcon,
+  FileText,
+  File as FileIcon,
+  Mic,
 } from "lucide-react";
+import {
+  AudioVoiceRecorder,
+  ImageLightboxModal,
+  AttachmentPreviewModal,
+  MediaBubble,
+} from "@/components/inbox/media-components";
 import { api } from "@/lib/api";
 import {
   cn,
@@ -132,6 +143,7 @@ type ConversationMessage = {
   content: string;
   direction: string;
   type?: string;
+  mediaUrl?: string | null;
   isAiGenerated?: boolean;
   aiApproved?: boolean | null;
   createdAt: string;
@@ -682,6 +694,20 @@ function InboxInner() {
   const [scoreOpen, setScoreOpen] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(true);
   const [currentTimestamp, setCurrentTimestamp] = useState<number | null>(null);
+
+  // Estados e refs de multimídia
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesCountRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -713,15 +739,21 @@ function InboxInner() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!filtersOpen) return;
     function onDoc(e: MouseEvent) {
-      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
+      if (filtersOpen && filtersRef.current && !filtersRef.current.contains(e.target as Node)) {
         setFiltersOpen(false);
+      }
+      if (
+        attachmentMenuOpen &&
+        attachmentMenuRef.current &&
+        !attachmentMenuRef.current.contains(e.target as Node)
+      ) {
+        setAttachmentMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [filtersOpen]);
+  }, [filtersOpen, attachmentMenuOpen]);
 
   /** Debounce da busca — evita request a cada tecla. */
   useEffect(() => {
@@ -893,7 +925,13 @@ function InboxInner() {
   }, [selectedId, toast]);
 
   const sendMutation = useMutation({
-    mutationFn: (payload: { content: string; isInternal?: boolean }) =>
+    mutationFn: (payload: {
+      content: string;
+      isInternal?: boolean;
+      type?: string;
+      mediaUrl?: string;
+      metadata?: Record<string, unknown>;
+    }) =>
       api<{ deliveryError?: string }>(`/conversations/${selectedId}/messages`, {
         method: "POST",
         json: payload,
@@ -913,6 +951,91 @@ function InboxInner() {
     onError: (e: Error) =>
       toast({ kind: "error", title: "Não foi possível enviar", description: e.message }),
   });
+
+  const handleUploadAndSendFile = async (file: File, caption?: string) => {
+    setIsUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await api<{
+        url: string;
+        filename: string;
+        mimetype: string;
+        sizeBytes: number;
+        kind: string;
+      }>("/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      await sendMutation.mutateAsync({
+        content: caption || "",
+        type: res.kind === "PDF" ? "DOCUMENT" : res.kind,
+        mediaUrl: res.url,
+        metadata: {
+          filename: res.filename,
+          mimetype: res.mimetype,
+          sizeBytes: res.sizeBytes,
+        },
+      });
+
+      setSelectedFile(null);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+      if (docInputRef.current) docInputRef.current.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Não foi possível enviar o arquivo";
+      toast({
+        kind: "error",
+        title: "Falha no envio do arquivo",
+        description: msg,
+      });
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const handleSendVoice = async (blob: Blob, durationSecs: number) => {
+    try {
+      const file = new File([blob], `audio_${Date.now()}.ogg`, { type: blob.type });
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("isVoice", "true");
+
+      const res = await api<{
+        url: string;
+        filename: string;
+        mimetype: string;
+        sizeBytes: number;
+      }>("/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      await sendMutation.mutateAsync({
+        content: "",
+        type: "VOICE",
+        mediaUrl: res.url,
+        metadata: {
+          filename: res.filename,
+          mimetype: res.mimetype,
+          sizeBytes: res.sizeBytes,
+          isVoice: true,
+          duration: durationSecs,
+        },
+      });
+
+      setIsRecordingVoice(false);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Não foi possível enviar a gravação";
+      toast({
+        kind: "error",
+        title: "Falha no envio do áudio",
+        description: msg,
+      });
+    }
+  };
 
   const retryMessageMutation = useMutation({
     mutationFn: (messageId: string) =>
@@ -2381,12 +2504,18 @@ function InboxInner() {
                           )}
                           title={!item.showLabel ? senderTooltip : undefined}
                         >
-                          {pendingAi ? (
-                            <p className="mb-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-200">
-                              Aguardando aprovação
-                            </p>
-                          ) : null}
-                          <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          {m.mediaUrl && (
+                            <MediaBubble
+                              type={m.type || "FILE"}
+                              mediaUrl={m.mediaUrl}
+                              metadata={messageMeta(m)}
+                              isOutbound={origin === "HUMAN"}
+                              onOpenLightbox={(url) => setLightboxSrc(url)}
+                            />
+                          )}
+                          {m.content && m.content !== "[mídia]" && (
+                            <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          )}
                           {messageMeta(m).deliveryError || messageMeta(m).sendError ? (
                             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-1.5">
                               <p className="text-[11px] font-medium text-red-600 dark:text-red-300">
@@ -2560,13 +2689,40 @@ function InboxInner() {
 
                   <form onSubmit={onSend}>
                     <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!internal) setIsDraggingFile(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDraggingFile(false);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDraggingFile(false);
+                        if (internal) return;
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) setSelectedFile(f);
+                      }}
                       className={cn(
-                        "rounded-xl border px-2.5 pb-2 pt-2 transition-colors",
-                        internal
-                          ? "border-amber-500/35 bg-amber-50/90 dark:border-amber-400/25 dark:bg-amber-500/[0.07]"
-                          : "border-black/[0.08] bg-white/90 focus-within:border-sky-500/40 focus-within:ring-2 focus-within:ring-sky-500/12 dark:border-white/[0.08] dark:bg-[#0c0e13] dark:focus-within:border-sky-400/35"
+                        "relative rounded-xl border px-2.5 pb-2 pt-2 transition-colors",
+                        isDraggingFile
+                          ? "border-sky-500 bg-sky-50/80 ring-2 ring-sky-500/20 dark:border-sky-400 dark:bg-sky-950/30"
+                          : internal
+                            ? "border-amber-500/35 bg-amber-50/90 dark:border-amber-400/25 dark:bg-amber-500/[0.07]"
+                            : "border-black/[0.08] bg-white/90 focus-within:border-sky-500/40 focus-within:ring-2 focus-within:ring-sky-500/12 dark:border-white/[0.08] dark:bg-[#0c0e13] dark:focus-within:border-sky-400/35"
                       )}
                     >
+                      {isDraggingFile && (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl bg-sky-500/10 backdrop-blur-sm dark:bg-sky-500/20">
+                          <p className="text-xs font-semibold text-sky-700 dark:text-sky-300">
+                            Solte o arquivo aqui para enviar
+                          </p>
+                        </div>
+                      )}
                       {internal ? (
                         <p className="mb-1.5 flex items-center gap-1 px-1 text-[11px] font-medium text-amber-800/90 dark:text-amber-200/90">
                           <StickyNote className="h-3 w-3" strokeWidth={1.75} />
@@ -2584,6 +2740,22 @@ function InboxInner() {
                         value={message}
                         rows={2}
                         onChange={(e) => setMessage(e.target.value)}
+                        onPaste={(e) => {
+                          if (internal) return;
+                          const items = e.clipboardData?.items;
+                          if (!items) return;
+                          for (let i = 0; i < items.length; i++) {
+                            const item = items[i];
+                            if (item.type.indexOf("image") !== -1) {
+                              const file = item.getAsFile();
+                              if (file) {
+                                e.preventDefault();
+                                setSelectedFile(file);
+                                break;
+                              }
+                            }
+                          }
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
@@ -2596,43 +2768,152 @@ function InboxInner() {
                           }
                         }}
                       />
-                      <div className="flex items-center justify-between gap-2 pt-1">
-                        <button
-                          type="button"
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium text-sky-800 hover:bg-sky-500/10 disabled:opacity-50 dark:text-sky-300 dark:hover:bg-sky-400/10"
-                          onClick={() => void requestAi()}
-                          disabled={aiLoading || internal}
-                          title={
-                            internal
-                              ? "Disponível no modo Responder"
-                              : "Gerar sugestão de resposta com IA"
-                          }
-                        >
-                          <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
-                          {aiLoading ? "Gerando…" : "Sugerir resposta"}
-                        </button>
-                        <button
-                          type="submit"
-                          className={cn(
-                            "h-8 min-w-[5.75rem] px-3 text-xs",
-                            internal
-                              ? "btn-secondary"
-                              : "btn-primary"
-                          )}
-                          disabled={sendMutation.isPending || !message.trim()}
-                        >
-                          {sendMutation.isPending
-                            ? "…"
-                            : internal
-                              ? "Adicionar nota"
-                              : "Enviar"}
-                          {!internal && !sendMutation.isPending && (
-                            <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
-                          )}
-                        </button>
-                      </div>
+                      {isRecordingVoice ? (
+                        <div className="py-1">
+                          <AudioVoiceRecorder
+                            onCancel={() => setIsRecordingVoice(false)}
+                            onSendAudio={handleSendVoice}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <div className="flex items-center gap-1">
+                            {/* Menu de Anexos */}
+                            <div className="relative" ref={attachmentMenuRef}>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors",
+                                  attachmentMenuOpen && "bg-black/5 text-ink dark:bg-white/10 dark:text-zinc-200"
+                                )}
+                                onClick={() => setAttachmentMenuOpen((prev) => !prev)}
+                                title="Anexar arquivo"
+                                disabled={internal}
+                              >
+                                <Paperclip className="h-4 w-4" />
+                              </button>
+
+                              {attachmentMenuOpen && (
+                                <div className="absolute bottom-full left-0 mb-2 w-48 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-xl dark:border-white/[0.1] dark:bg-[#181c24] z-30">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAttachmentMenuOpen(false);
+                                      imageInputRef.current?.click();
+                                    }}
+                                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-ink hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.06] transition-colors"
+                                  >
+                                    <ImageIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                    Foto ou Vídeo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAttachmentMenuOpen(false);
+                                      docInputRef.current?.click();
+                                    }}
+                                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-ink hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.06] transition-colors"
+                                  >
+                                    <FileText className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                                    Documento / PDF
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAttachmentMenuOpen(false);
+                                      fileInputRef.current?.click();
+                                    }}
+                                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-ink hover:bg-black/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.06] transition-colors"
+                                  >
+                                    <FileIcon className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                                    Arquivo
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Gravação de Áudio */}
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors"
+                              onClick={() => setIsRecordingVoice(true)}
+                              title="Gravar áudio"
+                              disabled={internal}
+                            >
+                              <Mic className="h-4 w-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[11.5px] font-medium text-sky-800 hover:bg-sky-500/10 disabled:opacity-50 dark:text-sky-300 dark:hover:bg-sky-400/10"
+                              onClick={() => void requestAi()}
+                              disabled={aiLoading || internal}
+                              title={
+                                internal
+                                  ? "Disponível no modo Responder"
+                                  : "Gerar sugestão de resposta com IA"
+                              }
+                            >
+                              <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
+                              {aiLoading ? "Gerando…" : "Sugerir"}
+                            </button>
+                          </div>
+
+                          <button
+                            type="submit"
+                            className={cn(
+                              "h-8 min-w-[5.75rem] px-3 text-xs",
+                              internal
+                                ? "btn-secondary"
+                                : "btn-primary"
+                            )}
+                            disabled={sendMutation.isPending || !message.trim()}
+                          >
+                            {sendMutation.isPending
+                              ? "…"
+                              : internal
+                                ? "Adicionar nota"
+                                : "Enviar"}
+                            {!internal && !sendMutation.isPending && (
+                              <Send className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </form>
+
+                  {/* Hidden file inputs */}
+                  <input
+                    type="file"
+                    ref={imageInputRef}
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setSelectedFile(f);
+                    }}
+                  />
+                  <input
+                    type="file"
+                    ref={docInputRef}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setSelectedFile(f);
+                    }}
+                  />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="*/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setSelectedFile(f);
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="shrink-0 border-t border-line px-4 py-3 text-center text-[12.5px] text-ink-muted dark:border-[#262b36] dark:text-zinc-500">
@@ -2704,6 +2985,28 @@ function InboxInner() {
             />
           </div>
         </div>
+      )}
+      {/* Modal de Pré-visualização de Anexo antes do Envio */}
+      {selectedFile && (
+        <AttachmentPreviewModal
+          file={selectedFile}
+          onClose={() => {
+            setSelectedFile(null);
+            if (imageInputRef.current) imageInputRef.current.value = "";
+            if (docInputRef.current) docInputRef.current.value = "";
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+          onSend={(caption) => handleUploadAndSendFile(selectedFile, caption)}
+          isSending={isUploadingFile}
+        />
+      )}
+
+      {/* Lightbox para Imagens */}
+      {lightboxSrc && (
+        <ImageLightboxModal
+          src={lightboxSrc}
+          onClose={() => setLightboxSrc(null)}
+        />
       )}
     </div>
   );

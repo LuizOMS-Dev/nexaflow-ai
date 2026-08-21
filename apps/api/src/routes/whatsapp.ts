@@ -885,11 +885,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
             phone: msg.phone,
             content: msg.content,
             externalId: msg.externalId,
+            mediaUrl: msg.mediaUrl,
+            mediaMime: msg.mediaMime,
+            mediaFilename: msg.mediaFilename,
             chatId: msg.chatId,
             from: msg.from,
             remoteJid: msg.remoteJid,
             remoteJidAlt: msg.remoteJidAlt,
             addressingMode: msg.addressingMode,
+            providerTimestamp: msg.providerTimestamp,
           });
           processedCount++;
         } catch (err) {
@@ -908,11 +912,15 @@ export async function whatsappRoutes(app: FastifyInstance) {
           name: msg.name,
           content: msg.content,
           externalId: msg.externalId,
+          mediaUrl: msg.mediaUrl,
+          mediaMime: msg.mediaMime,
+          mediaFilename: msg.mediaFilename,
           chatId: msg.chatId,
           from: msg.from,
           remoteJid: msg.remoteJid,
           remoteJidAlt: msg.remoteJidAlt,
           addressingMode: msg.addressingMode,
+          providerTimestamp: msg.providerTimestamp,
         });
         processedCount++;
       } catch (err) {

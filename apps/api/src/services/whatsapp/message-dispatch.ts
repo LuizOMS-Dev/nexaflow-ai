@@ -29,6 +29,23 @@ export type DispatchParams = {
   skipConsentCheck?: boolean;
 };
 
+export type DispatchMediaParams = {
+  channelId: string;
+  to: string;
+  kind: "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE";
+  mediaUrl: string;
+  caption?: string;
+  filename?: string;
+  mimetype?: string;
+  dataBase64?: string;
+  absPath?: string;
+  idempotencyKey?: string;
+  purpose?: DispatchPurpose;
+  contactId?: string;
+  tenantId?: string;
+  skipConsentCheck?: boolean;
+};
+
 export type DispatchResult = {
   ok: boolean;
   externalId?: string;
@@ -155,6 +172,104 @@ async function dispatchWhatsAppTextOnce(
   // import dinâmico evita ciclo com index.ts
   const { sendWhatsAppText } = await import("./index");
   const result = await sendWhatsAppText(params.channelId, params.to, text);
+  const out: DispatchResult = {
+    ok: result.ok,
+    externalId: result.externalId,
+    error: result.error,
+    attempt: 1,
+  };
+
+  if (params.idempotencyKey && out.ok) {
+    idempotencyCache.set(params.idempotencyKey, { at: Date.now(), result: out });
+  }
+
+  return out;
+}
+
+/**
+ * Envia mídia (imagem, áudio/voz, documento, vídeo) via camada controlada.
+ */
+export async function dispatchWhatsAppMedia(params: DispatchMediaParams): Promise<DispatchResult> {
+  const purpose = params.purpose || "reply";
+
+  if (params.idempotencyKey) {
+    cleanIdempotency();
+    const hit = idempotencyCache.get(params.idempotencyKey);
+    if (hit) return { ...hit.result, skipped: true, reason: "idempotent" };
+    const pending = inflight.get(params.idempotencyKey);
+    if (pending) {
+      const result = await pending;
+      return { ...result, skipped: true, reason: "idempotent" };
+    }
+  }
+
+  const run = dispatchWhatsAppMediaOnce(params, purpose);
+  if (params.idempotencyKey) inflight.set(params.idempotencyKey, run);
+  try {
+    return await run;
+  } finally {
+    if (params.idempotencyKey) inflight.delete(params.idempotencyKey);
+  }
+}
+
+async function dispatchWhatsAppMediaOnce(
+  params: DispatchMediaParams,
+  purpose: DispatchPurpose
+): Promise<DispatchResult> {
+  if (!allowRate(params.channelId, channelWindow, MAX_PER_CHANNEL_PER_MIN)) {
+    return {
+      ok: false,
+      error: "Limite de envio do canal atingido. Aguarde e tente novamente.",
+      reason: "rate_channel",
+    };
+  }
+  const recipKey = `${params.channelId}:${params.to.replace(/\D/g, "")}`;
+  if (!allowRate(recipKey, recipientWindow, MAX_PER_RECIPIENT_PER_MIN)) {
+    return {
+      ok: false,
+      error: "Limite de mensagens para este destinatário. Evite spam.",
+      reason: "rate_recipient",
+    };
+  }
+
+  const proactive = purpose === "campaign" || purpose === "automation";
+  if (proactive && !params.skipConsentCheck) {
+    let contact = null as { consentWhatsapp: boolean; id: string } | null;
+    if (params.contactId) {
+      contact = await prisma.contact.findUnique({
+        where: { id: params.contactId },
+        select: { id: true, consentWhatsapp: true },
+      });
+    } else if (params.tenantId) {
+      const digits = params.to.replace(/\D/g, "");
+      contact = await prisma.contact.findFirst({
+        where: {
+          tenantId: params.tenantId,
+          OR: [{ phone: params.to }, { phone: { contains: digits.slice(-11) } }],
+        },
+        select: { id: true, consentWhatsapp: true },
+      });
+    }
+    if (contact && !contact.consentWhatsapp) {
+      return {
+        ok: false,
+        skipped: true,
+        error: "Contato sem consentimento WhatsApp (opt-in).",
+        reason: "no_consent",
+      };
+    }
+  }
+
+  const { sendWhatsAppMedia } = await import("./index");
+  const result = await sendWhatsAppMedia(params.channelId, params.to, {
+    kind: params.kind,
+    mimetype: params.mimetype || "application/octet-stream",
+    filename: params.filename,
+    dataBase64: params.dataBase64,
+    absPath: params.absPath,
+    caption: params.caption,
+  });
+
   const out: DispatchResult = {
     ok: result.ok,
     externalId: result.externalId,

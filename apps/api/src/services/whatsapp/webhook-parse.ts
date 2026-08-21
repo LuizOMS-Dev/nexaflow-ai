@@ -13,11 +13,13 @@ export type ParsedInboundMessage = {
   fromMe: boolean;
   mediaUrl?: string;
   mediaMime?: string;
+  mediaFilename?: string;
   chatId?: string;
   from?: string;
   remoteJid?: string;
   remoteJidAlt?: string;
   addressingMode?: string;
+  providerTimestamp?: Date;
 };
 
 export type ParsedAckEvent = {
@@ -194,6 +196,17 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
         ? p.mimetype
         : undefined;
 
+  const mediaFilename =
+    (media && typeof media.filename === "string" && media.filename) ||
+    (typeof dig(p, "message", "documentMessage", "fileName") === "string"
+      ? (dig(p, "message", "documentMessage", "fileName") as string)
+      : undefined) ||
+    (typeof dig(p, "_data", "filename") === "string"
+      ? (dig(p, "_data", "filename") as string)
+      : undefined) ||
+    (typeof p.filename === "string" && p.filename) ||
+    undefined;
+
   const rawId =
     (typeof p.id === "string" && p.id) ||
     (typeof key?.id === "string" && key.id) ||
@@ -266,6 +279,23 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     }
   }
 
+  // Extrai timestamp real do evento WAHA / WhatsApp
+  const rawTs =
+    p.timestamp ??
+    p.messageTimestamp ??
+    dig(p, "_data", "t") ??
+    dig(p, "messageTimestamp") ??
+    key?.timestamp;
+
+  let providerTimestamp: Date | undefined = undefined;
+  if (rawTs !== undefined && rawTs !== null) {
+    const num = Number(rawTs);
+    if (!isNaN(num) && num > 0) {
+      const ms = num < 1e11 ? num * 1000 : num;
+      providerTimestamp = new Date(ms);
+    }
+  }
+
   return {
     phone: phone || chatId,
     name,
@@ -274,11 +304,13 @@ function parseSingleMessage(item: unknown): ParsedInboundMessage | null {
     fromMe,
     mediaUrl,
     mediaMime,
+    mediaFilename,
     chatId,
     from,
     remoteJid,
     remoteJidAlt,
     addressingMode,
+    providerTimestamp,
   };
 }
 

@@ -24,6 +24,7 @@ export const SAFE_TOOLS = [
   "create_note",
   "transfer_conversation",
   "request_human",
+  "send_media_asset",
 ] as const;
 
 export type SafeToolName = (typeof SAFE_TOOLS)[number];
@@ -537,6 +538,129 @@ async function runTool(
         assigneeId,
         handoff: true,
         notified: true,
+      };
+    }
+    case "send_media_asset": {
+      const assetId = z.string().min(1).parse(args.assetId || args.id);
+      const caption = typeof args.caption === "string" ? args.caption.trim() : undefined;
+
+      const asset = await prisma.agentMediaAsset.findFirst({
+        where: {
+          id: assetId,
+          tenantId: ctx.tenantId,
+          isActive: true,
+          OR: [{ agentId: null }, { agentId: ctx.agentId }],
+        },
+      });
+
+      if (!asset) {
+        throw new AppError("Arquivo ou mídia autorizada não encontrada no catálogo da empresa", 404, "MEDIA_NOT_FOUND");
+      }
+
+      if (asset.permissionMode === "DISABLED") {
+        throw new AppError("Este arquivo está desativado para envio pela IA", 403, "MEDIA_DISABLED");
+      }
+
+      if (asset.permissionMode === "APPROVAL_REQUIRED" && ctx.source === "auto") {
+        return {
+          assetId: asset.id,
+          name: asset.name,
+          url: asset.url,
+          type: asset.type,
+          status: "NEEDS_APPROVAL",
+          requiresApproval: true,
+          caption,
+        };
+      }
+
+      if (ctx.conversationId) {
+        const conv = await prisma.conversation.findFirst({
+          where: { id: ctx.conversationId, tenantId: ctx.tenantId },
+          include: { channel: true, contact: true },
+        });
+
+        if (conv && conv.channel?.type === "WHATSAPP" && conv.contact.phone) {
+          const { dispatchWhatsAppMedia } = await import("./whatsapp/message-dispatch");
+          const { resolveMediaFilePath } = await import("./storage/media-storage");
+          const resolved = await resolveMediaFilePath(ctx.tenantId, asset.filename);
+
+          const deliveryDestination = conv.contact.phone.includes("@")
+            ? conv.contact.phone
+            : conv.contact.phone.replace(/\D/g, "");
+
+          await dispatchWhatsAppMedia({
+            channelId: conv.channel.id,
+            to: deliveryDestination,
+            kind: asset.type as any,
+            mediaUrl: asset.url,
+            absPath: resolved.absPath || undefined,
+            caption: caption || undefined,
+            filename: asset.filename,
+            mimetype: asset.mimetype,
+            purpose: "ai",
+            tenantId: ctx.tenantId,
+            contactId: conv.contactId,
+            idempotencyKey: `ai-media-${ctx.conversationId}-${asset.id}-${Date.now()}`,
+          });
+
+          const createdMsg = await prisma.message.create({
+            data: {
+              conversationId: ctx.conversationId,
+              direction: "OUTBOUND",
+              content: caption || `[Arquivo: ${asset.name}]`,
+              type: asset.type as any,
+              mediaUrl: asset.url,
+              isAiGenerated: true,
+              aiApproved: true,
+              deliveredAt: new Date(),
+              metadata: asInputJson({
+                assetId: asset.id,
+                filename: asset.filename,
+                mimetype: asset.mimetype,
+                sizeBytes: asset.sizeBytes,
+                deliveryStatus: "SENT",
+                source: "AI_MEDIA_LIBRARY",
+              }),
+            },
+          });
+
+          let preview = caption || `📄 ${asset.filename}`;
+          if (asset.type === "IMAGE") preview = caption ? `📷 ${caption}` : "📷 Foto";
+          else if (asset.type === "VOICE" || asset.type === "AUDIO") preview = "🎤 Áudio";
+          else if (asset.type === "VIDEO") preview = caption ? `🎥 ${caption}` : "🎥 Vídeo";
+
+          await prisma.conversation.update({
+            where: { id: ctx.conversationId },
+            data: {
+              lastMessageAt: new Date(),
+              lastMessagePreview: preview.slice(0, 200),
+            },
+          });
+
+          const { broadcastToTenant } = await import("../ws/hub");
+          broadcastToTenant(ctx.tenantId, "message.created", {
+            conversationId: ctx.conversationId,
+            message: createdMsg,
+          });
+
+          return {
+            assetId: asset.id,
+            name: asset.name,
+            url: asset.url,
+            type: asset.type,
+            sent: true,
+            messageId: createdMsg.id,
+            caption,
+          };
+        }
+      }
+
+      return {
+        assetId: asset.id,
+        name: asset.name,
+        url: asset.url,
+        type: asset.type,
+        caption,
       };
     }
     default:

@@ -76,11 +76,30 @@ enum MessageType {
   TEXT
   IMAGE
   AUDIO
+  VOICE
   VIDEO
   DOCUMENT
+  FILE
   LOCATION
   TEMPLATE
   SYSTEM
+  NOTE
+}
+
+enum MediaPermissionMode {
+  AUTO_ALLOWED
+  APPROVAL_REQUIRED
+  DISABLED
+}
+
+enum MediaAssetType {
+  IMAGE
+  PDF
+  DOCUMENT
+  AUDIO
+  VOICE
+  VIDEO
+  FILE
 }
 
 /// Status comercial do lead/contato (substitui quente/morno/frio)
@@ -272,6 +291,7 @@ model Tenant {
   companyProfile      CompanyProfile?
   subscription        Subscription?
   aiExecutions        AiExecution[]
+  mediaAssets         AgentMediaAsset[]
 
   @@index([scheduledDeletionAt])
   @@index([status, scheduledDeletionAt])
@@ -928,6 +948,7 @@ model AiAgent {
   testCases           AgentTestCase[]
   testRuns            AgentTestRun[]
   knowledgeLinks      AgentKnowledge[]
+  mediaAssets         AgentMediaAsset[]
 
   @@index([tenantId])
   @@index([tenantId, publishStatus])
@@ -949,6 +970,33 @@ model AgentVersion {
 
   @@unique([agentId, version])
   @@index([tenantId, agentId])
+}
+
+/// Biblioteca de Mídia para envio por Agentes de IA e Operadores
+model AgentMediaAsset {
+  id             String              @id @default(cuid())
+  tenantId       String
+  agentId        String?
+  name           String
+  description    String?
+  type           MediaAssetType      @default(FILE)
+  mimetype       String
+  filename       String
+  sizeBytes      Int                 @default(0)
+  url            String
+  storageKey     String?
+  tags           String[]            @default([])
+  permissionMode MediaPermissionMode @default(AUTO_ALLOWED)
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agent  AiAgent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, agentId])
+  @@index([tenantId, permissionMode])
 }
 
 /// Execução de tool do agente (auditoria + APPROVE de ações)

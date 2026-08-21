@@ -25,8 +25,13 @@ export type {
   TenantWhatsAppStatus,
   ChannelConnectionView,
 } from "./connection-status";
-export { dispatchWhatsAppText, getDispatchMetrics } from "./message-dispatch";
-export type { DispatchParams, DispatchPurpose, DispatchResult } from "./message-dispatch";
+export { dispatchWhatsAppText, dispatchWhatsAppMedia, getDispatchMetrics } from "./message-dispatch";
+export type {
+  DispatchParams,
+  DispatchMediaParams,
+  DispatchPurpose,
+  DispatchResult,
+} from "./message-dispatch";
 export { restoreBaileysSessionsOnBoot } from "./restore-sessions";
 export { registerBaileysInboundIngest, handleBaileysInbound } from "./baileys-inbound";
 export {
@@ -57,6 +62,13 @@ class SimulatedConnector implements WhatsAppConnector {
   async logout() {}
   async sendText(_c: WhatsAppChannelConfig, _to: string, _text: string): Promise<SendTextResult> {
     return { ok: true, externalId: `sim-${Date.now()}` };
+  }
+  async sendMedia(
+    _c: WhatsAppChannelConfig,
+    _to: string,
+    _media: { kind: string }
+  ): Promise<SendTextResult> {
+    return { ok: true, externalId: `sim-media-${Date.now()}` };
   }
 }
 
@@ -110,6 +122,84 @@ export async function sendWhatsAppText(channelId: string, to: string, text: stri
   return result;
 }
 
+export async function sendWhatsAppMedia(
+  channelId: string,
+  to: string,
+  media: {
+    kind: "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE";
+    mimetype: string;
+    filename?: string;
+    dataBase64?: string;
+    absPath?: string;
+    caption?: string;
+  }
+) {
+  const channel = await prisma.channel.findUnique({ where: { id: channelId } });
+  if (!channel) return { ok: false, error: "Canal não encontrado" };
+
+  const { env } = await import("../../lib/env");
+  const config = asConfig(channel.config);
+
+  const provider = config.provider || env.waGatewayProvider || "waha";
+  config.provider = provider;
+
+  if (config.provider === "waha" || config.mode === "platform") {
+    config.baseUrl = config.baseUrl || env.waGatewayUrl || "http://waha:3000";
+    if (!config.apiKey && env.waGatewayApiKey && !/^sha512:/i.test(env.waGatewayApiKey)) {
+      config.apiKey = env.waGatewayApiKey;
+    }
+  }
+
+  const sessionName = config.session || config.instanceName || channel.name || "default";
+  config.session = sessionName;
+  config.instanceName = sessionName;
+
+  let base64 = media.dataBase64;
+  if (!base64 && media.absPath) {
+    const { readFile } = await import("fs/promises");
+    const buf = await readFile(media.absPath).catch(() => null);
+    if (buf) base64 = buf.toString("base64");
+  }
+
+  if (!base64) {
+    return { ok: false, error: "Dados da mídia indisponíveis para envio" };
+  }
+
+  const connector = getConnector(provider);
+  let result: { ok: boolean; externalId?: string; error?: string } = {
+    ok: false,
+    error: "Conector não suporta envio de mídia",
+  };
+
+  if (typeof connector.sendMedia === "function") {
+    result = await connector.sendMedia(config, to, {
+      kind: media.kind,
+      mimetype: media.mimetype,
+      filename: media.filename,
+      dataBase64: base64,
+      caption: media.caption,
+    });
+  } else {
+    const fallbackText = media.caption ? `[${media.kind}] ${media.caption}` : `[Arquivo: ${media.filename || "mídia"}]`;
+    const res = await connector.sendText(config, to, fallbackText);
+    result = { ok: res.ok, externalId: res.externalId, error: res.error || undefined };
+  }
+
+  if (!result.ok) {
+    await prisma.channel.update({
+      where: { id: channelId },
+      data: {
+        config: {
+          ...config,
+          lastError: result.error || "Falha ao enviar mídia",
+        },
+      },
+    });
+  }
+
+  return result;
+}
+
 /** Processa mensagem inbound e cria/atualiza conversa no tenant */
 export async function ingestInboundMessage(params: {
   tenantId: string;
@@ -119,12 +209,18 @@ export async function ingestInboundMessage(params: {
   content: string;
   externalId?: string;
   type?: string;
+  mediaUrl?: string;
+  mediaMime?: string;
+  mediaFilename?: string;
+  mediaData?: string;
   chatId?: string;
   from?: string;
   remoteJid?: string;
   remoteJidAlt?: string;
   addressingMode?: string;
+  providerTimestamp?: Date;
 }) {
+  const eventTime = params.providerTimestamp || new Date();
   if (params.externalId) {
     const duplicate = await prisma.message.findFirst({
       where: {
@@ -140,6 +236,38 @@ export async function ingestInboundMessage(params: {
         duplicate: true,
       };
     }
+  }
+
+  // Processa e persiste mídia inbound com isolamento seguro por tenant
+  let storedMediaUrl: string | undefined = undefined;
+  let messageType: "TEXT" | "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE" = "TEXT";
+  let mediaMeta: Record<string, unknown> = {};
+
+  if (params.mediaUrl || params.mediaData) {
+    try {
+      const { downloadWahaMedia } = await import("./waha-media");
+      const stored = await downloadWahaMedia({
+        tenantId: params.tenantId,
+        url: params.mediaUrl,
+        dataBase64: params.mediaData,
+        mime: params.mediaMime,
+        filename: params.mediaFilename,
+      });
+      if (stored) {
+        storedMediaUrl = stored.publicUrl;
+        const isVoice = (params.mediaMime || "").includes("ogg") || (params.mediaMime || "").includes("opus");
+        messageType = isVoice && stored.kind === "AUDIO" ? "VOICE" : stored.kind;
+        mediaMeta = {
+          mimetype: stored.mime,
+          filename: stored.filename,
+          sizeBytes: stored.bytes,
+        };
+      }
+    } catch (err) {
+      console.warn("[whatsapp] Ingest de mídia falhou ao persistir:", err);
+    }
+  } else if (params.type === "image") {
+    messageType = "IMAGE";
   }
 
   const { resolveWhatsAppIdentity } = await import("./identity-resolver");
@@ -188,14 +316,16 @@ export async function ingestInboundMessage(params: {
       });
       const conversationId = surveyConv?.conversationId;
       if (conversationId) {
+        const { asInputJson } = await import("../../lib/json");
         const message = await prisma.message.create({
           data: {
             conversationId,
             direction: "INBOUND",
             content: params.content,
             externalId: params.externalId,
-            type: "TEXT",
-            metadata: asInputJson({ csatReply: true, csatScore: csat.score }),
+            type: messageType,
+            mediaUrl: storedMediaUrl,
+            metadata: asInputJson(mediaMeta),
           },
         });
         broadcastToTenant(params.tenantId, "message.created", {
@@ -235,21 +365,32 @@ export async function ingestInboundMessage(params: {
     });
   }
 
+  const { asInputJson } = await import("../../lib/json");
   const message = await prisma.message.create({
     data: {
       conversationId: conversation.id,
       direction: "INBOUND",
       content: params.content,
       externalId: params.externalId,
-      type: params.type === "image" ? "IMAGE" : "TEXT",
+      type: messageType,
+      mediaUrl: storedMediaUrl,
+      createdAt: eventTime,
+      metadata: asInputJson(mediaMeta),
     },
   });
+
+  let preview = params.content || "";
+  const mType: string = messageType;
+  if (mType === "IMAGE") preview = preview && preview !== "[mídia]" ? `📷 ${preview}` : "📷 Foto";
+  else if (mType === "VOICE" || mType === "AUDIO") preview = "🎤 Áudio";
+  else if (mType === "VIDEO") preview = preview && preview !== "[mídia]" ? `🎥 ${preview}` : "🎥 Vídeo";
+  else if (mType === "DOCUMENT" || mType === "FILE") preview = `📄 ${params.mediaFilename || "Documento"}`;
 
   const updated = await prisma.conversation.update({
     where: { id: conversation.id },
     data: {
-      lastMessageAt: new Date(),
-      lastMessagePreview: params.content.slice(0, 200),
+      lastMessageAt: eventTime,
+      lastMessagePreview: preview.slice(0, 200),
       isUnread: true,
       status: "OPEN",
       channelId: params.channelId,
@@ -353,12 +494,18 @@ export async function ingestExternalOutboundMessage(params: {
   content: string;
   externalId?: string;
   type?: string;
+  mediaUrl?: string;
+  mediaMime?: string;
+  mediaFilename?: string;
+  mediaData?: string;
   chatId?: string;
   from?: string;
   remoteJid?: string;
   remoteJidAlt?: string;
   addressingMode?: string;
+  providerTimestamp?: Date;
 }) {
+  const eventTime = params.providerTimestamp || new Date();
   if (params.externalId) {
     const duplicate = await prisma.message.findFirst({
       where: {
@@ -368,12 +515,61 @@ export async function ingestExternalOutboundMessage(params: {
       include: { conversation: true },
     });
     if (duplicate) {
+      // Reconcilia status sem duplicar
+      const curMeta = (duplicate.metadata || {}) as Record<string, unknown>;
+      if (curMeta.deliveryStatus !== "SENT" && curMeta.deliveryStatus !== "DELIVERED" && curMeta.deliveryStatus !== "READ") {
+        const { asInputJson } = await import("../../lib/json");
+        await prisma.message.update({
+          where: { id: duplicate.id },
+          data: {
+            deliveredAt: duplicate.deliveredAt || eventTime,
+            metadata: asInputJson({
+              ...curMeta,
+              deliveryStatus: "SENT",
+              reconciledFromMe: true,
+            }),
+          },
+        });
+      }
       return {
         conversation: duplicate.conversation,
         message: duplicate,
         duplicate: true,
+        reconciled: true,
       };
     }
+  }
+
+  // Processa e persiste mídia com isolamento seguro por tenant
+  let storedMediaUrl: string | undefined = undefined;
+  let messageType: "TEXT" | "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE" = "TEXT";
+  let mediaMeta: Record<string, unknown> = {};
+
+  if (params.mediaUrl || params.mediaData) {
+    try {
+      const { downloadWahaMedia } = await import("./waha-media");
+      const stored = await downloadWahaMedia({
+        tenantId: params.tenantId,
+        url: params.mediaUrl,
+        dataBase64: params.mediaData,
+        mime: params.mediaMime,
+        filename: params.mediaFilename,
+      });
+      if (stored) {
+        storedMediaUrl = stored.publicUrl;
+        const isVoice = (params.mediaMime || "").includes("ogg") || (params.mediaMime || "").includes("opus");
+        messageType = isVoice && stored.kind === "AUDIO" ? "VOICE" : stored.kind;
+        mediaMeta = {
+          mimetype: stored.mime,
+          filename: stored.filename,
+          sizeBytes: stored.bytes,
+        };
+      }
+    } catch (err) {
+      console.warn("[whatsapp] Ingest de mídia externa falhou ao persistir:", err);
+    }
+  } else if (params.type === "image") {
+    messageType = "IMAGE";
   }
 
   const { resolveWhatsAppIdentity } = await import("./identity-resolver");
@@ -426,23 +622,34 @@ export async function ingestExternalOutboundMessage(params: {
       direction: "OUTBOUND",
       content: params.content,
       externalId: params.externalId,
-      type: params.type === "image" ? "IMAGE" : "TEXT",
-      deliveredAt: new Date(),
+      type: messageType,
+      mediaUrl: storedMediaUrl,
+      createdAt: eventTime,
+      deliveredAt: eventTime,
       isAiGenerated: false,
       metadata: asInputJson({
         source: "WHATSAPP_DEVICE",
-        origin: "whatsapp_device",
+        origin: "EXTERNAL_WHATSAPP_DEVICE",
         externalDevice: true,
         deliveryStatus: "SENT",
+        providerTimestamp: eventTime.toISOString(),
+        ...mediaMeta,
       }),
     },
   });
 
+  let preview = params.content || "";
+  const mTypeOut: string = messageType;
+  if (mTypeOut === "IMAGE") preview = preview && preview !== "[mídia]" ? `📷 ${preview}` : "📷 Foto";
+  else if (mTypeOut === "VOICE" || mTypeOut === "AUDIO") preview = "🎤 Áudio";
+  else if (mTypeOut === "VIDEO") preview = preview && preview !== "[mídia]" ? `🎥 ${preview}` : "🎥 Vídeo";
+  else if (mTypeOut === "DOCUMENT" || mTypeOut === "FILE") preview = `📄 ${params.mediaFilename || "Documento"}`;
+
   const updated = await prisma.conversation.update({
     where: { id: conversation.id },
     data: {
-      lastMessageAt: new Date(),
-      lastMessagePreview: params.content.slice(0, 200),
+      lastMessageAt: eventTime,
+      lastMessagePreview: preview.slice(0, 200),
       isUnread: false,
       channelId: params.channelId,
       ...(conversation.status === "PENDING" ? { status: "OPEN" } : {}),
@@ -474,6 +681,24 @@ export async function ingestExternalOutboundMessage(params: {
               source: "WHATSAPP_DEVICE",
             },
             contactId: contact.id,
+          },
+        });
+      })
+      .catch(() => null);
+
+    void import("../audit")
+      .then(({ AuditService }) => {
+        return AuditService.record({
+          action: "message.external_synced",
+          tenantId: params.tenantId,
+          entity: "Message",
+          entityId: message.id,
+          metadata: {
+            conversationId: conversation.id,
+            contactId: contact.id,
+            channelId: params.channelId,
+            externalId: params.externalId,
+            type: messageType,
           },
         });
       })
@@ -1112,6 +1337,7 @@ async function maybeAutoReplyAi(params: {
     tokensOut: generated.tokensOut,
     correlationId: generated.correlationId,
     sources: generated.sources,
+    mediaAction: generated.mediaAction,
     reason: forceHandoff
       ? degradationReason || "provider_error"
       : undefined,
@@ -1150,6 +1376,21 @@ async function sendAiOutboundAndHandoff(params: {
   runLearning?: boolean;
   correlationId?: string;
   sources?: Array<{ title: string; documentId: string; version: number; chunkIndex: number; score: number }>;
+  mediaAction?: {
+    assetId: string;
+    caption?: string;
+    asset: {
+      id: string;
+      name: string;
+      description: string | null;
+      type: "IMAGE" | "PDF" | "DOCUMENT" | "AUDIO" | "VOICE" | "VIDEO" | "FILE";
+      mimetype: string;
+      filename: string;
+      sizeBytes: number;
+      url: string;
+      permissionMode: "AUTO_ALLOWED" | "APPROVAL_REQUIRED" | "DISABLED";
+    };
+  };
 }) {
   const conv = await prisma.conversation.findUnique({
     where: { id: params.conversationId },
@@ -1275,6 +1516,99 @@ async function sendAiOutboundAndHandoff(params: {
     conversationId: params.conversationId,
     message: outMsg,
   });
+
+  // Envio de mídia acoplada pela IA (se houver ação identificada)
+  if (params.mediaAction) {
+    const act = params.mediaAction;
+    if (act.asset.permissionMode === "AUTO_ALLOWED") {
+      try {
+        const { dispatchWhatsAppMedia } = await import("./message-dispatch");
+        let absPath: string | undefined = undefined;
+        if (act.asset.url.startsWith("/api/media/files/")) {
+          const parts = act.asset.url.replace("/api/media/files/", "").split("/");
+          if (parts.length >= 2) {
+            const { resolveMediaFilePath } = await import("../storage/media-storage");
+            const resolved = await resolveMediaFilePath(parts[0], parts[1]);
+            if (resolved.exists) absPath = resolved.absPath;
+          }
+        }
+
+        const mediaIdempotency = `ai-media:${params.conversationId}:${act.asset.id}:${params.inboundMessageId || replyHash}`;
+        const sentMedia = await dispatchWhatsAppMedia({
+          channelId: params.channelId,
+          to: destinationTo,
+          kind: (act.asset.type === "PDF" ? "DOCUMENT" : act.asset.type) as any,
+          mediaUrl: act.asset.url,
+          absPath,
+          caption: act.caption || undefined,
+          filename: act.asset.filename,
+          mimetype: act.asset.mimetype,
+          purpose: "ai",
+          tenantId: params.tenantId,
+          idempotencyKey: mediaIdempotency,
+        });
+
+        const { asInputJson } = await import("../../lib/json");
+        const mediaMsg = await prisma.message.create({
+          data: {
+            conversationId: params.conversationId,
+            direction: "OUTBOUND",
+            content: act.caption || act.asset.name,
+            externalId: sentMedia.ok ? sentMedia.externalId : undefined,
+            type: act.asset.type === "PDF" ? "DOCUMENT" : (act.asset.type as any),
+            mediaUrl: act.asset.url,
+            isAiGenerated: true,
+            aiApproved: true,
+            metadata: asInputJson({
+              aiAuto: true,
+              assetId: act.asset.id,
+              mimetype: act.asset.mimetype,
+              filename: act.asset.filename,
+              sizeBytes: act.asset.sizeBytes,
+              deliveryStatus: sentMedia.ok ? "SENT" : "FAILED",
+              deliveryError: sentMedia.ok ? null : (sentMedia.error || "Falha ao enviar mídia"),
+            }),
+          },
+        });
+
+        broadcastToTenant(params.tenantId, "message.created", {
+          conversationId: params.conversationId,
+          message: mediaMsg,
+        });
+      } catch (mediaErr) {
+        console.error("[whatsapp] falha ao despachar mídia auto da IA:", mediaErr);
+      }
+    } else if (act.asset.permissionMode === "APPROVAL_REQUIRED") {
+      try {
+        const { asInputJson } = await import("../../lib/json");
+        const draftMediaMsg = await prisma.message.create({
+          data: {
+            conversationId: params.conversationId,
+            direction: "OUTBOUND",
+            content: act.caption || act.asset.name,
+            type: act.asset.type === "PDF" ? "DOCUMENT" : (act.asset.type as any),
+            mediaUrl: act.asset.url,
+            isAiGenerated: true,
+            aiApproved: false,
+            metadata: asInputJson({
+              pendingApproval: true,
+              assetId: act.asset.id,
+              mimetype: act.asset.mimetype,
+              filename: act.asset.filename,
+              sizeBytes: act.asset.sizeBytes,
+            }),
+          },
+        });
+
+        broadcastToTenant(params.tenantId, "message.created", {
+          conversationId: params.conversationId,
+          message: draftMediaMsg,
+        });
+      } catch (draftErr) {
+        console.error("[whatsapp] falha ao criar draft de mídia da IA:", draftErr);
+      }
+    }
+  }
 
   // Política plataforma: handoff humano + notificação no painel
   if (params.forceHandoff && params.reason) {

@@ -166,4 +166,76 @@ export class WahaConnector implements WhatsAppConnector {
       raw,
     };
   }
+
+  async sendMedia(
+    config: WhatsAppChannelConfig,
+    to: string,
+    media: {
+      kind: "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE";
+      mimetype: string;
+      filename?: string;
+      dataBase64: string;
+      caption?: string;
+    }
+  ): Promise<SendTextResult> {
+    const base = this.base(config);
+    const session = this.session(config);
+    const { formatWahaDestinationChatId } = await import("./identity-resolver");
+    const chatId = formatWahaDestinationChatId(to);
+
+    const file = {
+      mimetype: media.mimetype,
+      filename: media.filename || "arquivo",
+      data: media.dataBase64,
+    };
+
+    let endpoint = "/api/sendFile";
+    const body: Record<string, unknown> = { session, chatId, file };
+
+    if (media.kind === "IMAGE") {
+      endpoint = "/api/sendImage";
+      if (media.caption) body.caption = media.caption;
+    } else if (media.kind === "VOICE") {
+      endpoint = "/api/sendVoice";
+      body.convert = true;
+    } else if (media.kind === "VIDEO") {
+      endpoint = "/api/sendVideo";
+      if (media.caption) body.caption = media.caption;
+    } else {
+      endpoint = "/api/sendFile";
+      if (media.caption) body.caption = media.caption;
+    }
+
+    let res = await fetch(`${base}${endpoint}`, {
+      method: "POST",
+      headers: this.headers(config.apiKey),
+      body: JSON.stringify(body),
+    }).catch(() => null);
+
+    // Fallback para sendFile caso endpoint específico não exista no WAHA
+    if ((!res || !res.ok) && (endpoint === "/api/sendVideo" || endpoint === "/api/sendVoice")) {
+      delete body.convert;
+      if (media.caption) body.caption = media.caption;
+      res = await fetch(`${base}/api/sendFile`, {
+        method: "POST",
+        headers: this.headers(config.apiKey),
+        body: JSON.stringify(body),
+      }).catch(() => null);
+    }
+
+    if (!res) {
+      return { ok: false, error: "Serviço WhatsApp não respondeu ao envio de mídia" };
+    }
+
+    const raw = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: JSON.stringify(raw).slice(0, 300), raw };
+    }
+
+    return {
+      ok: true,
+      externalId: (raw as { id?: string })?.id || (raw as { key?: { id?: string } })?.key?.id,
+      raw,
+    };
+  }
 }

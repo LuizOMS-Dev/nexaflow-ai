@@ -24,6 +24,8 @@ import { publicApiV1Routes } from "./routes/public-api-v1";
 import { contactRoutes } from "./routes/contacts";
 import { marketingRoutes } from "./routes/marketing";
 import { financeRoutes } from "./routes/finance";
+import { mediaRoutes } from "./routes/media";
+import multipart from "@fastify/multipart";
 import { addClient, removeClient } from "./ws/hub";
 import { sanitizeRequestUrl } from "./lib/logger";
 
@@ -150,6 +152,12 @@ export async function buildApp() {
   }
 
   await app.register(websocket);
+  await app.register(multipart, {
+    limits: {
+      fileSize: 50 * 1024 * 1024,
+      files: 5,
+    },
+  });
   await app.register(authPlugin);
 
   // Storage local de avatares (só arquivos com nome aleatório sob /media/avatars)
@@ -337,6 +345,7 @@ export async function buildApp() {
   // Contatos 3.0 — seção CRM + model Contact (WA/inbox/funil compartilham a mesma entidade)
   await app.register(contactRoutes);
   await app.register(conversationRoutes);
+  await app.register(mediaRoutes);
   await app.register(crmRoutes);
   await app.register(financeRoutes);
   await app.register(taskRoutes);

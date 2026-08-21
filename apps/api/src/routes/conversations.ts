@@ -318,11 +318,14 @@ export async function conversationRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = z
       .object({
-        content: z.string().min(1),
-        /** Tipo de mídia. Nota interna usa isInternal=true (não MessageType). */
-        type: z.enum(["TEXT", "IMAGE", "AUDIO", "VIDEO", "DOCUMENT"]).default("TEXT"),
+        content: z.string().default(""),
+        /** Tipo de mensagem. Nota interna usa isInternal=true. */
+        type: z
+          .enum(["TEXT", "IMAGE", "AUDIO", "VOICE", "VIDEO", "DOCUMENT", "FILE", "NOTE"])
+          .default("TEXT"),
         isInternal: z.boolean().optional(),
         mediaUrl: z.string().optional(),
+        metadata: z.record(z.unknown()).optional(),
         /** Cliente pode reenviar a mesma chave em retry — evita duplo envio WhatsApp */
         idempotencyKey: z.string().min(8).max(200).optional(),
       })
@@ -387,32 +390,75 @@ export async function conversationRoutes(app: FastifyInstance) {
     if (!isInternal && conversation.channel?.type === "WHATSAPP" && deliveryDestination) {
       try {
         const { createHash } = await import("crypto");
-        const { dispatchWhatsAppText } = await import("../services/whatsapp");
-        // Chave estável (sem Date.now) — retry/double-click não duplica envio
+        const isMedia = Boolean(body.mediaUrl) || (body.type !== "TEXT" && body.type !== "NOTE");
+
         const contentHash = createHash("sha256")
-          .update(body.content)
+          .update(body.content + (body.mediaUrl || ""))
           .digest("hex")
           .slice(0, 16);
         const idempotencyKey =
           body.idempotencyKey ||
           `reply:${id}:${request.user.sub}:${contentHash}`;
-        const sent = await dispatchWhatsAppText({
-          channelId: conversation.channel.id,
-          to: deliveryDestination,
-          text: body.content,
-          purpose: "reply",
-          tenantId: request.user.tenantId!,
-          contactId: conversation.contactId,
-          idempotencyKey,
-        });
-        if (sent.ok) externalId = sent.externalId;
-        else deliveryError = sent.error || "Falha no envio WhatsApp";
+
+        if (isMedia && body.mediaUrl) {
+          const { dispatchWhatsAppMedia } = await import("../services/whatsapp");
+          const meta = (body.metadata || {}) as Record<string, unknown>;
+          let absPath: string | undefined = undefined;
+
+          if (body.mediaUrl.startsWith("/api/media/files/")) {
+            const parts = body.mediaUrl.replace("/api/media/files/", "").split("/");
+            if (parts.length >= 2) {
+              const { resolveMediaFilePath } = await import("../services/storage/media-storage");
+              const resolved = await resolveMediaFilePath(parts[0], parts[1]);
+              if (resolved.exists) absPath = resolved.absPath;
+            }
+          }
+
+          const sent = await dispatchWhatsAppMedia({
+            channelId: conversation.channel.id,
+            to: deliveryDestination,
+            kind: (body.type === "NOTE" || body.type === "TEXT" ? "DOCUMENT" : body.type) as any,
+            mediaUrl: body.mediaUrl,
+            absPath,
+            caption: body.content || undefined,
+            filename: (meta.filename as string) || undefined,
+            mimetype: (meta.mimetype as string) || undefined,
+            purpose: "reply",
+            tenantId: request.user.tenantId!,
+            contactId: conversation.contactId,
+            idempotencyKey,
+          });
+          if (sent.ok) externalId = sent.externalId;
+          else deliveryError = sent.error || "Falha no envio da mídia pelo WhatsApp";
+        } else {
+          const { dispatchWhatsAppText } = await import("../services/whatsapp");
+          const sent = await dispatchWhatsAppText({
+            channelId: conversation.channel.id,
+            to: deliveryDestination,
+            text: body.content,
+            purpose: "reply",
+            tenantId: request.user.tenantId!,
+            contactId: conversation.contactId,
+            idempotencyKey,
+          });
+          if (sent.ok) externalId = sent.externalId;
+          else deliveryError = sent.error || "Falha no envio WhatsApp";
+        }
       } catch (err) {
         deliveryError = err instanceof Error ? err.message : "Erro ao enviar WhatsApp";
       }
     }
 
     const { asInputJson } = await import("../lib/json");
+    const mergedMeta = {
+      ...(body.metadata || {}),
+      ...(isInternal
+        ? {}
+        : deliveryError
+          ? { deliveryError, deliveryStatus: "FAILED", sendError: deliveryError }
+          : { deliveryStatus: "SENT" }),
+    };
+
     const message = await prisma.message.create({
       data: {
         conversationId: id,
@@ -423,22 +469,27 @@ export async function conversationRoutes(app: FastifyInstance) {
         mediaUrl: body.mediaUrl,
         externalId,
         isAiGenerated: false,
-        metadata: asInputJson(
-          isInternal
-            ? {}
-            : deliveryError
-              ? { deliveryError, deliveryStatus: "FAILED", sendError: deliveryError }
-              : { deliveryStatus: "SENT" }
-        ),
+        metadata: asInputJson(mergedMeta),
       },
       include: { author: { select: { id: true, name: true, avatarUrl: true } } },
     });
+
+    let preview = isInternal ? `[Nota] ${body.content}` : body.content;
+    if (!isInternal && (body.mediaUrl || body.type !== "TEXT")) {
+      if (body.type === "IMAGE") preview = body.content ? `📷 ${body.content}` : "📷 Foto";
+      else if (body.type === "VOICE" || body.type === "AUDIO") preview = "🎤 Áudio";
+      else if (body.type === "VIDEO") preview = body.content ? `🎥 ${body.content}` : "🎥 Vídeo";
+      else if (body.type === "DOCUMENT" || body.type === "FILE") {
+        const fn = ((body.metadata || {}) as Record<string, unknown>).filename as string;
+        preview = `📄 ${fn || "Documento"}`;
+      }
+    }
 
     const updated = await prisma.conversation.update({
       where: { id },
       data: {
         lastMessageAt: new Date(),
-        lastMessagePreview: isInternal ? `[Nota] ${body.content}` : body.content,
+        lastMessagePreview: preview,
         status: conversation.status === "CLOSED" ? "OPEN" : conversation.status,
         isUnread: false,
         assignedToId: shouldTakeover ? request.user.sub : conversation.assignedToId || undefined,
@@ -515,19 +566,50 @@ export async function conversationRoutes(app: FastifyInstance) {
         throw new AppError("Canal ou destino do WhatsApp inválido", 400);
       }
 
-      const { dispatchWhatsAppText } = await import("../services/whatsapp");
-      const sent = await dispatchWhatsAppText({
-        channelId: conversation.channel.id,
-        to: deliveryDestination,
-        text: msg.content,
-        purpose: "reply",
-        tenantId: request.user.tenantId!,
-        contactId: conversation.contactId,
-        idempotencyKey: `retry:${id}:${messageId}:${Date.now()}`,
-      });
+      const currentMeta = (msg.metadata || {}) as Record<string, unknown>;
+      let sent: { ok: boolean; externalId?: string; error?: string };
+
+      if (msg.mediaUrl || (msg.type !== "TEXT" && msg.type !== "NOTE")) {
+        const { dispatchWhatsAppMedia } = await import("../services/whatsapp");
+        let absPath: string | undefined = undefined;
+
+        if (msg.mediaUrl?.startsWith("/api/media/files/")) {
+          const parts = msg.mediaUrl.replace("/api/media/files/", "").split("/");
+          if (parts.length >= 2) {
+            const { resolveMediaFilePath } = await import("../services/storage/media-storage");
+            const resolved = await resolveMediaFilePath(parts[0], parts[1]);
+            if (resolved.exists) absPath = resolved.absPath;
+          }
+        }
+
+        sent = await dispatchWhatsAppMedia({
+          channelId: conversation.channel.id,
+          to: deliveryDestination,
+          kind: (msg.type === "NOTE" ? "DOCUMENT" : msg.type) as any,
+          mediaUrl: msg.mediaUrl || "",
+          absPath,
+          caption: msg.content || undefined,
+          filename: (currentMeta.filename as string) || undefined,
+          mimetype: (currentMeta.mimetype as string) || undefined,
+          purpose: "reply",
+          tenantId: request.user.tenantId!,
+          contactId: conversation.contactId,
+          idempotencyKey: `retry:${id}:${messageId}:${Date.now()}`,
+        });
+      } else {
+        const { dispatchWhatsAppText } = await import("../services/whatsapp");
+        sent = await dispatchWhatsAppText({
+          channelId: conversation.channel.id,
+          to: deliveryDestination,
+          text: msg.content,
+          purpose: "reply",
+          tenantId: request.user.tenantId!,
+          contactId: conversation.contactId,
+          idempotencyKey: `retry:${id}:${messageId}:${Date.now()}`,
+        });
+      }
 
       const { asInputJson } = await import("../lib/json");
-      const currentMeta = (msg.metadata || {}) as Record<string, unknown>;
 
       const updated = await prisma.message.update({
         where: { id: messageId },
@@ -1127,20 +1209,19 @@ export async function conversationRoutes(app: FastifyInstance) {
       }
 
       const finalContent = (body.content || message.content).trim();
-      const meta = (message.metadata || {}) as {
-        originalReply?: string;
-        agentId?: string;
-      };
+      const meta = (message.metadata || {}) as Record<string, unknown>;
 
+      const originalReply = typeof meta.originalReply === "string" ? meta.originalReply : undefined;
+      const agentId = typeof meta.agentId === "string" ? meta.agentId : undefined;
       // aprendizado: correção humana
-      if (meta.originalReply && meta.originalReply !== finalContent) {
+      if (originalReply && originalReply !== finalContent) {
         try {
           const { recordHumanCorrection } = await import("../services/agent-learning");
           await recordHumanCorrection({
             tenantId: request.user.tenantId!,
-            agentId: meta.agentId,
+            agentId,
             conversationId: id,
-            originalAi: meta.originalReply,
+            originalAi: originalReply,
             finalHuman: finalContent,
           });
         } catch {
@@ -1153,22 +1234,56 @@ export async function conversationRoutes(app: FastifyInstance) {
       if (conversation.channel?.type === "WHATSAPP" && conversation.contact.phone) {
         try {
           const { createHash } = await import("crypto");
-          const { dispatchWhatsAppText } = await import("../services/whatsapp");
           const contentHash = createHash("sha256")
-            .update(finalContent)
+            .update(finalContent || "")
             .digest("hex")
             .slice(0, 16);
-          const sent = await dispatchWhatsAppText({
-            channelId: conversation.channel.id,
-            to: conversation.contact.phone,
-            text: finalContent,
-            purpose: "ai",
-            tenantId: request.user.tenantId!,
-            contactId: conversation.contactId,
-            idempotencyKey: `ai-approve:${messageId}:${contentHash}`,
-          });
-          if (sent.ok) externalId = sent.externalId;
-          else deliveryError = sent.error || "Falha no envio WhatsApp";
+          const destinationTo =
+            ((conversation.contact.customData as Record<string, unknown> | null)?.wahaChatId as string) ||
+            ((conversation.contact.customData as Record<string, unknown> | null)?.wahaLid as string) ||
+            conversation.contact.phone;
+
+          if (message.mediaUrl) {
+            const { dispatchWhatsAppMedia } = await import("../services/whatsapp");
+            let absPath: string | undefined = undefined;
+            if (message.mediaUrl.startsWith("/api/media/files/")) {
+              const parts = message.mediaUrl.replace("/api/media/files/", "").split("/");
+              if (parts.length >= 2) {
+                const { resolveMediaFilePath } = await import("../services/storage/media-storage");
+                const resolved = await resolveMediaFilePath(parts[0], parts[1]);
+                if (resolved.exists) absPath = resolved.absPath;
+              }
+            }
+
+            const sent = await dispatchWhatsAppMedia({
+              channelId: conversation.channel.id,
+              to: destinationTo,
+              kind: message.type as any,
+              mediaUrl: message.mediaUrl,
+              absPath,
+              caption: finalContent || undefined,
+              filename: (meta.filename as string) || undefined,
+              mimetype: (meta.mimetype as string) || undefined,
+              purpose: "ai",
+              tenantId: request.user.tenantId!,
+              idempotencyKey: `ai-approve-media:${messageId}:${contentHash}`,
+            });
+            if (sent.ok) externalId = sent.externalId;
+            else deliveryError = sent.error || "Falha no envio da mídia no WhatsApp";
+          } else {
+            const { dispatchWhatsAppText } = await import("../services/whatsapp");
+            const sent = await dispatchWhatsAppText({
+              channelId: conversation.channel.id,
+              to: destinationTo,
+              text: finalContent,
+              purpose: "ai",
+              tenantId: request.user.tenantId!,
+              contactId: conversation.contactId,
+              idempotencyKey: `ai-approve:${messageId}:${contentHash}`,
+            });
+            if (sent.ok) externalId = sent.externalId;
+            else deliveryError = sent.error || "Falha no envio WhatsApp";
+          }
         } catch (err) {
           deliveryError = err instanceof Error ? err.message : "Erro ao enviar";
         }

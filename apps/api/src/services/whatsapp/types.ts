@@ -50,6 +50,17 @@ export interface WhatsAppConnector {
   /** Logout real no WhatsApp (invalida sessão) */
   logout(config: WhatsAppChannelConfig): Promise<void>;
   sendText(config: WhatsAppChannelConfig, to: string, text: string): Promise<SendTextResult>;
+  sendMedia?(
+    config: WhatsAppChannelConfig,
+    to: string,
+    media: {
+      kind: "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE";
+      mimetype: string;
+      filename?: string;
+      dataBase64: string;
+      caption?: string;
+    }
+  ): Promise<SendTextResult>;
   /** Opcional: desliga socket sem logout */
   disconnect?(config: WhatsAppChannelConfig): Promise<void>;
   /** Opcional: força reconexão com credenciais existentes */

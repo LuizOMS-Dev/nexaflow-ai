@@ -726,6 +726,22 @@ async function persistAiInsights(conversationId: string, contactId: string, resu
  * Resposta humana para WhatsApp (modo AUTO).
  * Fala como atendente real: natural no WhatsApp, completa o suficiente para responder de verdade.
  */
+export type AgentMediaAction = {
+  assetId: string;
+  caption?: string;
+  asset: {
+    id: string;
+    name: string;
+    description: string | null;
+    type: "IMAGE" | "PDF" | "DOCUMENT" | "AUDIO" | "VOICE" | "VIDEO" | "FILE";
+    mimetype: string;
+    filename: string;
+    sizeBytes: number;
+    url: string;
+    permissionMode: "AUTO_ALLOWED" | "APPROVAL_REQUIRED" | "DISABLED";
+  };
+};
+
 export async function generateHumanWhatsAppReply(params: {
   tenantId: string;
   conversationId: string;
@@ -742,6 +758,7 @@ export async function generateHumanWhatsAppReply(params: {
   correlationId?: string;
   sources?: Array<{ title: string; documentId: string; version: number; chunkIndex: number; score: number }>;
   knowledgeInsufficient?: boolean;
+  mediaAction?: AgentMediaAction;
   degradationReason?:
     | "provider_rate_limit"
     | "tenant_credits_exhausted"
@@ -754,7 +771,7 @@ export async function generateHumanWhatsAppReply(params: {
    * Agora: contexto útil + até ~320 tokens de saída (resposta completa, ainda WhatsApp).
    * TPM: still capped vs prompt full de chat; rate-limit continua com soft-fail.
    */
-  const [conversation, agent, tenantRow] = await Promise.all([
+  const [conversation, agent, tenantRow, mediaAssets] = await Promise.all([
     prisma.conversation.findFirst({
       where: { id: params.conversationId, tenantId: params.tenantId },
       include: {
@@ -769,6 +786,15 @@ export async function generateHumanWhatsAppReply(params: {
           orderBy: { createdAt: "asc" },
         }),
     prisma.tenant.findUnique({ where: { id: params.tenantId }, select: { name: true } }),
+    prisma.agentMediaAsset.findMany({
+      where: {
+        tenantId: params.tenantId,
+        isActive: true,
+        permissionMode: { in: ["AUTO_ALLOWED", "APPROVAL_REQUIRED"] },
+        OR: [{ agentId: null }, { agentId: params.agentId || undefined }],
+      },
+      take: 6,
+    }),
   ]);
   if (!conversation) {
     return { reply: "Oi! Tudo bem? Como posso te ajudar?" };
@@ -891,7 +917,20 @@ ${
 ${profileBits ? `Dados do Cliente: ${profileBits}` : ""}
 ${behavior ? `Instruções do Agente:\n${behavior}` : ""}
 ${restrictions ? `Limites e Regras:\n${restrictions}` : ""}
-
+${
+  mediaAssets.length > 0
+    ? `\nBIBLIOTECA DE MÍDIA AUTORIZADA DA EMPRESA (arquivos reais para envio):\n${mediaAssets
+        .map(
+          (m) =>
+            `- ID: ${m.id} | Tipo: ${m.type} | Nome: "${m.name}" | Descrição: ${m.description || m.filename}`
+        )
+        .join("\n")}
+REGRA DE ENVIO DE ARQUIVOS: Quando o cliente pedir catálogo, PDF, tabela, foto ou documento oficial correspondente a um dos itens acima, adicione ao final da sua resposta a tag exata:
+[ACTION:SEND_MEDIA:ID_DO_ARQUIVO:Legenda amigável]
+Exemplo: [ACTION:SEND_MEDIA:${mediaAssets[0].id}:Segue nosso catálogo oficial em PDF!]
+ATENÇÃO: NUNCA invente IDs ou links inexistentes. Use apenas os IDs da lista acima.\n`
+    : ""
+}
 KNOWLEDGE (Base de dados oficial de ${companyHint} — fonte factual autorizada; ${knowledge.length} trecho(s)):
 ${knowledgeInsufficient ? "Aviso: Informação específica não encontrada no Knowledge — responda com honestidade e ofereça ajuda de um especialista.\n" : ""}${knowledgeBlock}
 
@@ -1001,6 +1040,24 @@ Escreva a resposta completa de WhatsApp:`;
 
       let reply = (generated.content || "").trim();
       reply = reply.replace(/^["']|["']$/g, "").replace(/^(Resposta|Mensagem)\s*:\s*/i, "").trim();
+
+      // Extração de ação de envio de mídia autorizada da biblioteca
+      let mediaAction: AgentMediaAction | undefined = undefined;
+      const mediaActionMatch = reply.match(/\[ACTION:SEND_MEDIA:([a-zA-Z0-9_-]+)(?::([^\]]*))?\]/i);
+      if (mediaActionMatch) {
+        const targetId = mediaActionMatch[1];
+        const customCaption = (mediaActionMatch[2] || "").trim();
+        const matchedAsset = mediaAssets.find((a) => a.id === targetId);
+        if (matchedAsset && matchedAsset.permissionMode !== "DISABLED") {
+          mediaAction = {
+            assetId: matchedAsset.id,
+            caption: customCaption || undefined,
+            asset: matchedAsset,
+          };
+        }
+        reply = reply.replace(mediaActionMatch[0], "").trim();
+      }
+
       reply = sanitizeAgentOutbound(reply);
 
       // Grounding: EXECUTE FIRST, THEN CLAIM — bloqueia "vou verificar" sem ação real
@@ -1011,7 +1068,7 @@ Escreva a resposta completa de WhatsApp:`;
         knowledgeSnippets: knowledge.map(
           (k) => `${k.title}: ${(k.content || "").slice(0, 400)}`
         ),
-        toolsExecuted: [],
+        toolsExecuted: mediaAction ? [{ name: "send_media_asset", ok: true }] : [],
         handoffConfirmed: false,
         asyncJobScheduled: false,
       };
@@ -1023,13 +1080,13 @@ Escreva a resposta completa de WhatsApp:`;
         willExecuteHandoff: false,
       });
       reply = sanitizeAgentOutbound(grounded.reply);
-      if (!reply) {
+      if (!reply && !mediaAction) {
         reply = `Oi! Aqui é a ${agentName}. Como posso te ajudar?`;
       }
 
       // NÃO chamar analyzeConversation aqui — dobrava consumo de tokens e gerava rate limit no Groq.
       console.log(
-        `[ai-trace] [AI_SUCCEEDED] conversationId=${conversation.id} tokensIn=${generated.usage?.inputTokens ?? "?"} tokensOut=${generated.usage?.outputTokens ?? "?"} model=${generated.model} grounded=${grounded.rewritten} outcome=${grounded.outcome}`
+        `[ai-trace] [AI_SUCCEEDED] conversationId=${conversation.id} tokensIn=${generated.usage?.inputTokens ?? "?"} tokensOut=${generated.usage?.outputTokens ?? "?"} model=${generated.model} grounded=${grounded.rewritten} outcome=${grounded.outcome} mediaAction=${mediaAction ? mediaAction.assetId : "none"}`
       );
 
       void import("./platform-ai-health").then(({ markPlatformAiHealthy }) =>
@@ -1069,6 +1126,7 @@ Escreva a resposta completa de WhatsApp:`;
         correlationId,
         sources: knowledgeSources,
         knowledgeInsufficient,
+        mediaAction,
       };
     } catch (err) {
       lastErr = err instanceof Error ? err.message : String(err);
