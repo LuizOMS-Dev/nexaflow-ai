@@ -651,20 +651,22 @@ export class GitHubClient {
 
         return mapped.slice(0, limit);
       } catch (err) {
-        // Fallback 1: cache em memória
-        if (this.recentCommitsCache && this.recentCommitsCache.data.length > 0) {
+        // Se forceRefresh for solicitado ou se houver commits locais mais novos, usa o git local atualizado
+        const local = await this.getLocalGitCommits(limit);
+        if (local.length > 0) {
+          this.recentCommitsCache = { key: cacheKey, data: local, timestamp: Date.now() };
+          await this.savePersistentCache(local);
+          return local.slice(0, limit);
+        }
+
+        // Fallback 1: cache em memória (se não for forceRefresh)
+        if (!forceRefresh && this.recentCommitsCache && this.recentCommitsCache.data.length > 0) {
           return this.recentCommitsCache.data.slice(0, limit);
         }
         // Fallback 2: cache persistente no banco
         const cached = await this.getPersistentCache();
         if (cached.length > 0) {
           return cached.slice(0, limit);
-        }
-        // Fallback 3: git log local
-        const local = await this.getLocalGitCommits(limit);
-        if (local.length > 0) {
-          await this.savePersistentCache(local);
-          return local.slice(0, limit);
         }
 
         throw err;
@@ -744,8 +746,13 @@ export class GitHubClient {
         this.latestCommitCache = { key: cacheKey, data: info, timestamp: Date.now() };
         return info;
       } catch (err) {
-        // Fallback: busca do cache recente ou git local
-        if (this.latestCommitCache) return this.latestCommitCache.data;
+        // Fallback: busca do git local atualizado ou cache
+        const local = await this.getLocalGitCommits(1);
+        if (local.length > 0 && local[0]) {
+          this.latestCommitCache = { key: cacheKey, data: local[0], timestamp: Date.now() };
+          return local[0];
+        }
+        if (!forceRefresh && this.latestCommitCache) return this.latestCommitCache.data;
         const raw = await this.listRecentCommitsRaw(1, forceRefresh).catch(() => []);
         if (raw.length > 0 && raw[0]) {
           return raw[0];

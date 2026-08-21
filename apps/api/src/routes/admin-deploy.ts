@@ -19,10 +19,11 @@ export async function adminDeployRoutes(app: FastifyInstance) {
   // 2. Lista de commits recentes do GitHub
   app.get("/admin/deploy/commits", async (request, reply) => {
     reply.header("Cache-Control", "no-store, no-cache, must-revalidate, private");
-    const q = request.query as { limit?: string };
+    const q = request.query as { limit?: string; refresh?: string };
     const limit = Math.min(30, Math.max(1, Number(q.limit) || 10));
+    const forceRefresh = q.refresh === "true" || q.refresh === "1";
     try {
-      const commits = await githubClient.listRecentCommits(limit);
+      const commits = await githubClient.listRecentCommits(limit, forceRefresh);
       return { commits };
     } catch (e: any) {
       return {
