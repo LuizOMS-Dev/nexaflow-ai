@@ -494,22 +494,22 @@ export function InboxComposer({
                   setPreviewCurrentTime(0);
                 }}
               />
-              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <button
                   type="button"
                   onClick={togglePreviewAudio}
                   aria-label={previewPlaying ? "Pausar prévia" : "Reproduzir prévia"}
                   title={previewPlaying ? "Pausar prévia" : "Reproduzir prévia"}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-colors shadow-xs active:scale-95 cursor-pointer"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-sm active:scale-95 cursor-pointer dark:bg-violet-500 dark:hover:bg-violet-400"
                 >
                   {previewPlaying ? (
                     <Pause className="h-3.5 w-3.5 fill-current" />
                   ) : (
-                    <Play className="h-3.5 w-3.5 fill-current ml-0.5" />
+                    <Play className="h-3.5 w-3.5 fill-current translate-x-[1px]" />
                   )}
                 </button>
 
-                <div className="flex flex-1 flex-col justify-center min-w-0">
+                <div className="flex flex-1 flex-col justify-center gap-1 min-w-0">
                   <input
                     type="range"
                     min={0}
@@ -531,9 +531,9 @@ export function InboxComposer({
                         }%`,
                       } as CSSProperties
                     }
-                    className="nf-audio-slider w-full focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40"
+                    className="nf-audio-slider w-full focus:outline-none"
                   />
-                  <div className="mt-0.5 flex items-center justify-between text-[10px] tabular-nums font-mono text-ink-muted/80 dark:text-zinc-400">
+                  <div className="flex items-center justify-between text-[11px] tabular-nums font-mono leading-none text-ink-muted dark:text-zinc-400">
                     <span className="font-semibold text-ink dark:text-zinc-200">
                       {formatSeconds(previewCurrentTime)}
                     </span>

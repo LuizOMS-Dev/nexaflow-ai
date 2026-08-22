@@ -1606,70 +1606,81 @@ function InboxPageContent() {
                         )}
 
                         {/* Balão de Mensagem */}
-                        <div
-                          className={cn(
-                            "w-fit max-w-full px-3.5 py-2 text-[13px] leading-relaxed transition-colors",
-                            bubbleRadius,
-                            origin === "INTERNAL_NOTE"
-                              ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
-                              : origin === "HUMAN"
-                                ? "bg-[#181a20] text-white dark:bg-[#1a1f2c] dark:text-zinc-100 dark:border dark:border-white/[0.08] shadow-xs"
-                                : origin === "AI"
-                                  ? "border border-violet-500/20 bg-violet-500/[0.06] text-ink dark:border-violet-400/20 dark:bg-violet-950/40 dark:text-zinc-100"
-                                  : "border border-black/[0.05] bg-white text-ink shadow-xs dark:border-white/[0.06] dark:bg-[#121620] dark:text-zinc-100"
-                          )}
-                        >
-                          {/* Renderização de Mídia */}
-                          {(m.mediaUrl ||
-                            (m.type && m.type !== "TEXT" && m.type !== "NOTE") ||
-                            /^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha)(?::\s*[^\]]+)?\]$/i.test(
-                              m.content?.trim() || ""
-                            )) && (
-                            <MediaBubble
-                              type={m.type || "FILE"}
-                              mediaUrl={m.mediaUrl}
-                              metadata={messageMeta(m)}
-                              isOutbound={origin === "HUMAN"}
-                              content={m.content}
-                              onOpenLightbox={(url) => setLightboxSrc(url)}
-                            />
-                          )}
+                        {(() => {
+                          const meta = messageMeta(m);
+                          const isAudioOnly =
+                            (m.type === "VOICE" || m.type === "AUDIO" || (meta.mimetype as string)?.startsWith("audio/")) &&
+                            (!m.content || /^\[(?:mídia|midia|áudio|audio)(?::\s*[^\]]+)?\]$/i.test(m.content.trim()));
 
-                          {/* Conteúdo de Texto com formatação rica do WhatsApp */}
-                          {m.content &&
-                            !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^|\]]+)?\]$/i.test(
-                              m.content.trim()
-                            ) && (
-                              <WhatsAppFormattedText content={m.content} />
-                            )}
+                          return (
+                            <div
+                              className={cn(
+                                "w-fit max-w-full text-[13px] leading-relaxed transition-colors",
+                                isAudioOnly ? "px-3 py-2" : "px-3.5 py-2",
+                                bubbleRadius,
+                                origin === "INTERNAL_NOTE"
+                                  ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
+                                  : origin === "HUMAN"
+                                    ? "bg-[#181a20] text-white dark:bg-[#1a1f2c] dark:text-zinc-100 dark:border dark:border-white/[0.08] shadow-xs"
+                                    : origin === "AI"
+                                      ? "border border-violet-500/20 bg-violet-500/[0.06] text-ink dark:border-violet-400/20 dark:bg-violet-950/40 dark:text-zinc-100"
+                                      : "border border-black/[0.05] bg-white text-ink shadow-xs dark:border-white/[0.06] dark:bg-[#121620] dark:text-zinc-100"
+                              )}
+                            >
+                              {/* Renderização de Mídia */}
+                              {(m.mediaUrl ||
+                                (m.type && m.type !== "TEXT" && m.type !== "NOTE") ||
+                                /^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha)(?::\s*[^\]]+)?\]$/i.test(
+                                  m.content?.trim() || ""
+                                )) && (
+                                <MediaBubble
+                                  type={m.type || "FILE"}
+                                  mediaUrl={m.mediaUrl}
+                                  metadata={meta}
+                                  isOutbound={origin === "HUMAN"}
+                                  content={m.content}
+                                  onOpenLightbox={(url) => setLightboxSrc(url)}
+                                />
+                              )}
 
-                          {/* Metadados e Status de Entrega */}
-                          <div
-                            className={cn(
-                              "mt-1 flex items-center justify-end gap-1 text-[10px] tabular-nums",
-                              origin === "HUMAN"
-                                ? "text-white/65 dark:text-zinc-400"
-                                : "text-ink-faint dark:text-zinc-400"
-                            )}
-                          >
-                            <span>{time}</span>
-                            {origin === "HUMAN" && (
-                              <span className="inline-flex items-center ml-0.5">
-                                {messageMeta(m).deliveryStatus === "READ" ? (
-                                  <CheckCheck className="h-3 w-3 text-sky-400 dark:text-sky-400" />
-                                ) : messageMeta(m).deliveryStatus === "DELIVERED" ? (
-                                  <CheckCheck className="h-3 w-3 opacity-75" />
-                                ) : messageMeta(m).deliveryStatus === "FAILED" || messageMeta(m).deliveryError ? (
-                                  <AlertCircle className="h-3 w-3 text-rose-500" />
-                                ) : messageMeta(m).deliveryStatus === "SENDING" || messageMeta(m).deliveryStatus === "UPLOADING" ? (
-                                  <Loader2 className="h-2.5 w-2.5 animate-spin opacity-75" />
-                                ) : (
-                                  <Check className="h-3 w-3 opacity-75" />
+                              {/* Conteúdo de Texto com formatação rica do WhatsApp */}
+                              {m.content &&
+                                !/^\[(?:mídia|midia|imagem|áudio|audio|vídeo|video|documento|sticker|figurinha|mensagem)(?::\s*[^|\]]+)?\]$/i.test(
+                                  m.content.trim()
+                                ) && (
+                                  <WhatsAppFormattedText content={m.content} />
                                 )}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+
+                              {/* Metadados e Status de Entrega */}
+                              <div
+                                className={cn(
+                                  "flex items-center justify-end gap-1 text-[10px] tabular-nums",
+                                  isAudioOnly ? "mt-0.5" : "mt-1",
+                                  origin === "HUMAN"
+                                    ? "text-white/65 dark:text-zinc-400"
+                                    : "text-ink-faint dark:text-zinc-400"
+                                )}
+                              >
+                                <span>{time}</span>
+                                {origin === "HUMAN" && (
+                                  <span className="inline-flex items-center ml-0.5">
+                                    {meta.deliveryStatus === "READ" ? (
+                                      <CheckCheck className="h-3 w-3 text-sky-400 dark:text-sky-400" />
+                                    ) : meta.deliveryStatus === "DELIVERED" ? (
+                                      <CheckCheck className="h-3 w-3 opacity-75" />
+                                    ) : meta.deliveryStatus === "FAILED" || meta.deliveryError ? (
+                                      <AlertCircle className="h-3 w-3 text-rose-500" />
+                                    ) : meta.deliveryStatus === "SENDING" || meta.deliveryStatus === "UPLOADING" ? (
+                                      <Loader2 className="h-2.5 w-2.5 animate-spin opacity-75" />
+                                    ) : (
+                                      <Check className="h-3 w-3 opacity-75" />
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

@@ -194,17 +194,17 @@ export function AudioVoicePlayer({
   };
 
   return (
-    <div className="flex items-center gap-2.5 py-1 min-w-[220px] max-w-xs">
+    <div className="flex items-center gap-3 py-0.5 w-[230px] sm:w-[260px] max-w-full select-none">
       <audio ref={audioRef} src={resolvedSrc} preload="metadata" />
       <button
         type="button"
         onClick={togglePlay}
         aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
         className={cn(
-          "flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-xs cursor-pointer",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-sm cursor-pointer",
           isOutbound
-            ? "bg-white text-zinc-900 hover:bg-zinc-100 dark:bg-violet-600 dark:text-white dark:hover:bg-violet-500"
-            : "bg-violet-600 text-white hover:bg-violet-700 dark:bg-violet-500 dark:text-white dark:hover:bg-violet-600"
+            ? "bg-white text-zinc-900 hover:bg-zinc-100 shadow-black/10 dark:bg-violet-600 dark:text-white dark:hover:bg-violet-500 dark:shadow-violet-950/40"
+            : "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-600/25 dark:bg-violet-500 dark:text-white dark:hover:bg-violet-400 dark:shadow-violet-950/40"
         )}
       >
         {isLoading ? (
@@ -212,45 +212,53 @@ export function AudioVoicePlayer({
         ) : isPlaying ? (
           <Pause className="h-4 w-4 fill-current" />
         ) : (
-          <Play className="h-4 w-4 fill-current ml-0.5" />
+          <Play className="h-4 w-4 fill-current translate-x-[1px]" />
         )}
       </button>
 
-      <div className="flex flex-1 flex-col justify-center min-w-0">
-        <input
-          type="range"
-          min={0}
-          max={sliderMax}
-          step="any"
-          value={sliderTime}
-          onChange={handleSeek}
-          aria-label="Progresso do áudio"
-          aria-valuemin={0}
-          aria-valuemax={sliderMax}
-          aria-valuenow={sliderTime}
-          aria-valuetext={formatSeconds(sliderTime)}
-          style={sliderStyle}
-          className={cn(
-            "nf-audio-slider w-full focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/40",
-            isOutbound && "nf-audio-slider--outbound bg-white/30 dark:bg-white/15"
-          )}
-        />
+      <div className="flex flex-1 flex-col justify-center gap-1.5 min-w-0">
+        <div className="relative flex items-center w-full">
+          <input
+            type="range"
+            min={0}
+            max={sliderMax}
+            step="any"
+            value={sliderTime}
+            onChange={handleSeek}
+            aria-label="Progresso do áudio"
+            aria-valuemin={0}
+            aria-valuemax={sliderMax}
+            aria-valuenow={sliderTime}
+            aria-valuetext={formatSeconds(sliderTime)}
+            style={sliderStyle}
+            className={cn(
+              "nf-audio-slider w-full focus:outline-none",
+              isOutbound && "nf-audio-slider--outbound"
+            )}
+          />
+        </div>
         <div
           className={cn(
-            "mt-1 flex items-center justify-between text-[10.5px] tabular-nums font-mono",
+            "flex items-center justify-between text-[11px] tabular-nums font-mono leading-none",
             isOutbound
               ? "text-white/80 dark:text-zinc-300"
               : "text-ink-muted dark:text-zinc-400"
           )}
         >
-          <span className="font-semibold">{formatSeconds(sliderTime)}</span>
+          <span className="font-semibold text-[11px]">
+            {isPlaying || currentTime > 0 ? formatSeconds(sliderTime) : (duration > 0 ? formatSeconds(duration) : "0:00")}
+          </span>
           <div className="flex items-center gap-1.5">
-            <span>{duration > 0 ? formatSeconds(duration) : "0:00"}</span>
+            {isPlaying && duration > 0 && (
+              <span className="text-[10px] opacity-70">
+                {formatSeconds(duration)}
+              </span>
+            )}
             <button
               type="button"
               onClick={cycleSpeed}
               className={cn(
-                "rounded px-1.5 py-0.5 text-[9.5px] font-bold transition-all tabular-nums cursor-pointer",
+                "rounded-full px-1.5 py-0.5 text-[9.5px] font-bold tracking-tight transition-all tabular-nums cursor-pointer",
                 isOutbound
                   ? "bg-white/20 hover:bg-white/30 text-white dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
                   : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
@@ -716,11 +724,7 @@ export function MediaBubble({
   // Áudio ou Mensagem de Voz
   if (type === "VOICE" || type === "AUDIO" || mime.startsWith("audio/")) {
     const audioDur = Number(meta.duration) || Number(meta.durationSecs) || undefined;
-    return (
-      <div className="my-1">
-        <AudioVoicePlayer src={resolvedUrl} initialDuration={audioDur} isOutbound={isOutbound} />
-      </div>
-    );
+    return <AudioVoicePlayer src={resolvedUrl} initialDuration={audioDur} isOutbound={isOutbound} />;
   }
 
   // Vídeo

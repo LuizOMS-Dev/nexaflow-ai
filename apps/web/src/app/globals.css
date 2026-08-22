@@ -10659,7 +10659,7 @@ html:not(.dark) .nf-asb {
 .nf-audio-slider {
   --nf-audio-progress: 0%;
   --nf-audio-played: rgb(124 58 237);
-  --nf-audio-track: rgb(0 0 0 / 0.1);
+  --nf-audio-track: rgb(0 0 0 / 0.12);
   --nf-audio-thumb: rgb(124 58 237);
   -webkit-appearance: none;
   appearance: none;
@@ -10677,15 +10677,19 @@ html:not(.dark) .nf-asb {
   );
   outline: none;
   cursor: pointer;
+  transition: height 0.15s ease;
+}
+.nf-audio-slider:hover {
+  height: 5px;
 }
 .dark .nf-audio-slider {
-  --nf-audio-played: rgb(167 139 250);
-  --nf-audio-track: rgb(255 255 255 / 0.15);
+  --nf-audio-played: rgb(139 92 246);
+  --nf-audio-track: rgb(255 255 255 / 0.14);
   --nf-audio-thumb: rgb(167 139 250);
 }
 .nf-audio-slider::-webkit-slider-runnable-track {
   width: 100%;
-  height: 4px;
+  height: 100%;
   border: 0;
   border-radius: 9999px;
   background: transparent;
@@ -10693,15 +10697,15 @@ html:not(.dark) .nf-asb {
 .nf-audio-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 10px;
-  height: 10px;
-  margin-top: -3px;
+  width: 11px;
+  height: 11px;
+  margin-top: -3.5px;
   border-radius: 50%;
-  border: 1.5px solid #ffffff;
+  border: 2px solid #ffffff;
   background: var(--nf-audio-thumb);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
   cursor: pointer;
-  transition: transform 0.1s ease, background-color 0.1s ease;
+  transition: transform 0.12s ease;
 }
 .nf-audio-slider::-moz-range-track {
   width: 100%;
@@ -10717,20 +10721,20 @@ html:not(.dark) .nf-asb {
   background: var(--nf-audio-played);
 }
 .nf-audio-slider::-moz-range-thumb {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: var(--nf-audio-thumb);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.22);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
   cursor: pointer;
-  border: 1.5px solid #ffffff;
-  transition: transform 0.1s ease, background-color 0.1s ease;
+  border: 2px solid #ffffff;
+  transition: transform 0.12s ease;
 }
 .nf-audio-slider:hover::-webkit-slider-thumb {
-  transform: scale(1.25);
+  transform: scale(1.2);
 }
 .nf-audio-slider:hover::-moz-range-thumb {
-  transform: scale(1.25);
+  transform: scale(1.2);
 }
 .nf-audio-slider:active::-webkit-slider-thumb {
   transform: scale(1.1);
@@ -10740,18 +10744,18 @@ html:not(.dark) .nf-asb {
 }
 .nf-audio-slider--outbound {
   --nf-audio-played: rgb(255 255 255 / 0.95);
-  --nf-audio-track: rgb(255 255 255 / 0.3);
+  --nf-audio-track: rgb(255 255 255 / 0.25);
   --nf-audio-thumb: #ffffff;
 }
 .nf-audio-slider--outbound::-webkit-slider-thumb {
-  border-color: rgba(0, 0, 0, 0.15);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 .nf-audio-slider--outbound::-moz-range-thumb {
-  border-color: rgba(0, 0, 0, 0.15);
+  border-color: rgba(0, 0, 0, 0.2);
 }
 .dark .nf-audio-slider--outbound {
   --nf-audio-played: rgb(167 139 250);
-  --nf-audio-track: rgb(255 255 255 / 0.15);
+  --nf-audio-track: rgb(255 255 255 / 0.16);
   --nf-audio-thumb: rgb(167 139 250);
 }
 .dark .nf-audio-slider--outbound::-webkit-slider-thumb {
