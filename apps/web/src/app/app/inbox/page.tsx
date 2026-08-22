@@ -1625,9 +1625,9 @@ function InboxPageContent() {
                                 origin === "INTERNAL_NOTE"
                                   ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
                                   : origin === "HUMAN"
-                                    ? "bg-violet-600 text-white shadow-violet-600/10 dark:bg-violet-600 dark:text-white dark:border dark:border-violet-500/25"
+                                    ? "border border-violet-500/20 bg-violet-500/[0.08] text-ink dark:border-white/[0.08] dark:bg-[#1a1f2c] dark:text-zinc-100"
                                     : origin === "AI"
-                                      ? "border border-violet-500/25 bg-violet-500/[0.08] text-ink dark:border-violet-400/25 dark:bg-violet-950/40 dark:text-zinc-100"
+                                      ? "border border-violet-500/25 bg-violet-500/[0.06] text-ink dark:border-violet-400/25 dark:bg-violet-950/40 dark:text-zinc-100"
                                       : "border border-black/[0.06] bg-white text-ink dark:border-white/[0.07] dark:bg-[#151922] dark:text-zinc-100"
                               )}
                             >
@@ -1658,18 +1658,15 @@ function InboxPageContent() {
                               {/* Metadados e Status de Entrega */}
                               <div
                                 className={cn(
-                                  "flex items-center justify-end gap-1 text-[10px] tabular-nums",
-                                  isAudioOnly ? "mt-0.5" : "mt-1",
-                                  origin === "HUMAN"
-                                    ? "text-white/65 dark:text-zinc-400"
-                                    : "text-ink-faint dark:text-zinc-400"
+                                  "flex items-center justify-end gap-1 text-[10px] tabular-nums text-ink-faint dark:text-zinc-400",
+                                  isAudioOnly ? "mt-0.5" : "mt-1"
                                 )}
                               >
                                 <span>{time}</span>
                                 {origin === "HUMAN" && (
                                   <span className="inline-flex items-center ml-0.5">
                                     {meta.deliveryStatus === "READ" ? (
-                                      <CheckCheck className="h-3 w-3 text-sky-400 dark:text-sky-400" />
+                                      <CheckCheck className="h-3 w-3 text-sky-500 dark:text-sky-400" />
                                     ) : meta.deliveryStatus === "DELIVERED" ? (
                                       <CheckCheck className="h-3 w-3 opacity-75" />
                                     ) : meta.deliveryStatus === "FAILED" || meta.deliveryError ? (

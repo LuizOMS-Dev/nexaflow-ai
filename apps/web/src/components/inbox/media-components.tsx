@@ -194,29 +194,24 @@ export function AudioVoicePlayer({
   };
 
   return (
-    <div className="flex items-center gap-3 py-0.5 w-[230px] sm:w-[260px] max-w-full select-none">
+    <div className="flex items-center gap-3 py-1 w-[220px] sm:w-[245px] max-w-full select-none">
       <audio ref={audioRef} src={resolvedSrc} preload="metadata" />
       <button
         type="button"
         onClick={togglePlay}
         aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-sm cursor-pointer",
-          isOutbound
-            ? "bg-white text-zinc-900 hover:bg-zinc-100 shadow-black/10 dark:bg-violet-600 dark:text-white dark:hover:bg-violet-500 dark:shadow-violet-950/40"
-            : "bg-violet-600 text-white hover:bg-violet-700 shadow-violet-600/25 dark:bg-violet-500 dark:text-white dark:hover:bg-violet-400 dark:shadow-violet-950/40"
-        )}
+        className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400 transition-all active:scale-95 shadow-xs cursor-pointer"
       >
         {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : isPlaying ? (
-          <Pause className="h-4 w-4 fill-current" />
+          <Pause className="h-3.5 w-3.5 fill-current" />
         ) : (
-          <Play className="h-4 w-4 fill-current translate-x-[1px]" />
+          <Play className="h-3.5 w-3.5 fill-current translate-x-[1px]" />
         )}
       </button>
 
-      <div className="flex flex-1 flex-col justify-center gap-1.5 min-w-0">
+      <div className="flex flex-1 flex-col justify-center gap-1 min-w-0">
         <div className="relative flex items-center w-full">
           <input
             type="range"
@@ -231,21 +226,11 @@ export function AudioVoicePlayer({
             aria-valuenow={sliderTime}
             aria-valuetext={formatSeconds(sliderTime)}
             style={sliderStyle}
-            className={cn(
-              "nf-audio-slider w-full focus:outline-none",
-              isOutbound && "nf-audio-slider--outbound"
-            )}
+            className="nf-audio-slider w-full focus:outline-none"
           />
         </div>
-        <div
-          className={cn(
-            "flex items-center justify-between text-[11px] tabular-nums font-mono leading-none",
-            isOutbound
-              ? "text-white/80 dark:text-zinc-300"
-              : "text-ink-muted dark:text-zinc-400"
-          )}
-        >
-          <span className="font-semibold text-[11px]">
+        <div className="flex items-center justify-between text-[11px] tabular-nums font-mono leading-none text-ink-muted dark:text-zinc-400">
+          <span className="font-semibold text-ink dark:text-zinc-200">
             {isPlaying || currentTime > 0 ? formatSeconds(sliderTime) : (duration > 0 ? formatSeconds(duration) : "0:00")}
           </span>
           <div className="flex items-center gap-1.5">
@@ -257,12 +242,7 @@ export function AudioVoicePlayer({
             <button
               type="button"
               onClick={cycleSpeed}
-              className={cn(
-                "rounded-full px-1.5 py-0.5 text-[9.5px] font-bold tracking-tight transition-all tabular-nums cursor-pointer",
-                isOutbound
-                  ? "bg-white/20 hover:bg-white/30 text-white dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
-                  : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
-              )}
+              className="rounded-full px-1.5 py-0.5 text-[9.5px] font-bold tracking-tight bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 text-ink-secondary dark:text-zinc-200 transition-all tabular-nums cursor-pointer"
               title="Velocidade de reprodução"
             >
               {speed}x
