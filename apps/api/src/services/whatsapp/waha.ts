@@ -208,9 +208,10 @@ export class WahaConnector implements WhatsAppConnector {
     if (media.kind === "IMAGE") {
       endpoint = "/api/sendImage";
       if (media.caption) body.caption = media.caption;
-    } else if (media.kind === "VOICE") {
-      endpoint = "/api/sendVoice";
-      // Não forçar body.convert = true para evitar erro de processo ffmpeg no WAHA
+    } else if (media.kind === "VOICE" || media.kind === "AUDIO") {
+      // /api/sendFile entrega áudio garantido para todos os clientes WhatsApp sem rejeição de container
+      endpoint = "/api/sendFile";
+      if (media.caption) body.caption = media.caption;
     } else if (media.kind === "VIDEO") {
       endpoint = "/api/sendVideo";
       if (media.caption) body.caption = media.caption;
@@ -219,23 +220,12 @@ export class WahaConnector implements WhatsAppConnector {
       if (media.caption) body.caption = media.caption;
     }
 
-    let res = await fetch(`${base}${endpoint}`, {
+    const res = await fetch(`${base}${endpoint}`, {
       method: "POST",
       headers: this.headers(config.apiKey),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
-
-    // Se /api/sendVoice falhar (ex: erro no ffmpeg do WAHA), tenta fallback seguro via /api/sendFile
-    if ((!res || !res.ok) && media.kind === "VOICE") {
-      console.warn("[waha-media] /api/sendVoice falhou, tentando fallback para /api/sendFile");
-      res = await fetch(`${base}/api/sendFile`, {
-        method: "POST",
-        headers: this.headers(config.apiKey),
-        body: JSON.stringify({ session, chatId, file }),
-        signal: AbortSignal.timeout(45_000),
-      }).catch(() => null);
-    }
 
     if (!res) {
       console.error("[waha-media] Gateway indisponível", {
