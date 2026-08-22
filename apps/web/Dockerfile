@@ -15,6 +15,8 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_NAME=$NEXT_PUBLIC_APP_NAME
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_TELEMETRY_DISABLED=1
+# next.config.ts gera o artefato copiado pelo estágio runner apenas em builds Docker.
+ENV DOCKER_BUILD=1
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json* ./
