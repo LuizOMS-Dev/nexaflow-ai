@@ -72,13 +72,11 @@ class SimulatedConnector implements WhatsAppConnector {
   }
 }
 
+import { BaileysConnector } from "./baileys";
+
 export function getConnector(provider: string | WhatsAppProvider): WhatsAppConnector {
   if (provider === "waha") return new WahaConnector();
-  if (provider === "baileys") {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { BaileysConnector } = require("./baileys") as typeof import("./baileys");
-    return new BaileysConnector();
-  }
+  if (provider === "baileys") return new BaileysConnector();
   return new SimulatedConnector();
 }
 

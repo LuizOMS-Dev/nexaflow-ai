@@ -120,7 +120,7 @@ export function InboxComposer({
     };
   }, [attachmentMenuOpen]);
 
-  // Limpeza de recursos ao desmontar
+  // Limpeza de stream/timer ao desmontar componente
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -131,11 +131,8 @@ export function InboxComposer({
         previewAudioRef.current.pause();
         previewAudioRef.current.src = "";
       }
-      if (previewAudioUrl) {
-        URL.revokeObjectURL(previewAudioUrl);
-      }
     };
-  }, [previewAudioUrl]);
+  }, []);
 
   // Iniciar Gravação de Áudio
   const startRecording = async () => {
@@ -303,7 +300,7 @@ export function InboxComposer({
       audio.pause();
       setPreviewPlaying(false);
     } else {
-      if (audio.ended || Math.abs(audio.currentTime - (recordedDuration || 0)) < 0.2) {
+      if (audio.ended || (recordedDuration > 0 && Math.abs(audio.currentTime - recordedDuration) < 0.2)) {
         audio.currentTime = 0;
         setPreviewCurrentTime(0);
       }
@@ -313,16 +310,8 @@ export function InboxComposer({
           setPreviewPlaying(true);
         })
         .catch((err) => {
-          console.warn("[composer] Preview audio play fallback:", err);
-          try {
-            audio.load();
-            audio
-              .play()
-              .then(() => setPreviewPlaying(true))
-              .catch(() => setPreviewPlaying(false));
-          } catch {
-            setPreviewPlaying(false);
-          }
+          console.warn("[composer] Preview audio play error:", err);
+          setPreviewPlaying(false);
         });
     }
   };
@@ -335,7 +324,7 @@ export function InboxComposer({
       try {
         audio.currentTime = nextTime;
       } catch {
-        /* ignore seek error on unseekable streams */
+        /* ignore seek error */
       }
     }
   };

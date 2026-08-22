@@ -319,8 +319,8 @@ async function runMediaPipeline(
     stage = "GATEWAY_DISPATCH";
 
     const { env } = await import("../../lib/env");
-    const channelConfig = (conversation.channel.config || {}) as Record<string, unknown>;
-    const provider = (channelConfig.provider as string) || env.waGatewayProvider || "waha";
+    const channelConfig = (conversation.channel?.config || {}) as Record<string, unknown>;
+    const provider = (channelConfig.provider as string) || env.waGatewayProvider || "baileys";
 
     const config = {
       ...channelConfig,
@@ -332,7 +332,7 @@ async function runMediaPipeline(
       session:
         (channelConfig.session as string) ||
         (channelConfig.instanceName as string) ||
-        conversation.channel.name ||
+        conversation.channel?.name ||
         "default",
     };
 

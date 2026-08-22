@@ -489,7 +489,7 @@ export async function conversationRoutes(app: FastifyInstance) {
 
           const pipelineRes = await executeMediaSendPipeline({
             tenantId: request.user.tenantId!,
-            channelId: conversation.channel.id,
+            channelId: conversation.channel?.id || conversation.channelId || "",
             conversationId: id,
             contactId: conversation.contactId,
             to: deliveryDestination,
@@ -517,7 +517,9 @@ export async function conversationRoutes(app: FastifyInstance) {
               where: { id: pipelineRes.messageId },
               include: { author: { select: { id: true, name: true, avatarUrl: true } } },
             });
-            return { ...createdMsg, deliveryError };
+            if (createdMsg) {
+              return { ...createdMsg, deliveryError };
+            }
           }
         } else {
           const { dispatchWhatsAppText } = await import("../services/whatsapp");
