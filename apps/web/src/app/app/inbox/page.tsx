@@ -634,7 +634,7 @@ function InboxPageContent() {
       metadata: {
         filename: uploadRes.filename,
         originalName,
-        mimetype: "audio/ogg; codecs=opus",
+        mimetype: uploadRes.mimetype || "audio/webm",
         sizeBytes: uploadRes.sizeBytes,
         isVoice: true,
         duration: durationSecs,

@@ -210,10 +210,12 @@ export class WahaConnector implements WhatsAppConnector {
       if (media.caption) body.caption = media.caption;
     } else if (media.kind === "VOICE" || media.kind === "AUDIO") {
       endpoint = "/api/sendVoice";
-      file.mimetype = "audio/ogg; codecs=opus";
+      const inputMime = media.mimetype || "audio/webm";
+      file.mimetype = inputMime;
       file.filename = "voice.ogg";
-      file.url = `data:audio/ogg; codecs=opus;base64,${cleanBase64}`;
+      file.url = `data:${inputMime};base64,${cleanBase64}`;
       file.data = file.url;
+      body.convert = true;
     } else if (media.kind === "VIDEO") {
       endpoint = "/api/sendVideo";
       if (media.caption) body.caption = media.caption;
@@ -222,12 +224,25 @@ export class WahaConnector implements WhatsAppConnector {
       if (media.caption) body.caption = media.caption;
     }
 
-    const res = await fetch(`${base}${endpoint}`, {
+    let res = await fetch(`${base}${endpoint}`, {
       method: "POST",
       headers: this.headers(config.apiKey),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
+
+    // Se /api/sendVoice com convert falhar, tenta sem convert como fallback
+    if ((!res || !res.ok) && (media.kind === "VOICE" || media.kind === "AUDIO") && body.convert) {
+      console.warn("[waha-media] /api/sendVoice com convert falhou, tentando fallback sem convert...");
+      const fallbackBody = { ...body };
+      delete fallbackBody.convert;
+      res = await fetch(`${base}${endpoint}`, {
+        method: "POST",
+        headers: this.headers(config.apiKey),
+        body: JSON.stringify(fallbackBody),
+        signal: AbortSignal.timeout(45_000),
+      }).catch(() => null);
+    }
 
     if (!res) {
       console.error("[waha-media] Gateway indisponível", {
