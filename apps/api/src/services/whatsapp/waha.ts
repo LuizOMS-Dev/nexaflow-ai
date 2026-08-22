@@ -190,9 +190,14 @@ export class WahaConnector implements WhatsAppConnector {
     }
     const formattedDataUri = `data:${media.mimetype};base64,${cleanBase64}`;
 
+    let defaultFilename = media.filename || "arquivo";
+    if (media.kind === "VOICE" && !defaultFilename.endsWith(".ogg") && !defaultFilename.endsWith(".opus") && !defaultFilename.endsWith(".mp3") && !defaultFilename.endsWith(".webm")) {
+      defaultFilename = "voice.ogg";
+    }
+
     const file = {
       mimetype: media.mimetype,
-      filename: media.filename || "arquivo",
+      filename: defaultFilename,
       data: formattedDataUri,
     };
 
@@ -204,7 +209,7 @@ export class WahaConnector implements WhatsAppConnector {
       if (media.caption) body.caption = media.caption;
     } else if (media.kind === "VOICE") {
       endpoint = "/api/sendVoice";
-      body.convert = true;
+      // Não forçar body.convert = true para evitar erro de processo ffmpeg no WAHA
     } else if (media.kind === "VIDEO") {
       endpoint = "/api/sendVideo";
       if (media.caption) body.caption = media.caption;
@@ -213,12 +218,23 @@ export class WahaConnector implements WhatsAppConnector {
       if (media.caption) body.caption = media.caption;
     }
 
-    const res = await fetch(`${base}${endpoint}`, {
+    let res = await fetch(`${base}${endpoint}`, {
       method: "POST",
       headers: this.headers(config.apiKey),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
+
+    // Se /api/sendVoice falhar (ex: erro no ffmpeg do WAHA), tenta fallback seguro via /api/sendFile
+    if ((!res || !res.ok) && media.kind === "VOICE") {
+      console.warn("[waha-media] /api/sendVoice falhou, tentando fallback para /api/sendFile");
+      res = await fetch(`${base}/api/sendFile`, {
+        method: "POST",
+        headers: this.headers(config.apiKey),
+        body: JSON.stringify({ session, chatId, file }),
+        signal: AbortSignal.timeout(45_000),
+      }).catch(() => null);
+    }
 
     if (!res) {
       console.error("[waha-media] Gateway indisponível", {
@@ -231,11 +247,19 @@ export class WahaConnector implements WhatsAppConnector {
 
     const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
-      const errorMsg =
-        (typeof raw.message === "string" && raw.message) ||
-        (typeof raw.error === "string" && raw.error) ||
-        (typeof raw.description === "string" && raw.description) ||
-        JSON.stringify(raw).slice(0, 300);
+      let errorMsg = "";
+      if (typeof raw.message === "string") {
+        errorMsg = raw.message;
+      } else if (raw.exception && typeof (raw.exception as { message?: string }).message === "string") {
+        errorMsg = (raw.exception as { message: string }).message;
+      } else if (typeof raw.error === "string") {
+        errorMsg = raw.error;
+      } else if (typeof raw.description === "string") {
+        errorMsg = raw.description;
+      } else {
+        errorMsg = "Falha no gateway WhatsApp";
+      }
+
       console.error("[waha-media] Gateway rejeitou mídia", {
         endpoint,
         status: res.status,
