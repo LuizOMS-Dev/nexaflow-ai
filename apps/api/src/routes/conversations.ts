@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError, assertFound } from "../lib/errors";
@@ -6,6 +7,30 @@ import { broadcastToTenant } from "../ws/hub";
 import { analyzeConversation } from "../services/ai";
 import { audit } from "../services/audit";
 import { isTrueSuperadmin } from "../services/security/rbac";
+import {
+  conversationAccessWhere,
+  conversationNavigationWhere,
+  type ConversationNavigationBucket,
+} from "../services/conversation-access";
+
+const publicChannelSelect = {
+  id: true,
+  name: true,
+  type: true,
+  isActive: true,
+} as const;
+
+const inboxContactSelect = {
+  id: true,
+  name: true,
+  phone: true,
+  score: true,
+  scoreBreakdown: true,
+  commercialStatus: true,
+  priority: true,
+  nextAction: true,
+  tags: { include: { tag: true } },
+} as const;
 
 export async function conversationRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.requireSection("CONVERSATIONS"));
@@ -93,10 +118,39 @@ export async function conversationRoutes(app: FastifyInstance) {
     }
   );
 
+  app.get(
+    "/conversations/counts",
+    { preHandler: [app.requirePermission("conversations.read")] },
+    async (request) => {
+      if (!request.user.tenantId) {
+        return { inbox: 0, mine: 0, waiting: 0, ai: 0, closed: 0 };
+      }
+
+      const buckets: ConversationNavigationBucket[] = [
+        "inbox",
+        "mine",
+        "waiting",
+        "ai",
+        "closed",
+      ];
+      const values = await Promise.all(
+        buckets.map((bucket) =>
+          prisma.conversation.count({
+            where: conversationNavigationWhere(request.user, bucket),
+          })
+        )
+      );
+
+      return Object.fromEntries(
+        buckets.map((bucket, index) => [bucket, values[index]])
+      ) as Record<ConversationNavigationBucket, number>;
+    }
+  );
+
   app.get("/conversations", { preHandler: [app.requirePermission("conversations.read")] }, async (request) => {
     const q = z
       .object({
-        status: z.string().optional(),
+        status: z.enum(["OPEN", "PENDING", "CLOSED", "ARCHIVED"]).optional(),
         channelId: z.string().optional(),
         assignedToId: z.string().optional(),
         unassigned: z.coerce.boolean().optional(),
@@ -125,7 +179,10 @@ export async function conversationRoutes(app: FastifyInstance) {
       return { items: [], total: 0, page: q.page, limit: q.limit };
     }
 
-    const where: Record<string, unknown> = { tenantId };
+    const where: Prisma.ConversationWhereInput = conversationAccessWhere({
+      ...request.user,
+      tenantId,
+    });
 
     if (q.status) where.status = q.status;
     if (q.channelId) where.channelId = q.channelId;
@@ -143,7 +200,7 @@ export async function conversationRoutes(app: FastifyInstance) {
       };
     }
 
-    const andConditions: Array<Record<string, unknown>> = [];
+    const andConditions: Prisma.ConversationWhereInput[] = [];
 
     if (q.search && q.search.trim()) {
       const term = q.search.trim();
@@ -156,26 +213,18 @@ export async function conversationRoutes(app: FastifyInstance) {
       });
     }
 
-    // Atendente só vê conversas atribuídas a ele ou sem responsável (fila)
-    if (request.user.role === "AGENT") {
-      andConditions.push({
-        OR: [
-          { assignedToId: request.user.sub },
-          { assignedToId: null },
-        ],
-      });
-    }
-
     if (andConditions.length > 0) {
-      where.AND = andConditions;
+      const accessWhere = { ...where };
+      for (const key of Object.keys(where)) delete where[key as keyof typeof where];
+      where.AND = [accessWhere, ...andConditions];
     }
 
     const [items, total] = await Promise.all([
       prisma.conversation.findMany({
         where,
         include: {
-          contact: { include: { tags: { include: { tag: true } } } },
-          channel: true,
+          contact: { select: inboxContactSelect },
+          channel: { select: publicChannelSelect },
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         },
         orderBy: [{ isUnread: "desc" }, { lastMessageAt: "desc" }],
@@ -192,10 +241,16 @@ export async function conversationRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const conversation = assertFound(
       await prisma.conversation.findFirst({
-        where: { id, tenantId: request.user.tenantId! },
+        where: conversationAccessWhere(request.user, id),
         include: {
-          contact: { include: { tags: { include: { tag: true } }, memory: true } },
-          channel: true,
+          contact: {
+            select: {
+              ...inboxContactSelect,
+              email: true,
+              memory: true,
+            },
+          },
+          channel: { select: publicChannelSelect },
           assignedTo: { select: { id: true, name: true, avatarUrl: true } },
           messages: {
             orderBy: { createdAt: "asc" },
@@ -244,7 +299,12 @@ export async function conversationRoutes(app: FastifyInstance) {
     async (request) => {
       const { id } = request.params as { id: string };
       const tenantId = request.user.tenantId!;
-      assertFound(await prisma.conversation.findFirst({ where: { id, tenantId }, select: { id: true } }));
+      assertFound(
+        await prisma.conversation.findFirst({
+          where: conversationAccessWhere(request.user, id),
+          select: { id: true },
+        })
+      );
       const { listAiExecutionsForConversation } = await import("../services/ai-execution");
       return listAiExecutionsForConversation(tenantId, id, 30);
     }
@@ -257,6 +317,12 @@ export async function conversationRoutes(app: FastifyInstance) {
       if (request.user.role === "READONLY") throw new AppError("Sem permissão", 403);
       const { id } = request.params as { id: string };
       const body = z.object({ summary: z.string().max(2000).nullable() }).parse(request.body);
+      assertFound(
+        await prisma.conversation.findFirst({
+          where: conversationAccessWhere(request.user, id),
+          select: { id: true },
+        })
+      );
       const { setConversationMemory, getConversationMemory } = await import("../services/conversation-memory");
       await setConversationMemory({
         tenantId: request.user.tenantId!,
@@ -350,7 +416,7 @@ export async function conversationRoutes(app: FastifyInstance) {
 
     const conversation = assertFound(
       await prisma.conversation.findFirst({
-        where: { id, tenantId: request.user.tenantId! },
+        where: conversationAccessWhere(request.user, id),
         include: { contact: true, channel: true },
       })
     );
@@ -563,7 +629,7 @@ export async function conversationRoutes(app: FastifyInstance) {
 
       const conversation = assertFound(
         await prisma.conversation.findFirst({
-          where: { id, tenantId: request.user.tenantId! },
+          where: conversationAccessWhere(request.user, id),
           include: { contact: true, channel: true },
         })
       );
@@ -688,7 +754,9 @@ export async function conversationRoutes(app: FastifyInstance) {
       .parse(request.body);
 
     const before = assertFound(
-      await prisma.conversation.findFirst({ where: { id, tenantId: request.user.tenantId! } })
+      await prisma.conversation.findFirst({
+        where: conversationAccessWhere(request.user, id),
+      })
     );
 
     const wasOpen = before.status === "OPEN" || before.status === "PENDING";
@@ -1104,7 +1172,11 @@ export async function conversationRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = z.object({ content: z.string().min(1) }).parse(request.body);
 
-    assertFound(await prisma.conversation.findFirst({ where: { id, tenantId: request.user.tenantId! } }));
+    assertFound(
+      await prisma.conversation.findFirst({
+        where: conversationAccessWhere(request.user, id),
+      })
+    );
 
     const note = await prisma.note.create({
       data: {
@@ -1123,7 +1195,7 @@ export async function conversationRoutes(app: FastifyInstance) {
     const body = z.object({ agentId: z.string().optional() }).parse(request.body || {});
     const conv = assertFound(
       await prisma.conversation.findFirst({
-        where: { id, tenantId: request.user.tenantId! },
+        where: conversationAccessWhere(request.user, id),
         select: { id: true, contactId: true },
       })
     );
@@ -1211,7 +1283,7 @@ export async function conversationRoutes(app: FastifyInstance) {
 
       const conversation = assertFound(
         await prisma.conversation.findFirst({
-          where: { id, tenantId: request.user.tenantId! },
+          where: conversationAccessWhere(request.user, id),
           include: { contact: true, channel: true },
         })
       );
@@ -1361,7 +1433,7 @@ export async function conversationRoutes(app: FastifyInstance) {
 
     const conversation = assertFound(
       await prisma.conversation.findFirst({
-        where: { id, tenantId: request.user.tenantId! },
+        where: conversationAccessWhere(request.user, id),
         include: { contact: true, channel: true },
       })
     );

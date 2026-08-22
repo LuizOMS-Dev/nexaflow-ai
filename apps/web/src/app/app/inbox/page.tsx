@@ -54,6 +54,18 @@ import {
 import { InboxComposer } from "@/components/inbox/inbox-composer";
 import { InboxContextPanel } from "@/components/inbox/inbox-context-panel";
 import { InboxConversationItem } from "@/components/inbox/inbox-conversation-item";
+import {
+  buildConversationParams,
+  type ConversationNavCounts,
+  type OpsNav,
+} from "@/components/inbox/inbox-query";
+import type {
+  AiSuggestion,
+  ConversationDetail,
+  ConversationListItem,
+  ConversationMessage,
+  MessageMeta,
+} from "@/components/inbox/inbox-types";
 import { WhatsAppFormattedText } from "@/lib/whatsapp-format";
 import { api } from "@/lib/api";
 import {
@@ -99,98 +111,7 @@ const CLOSE_REASON_LABEL: Record<string, string> = Object.fromEntries(
   CLOSE_REASONS.map((r) => [r.value, r.label])
 );
 
-type ConversationListItem = {
-  id: string;
-  status: string;
-  isUnread: boolean;
-  isFavorite: boolean;
-  lastMessagePreview?: string;
-  lastMessageAt?: string;
-  aiSentiment?: string;
-  aiIntent?: string;
-  aiScore?: number;
-  contact: {
-    id: string;
-    name: string;
-    phone?: string;
-    commercialStatus?: string;
-    priority?: string;
-    score?: number;
-    nextAction?: string | null;
-    scoreBreakdown?: Array<{ label: string; delta?: number }> | null;
-    tags?: Array<{ tag: { id: string; name: string; color: string } }>;
-  };
-  channel?: { id: string; name: string; type: string };
-  assignedTo?: { id: string; name: string } | null;
-};
-
-type MessageMeta = {
-  agentId?: string;
-  agentName?: string;
-  aiAuto?: boolean;
-  systemNotice?: boolean;
-  systemEvent?: boolean;
-  eventKind?: string;
-  noticeKind?: string;
-  humanHandoff?: boolean;
-  attendanceClosed?: boolean;
-  closeSource?: string;
-  closeReason?: string;
-  agentUserId?: string;
-  pendingApproval?: boolean;
-  originalReply?: string;
-  sources?: Array<{ title?: string; documentId?: string; score?: number; chunkIndex?: number }>;
-  deliveryError?: string;
-  sendError?: string;
-  deliveryStatus?: string;
-  source?: string;
-  externalDevice?: boolean;
-  [key: string]: unknown;
-};
-
-type ConversationMessage = {
-  id: string;
-  content: string;
-  direction: string;
-  type?: string;
-  mediaUrl?: string | null;
-  isAiGenerated?: boolean;
-  aiApproved?: boolean | null;
-  createdAt: string;
-  metadata?: MessageMeta | null;
-  author?: { id: string; name: string; avatarUrl?: string | null } | null;
-};
-
 type MessageOrigin = "CUSTOMER" | "AI" | "HUMAN" | "SYSTEM" | "INTERNAL_NOTE";
-
-type ConversationDetail = ConversationListItem & {
-  aiSummary?: string;
-  closedAt?: string | null;
-  closeReason?: string | null;
-  closeSource?: string | null;
-  closeNote?: string | null;
-  messages: ConversationMessage[];
-  notes: Array<{ id: string; content: string; createdAt: string; author: { name: string } }>;
-  contact: ConversationListItem["contact"] & {
-    email?: string;
-    memory?: { summary?: string } | null;
-  };
-};
-
-type AiSuggestion = {
-  reply: string;
-  summary: string;
-  intent: string;
-  sentiment: string;
-  commercialStatus?: string;
-  priority?: string;
-  score: number;
-  nextAction: string;
-  tags: string[];
-  reasons: string[];
-};
-
-type OpsNav = "inbox" | "mine" | "waiting" | "ai" | "closed";
 
 const OPS_NAV_ITEMS: Array<{
   id: OpsNav;
@@ -224,41 +145,6 @@ function FilterCheckboxIndicator({ checked }: { checked: boolean }) {
       <Check className={cn("h-2.5 w-2.5 stroke-[3]", checked ? "opacity-100" : "opacity-0")} />
     </span>
   );
-}
-
-function buildConversationParams(opts: {
-  opsNav: OpsNav;
-  search: string;
-  userId?: string;
-  unreadOnly: boolean;
-  needsApproval: boolean;
-  archived: boolean;
-}): URLSearchParams {
-  const params = new URLSearchParams();
-  if (opts.search.trim()) params.set("search", opts.search.trim());
-  if (opts.unreadOnly) params.set("unread", "1");
-  if (opts.needsApproval) params.set("pendingApproval", "1");
-
-  switch (opts.opsNav) {
-    case "inbox":
-      params.set("status", "OPEN");
-      break;
-    case "mine":
-      if (opts.userId) params.set("assignedToId", opts.userId);
-      break;
-    case "waiting":
-      params.set("status", "PENDING");
-      params.set("unassigned", "1");
-      break;
-    case "ai":
-      params.set("status", "OPEN");
-      params.set("unassigned", "1");
-      break;
-    case "closed":
-      params.set("status", opts.archived ? "ARCHIVED" : "CLOSED");
-      break;
-  }
-  return params;
 }
 
 function waitDuration(from?: string | null): {
@@ -556,53 +442,17 @@ function InboxPageContent() {
         `/conversations?${p.toString()}`
       );
     },
-    refetchInterval: 4_000,
+    refetchInterval: 15_000,
     refetchIntervalInBackground: false,
   });
 
   const navCountsQuery = useQuery({
     queryKey: ["conversation-nav-counts", user?.id],
-    queryFn: async () => {
-      const bases: OpsNav[] = ["inbox", "mine", "waiting", "ai", "closed"];
-      const entries = await Promise.all(
-        bases.map(async (nav) => {
-          const p = buildConversationParams({
-            opsNav: nav,
-            search: "",
-            userId: user?.id,
-            unreadOnly: false,
-            needsApproval: false,
-            archived: false,
-          });
-          p.set("limit", "1");
-          p.set("page", "1");
-          try {
-            const r = await api<{ total?: number }>(`/conversations?${p}`);
-            return [nav, r.total ?? 0] as const;
-          } catch {
-            return [nav, 0] as const;
-          }
-        })
-      );
-      return Object.fromEntries(entries) as Record<OpsNav, number>;
-    },
-    staleTime: 3_000,
-    refetchInterval: 8_000,
+    queryFn: () => api<ConversationNavCounts>("/conversations/counts"),
+    staleTime: 10_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
-
-  useEffect(() => {
-    function onUpdated() {
-      void qc.invalidateQueries({ queryKey: ["conversation-nav-counts"] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
-    }
-    window.addEventListener("nexaflow:conversation-updated", onUpdated);
-    window.addEventListener("nexaflow:notification", onUpdated);
-    return () => {
-      window.removeEventListener("nexaflow:conversation-updated", onUpdated);
-      window.removeEventListener("nexaflow:notification", onUpdated);
-    };
-  }, [qc]);
 
   const teamQuery = useQuery({
     queryKey: ["team-for-transfer"],
@@ -1284,7 +1134,7 @@ function InboxPageContent() {
               preferredPlacement="top"
               triggerIsInteractive
               triggerClassName="w-full"
-              className="p-2 shadow-xl border-black/[0.08] dark:border-white/[0.08] dark:bg-[#12141c] rounded-xl"
+              className="p-2 shadow-xl border-black/[0.08] dark:border-white/[0.08] dark:bg-[#12141c] rounded-xl [transition-property:opacity,transform]"
               trigger={
                 <button
                   type="button"
@@ -1379,6 +1229,24 @@ function InboxPageContent() {
                 <Spinner />
               </div>
             )}
+            {listQuery.isError && (
+              <div
+                role="alert"
+                className="m-3 rounded-xl border border-rose-500/20 bg-rose-500/[0.05] p-3 text-center"
+              >
+                <AlertCircle className="mx-auto h-4 w-4 text-rose-600 dark:text-rose-400" />
+                <p className="mt-1.5 text-xs font-medium text-ink dark:text-zinc-200">
+                  Não foi possível carregar as conversas.
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 text-[11px] font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                  onClick={() => void listQuery.refetch()}
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
             {items.map((c) => (
               <InboxConversationItem
                 key={c.id}
@@ -1392,7 +1260,7 @@ function InboxPageContent() {
                 }}
               />
             ))}
-            {items.length === 0 && !listQuery.isLoading && (
+            {items.length === 0 && !listQuery.isLoading && !listQuery.isError && (
               <div className="flex flex-col items-center justify-center p-8 text-center text-xs">
                 {secondaryFilterCount > 0 || search.trim() ? (
                   <>
@@ -1441,6 +1309,22 @@ function InboxPageContent() {
           ) : detailQuery.isLoading ? (
             <div className="flex flex-1 items-center justify-center">
               <Spinner />
+            </div>
+          ) : detailQuery.isError ? (
+            <div role="alert" className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-ink dark:text-zinc-100">
+                Não foi possível abrir esta conversa.
+              </p>
+              <button
+                type="button"
+                className="mt-2 text-xs font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-400"
+                onClick={() => void detailQuery.refetch()}
+              >
+                Tentar novamente
+              </button>
             </div>
           ) : conversation ? (
             <>

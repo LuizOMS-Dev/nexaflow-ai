@@ -21,12 +21,13 @@ import {
 } from "lucide-react";
 import { cn, commercialStatusLabel, formatDate, initials, leadPriorityLabel, statusLabel } from "@/lib/utils";
 import { formatPhone, getContactDisplayName } from "@/lib/format-contact";
+import type { AiSuggestion, ConversationDetail } from "./inbox-types";
 
 export type InboxContextPanelProps = {
-  conversation: any;
+  conversation: ConversationDetail;
   score: number;
   scorePct: number;
-  ai?: any;
+  ai?: AiSuggestion | null;
   onTransfer?: () => void;
   onToggleAi?: () => void;
   canTransfer?: boolean;
@@ -118,7 +119,7 @@ export function InboxContextPanel({
         {/* Tags */}
         {contact?.tags && contact.tags.length > 0 && (
           <div className="mt-2.5 flex flex-wrap gap-1">
-            {contact.tags.map((t: any) => (
+            {contact.tags.map((t) => (
               <span
                 key={t.tag.id}
                 className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-white shadow-xs"
@@ -201,7 +202,7 @@ export function InboxContextPanel({
                   <span className="text-[11px] font-medium text-ink-muted dark:text-zinc-500">
                     Notas da equipe
                   </span>
-                  {conversation.notes.map((n: any) => (
+                  {conversation.notes.map((n) => (
                     <div
                       key={n.id}
                       className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-2 text-[11.5px] dark:bg-amber-500/[0.06]"
@@ -283,7 +284,7 @@ export function InboxContextPanel({
                     </button>
                     {scoreDetailsOpen && (
                       <ul className="mt-1.5 space-y-1 text-[10px]">
-                        {breakdown.map((b: any, i: number) => (
+                        {breakdown.map((b, i) => (
                           <li key={i} className="flex justify-between text-ink-faint dark:text-zinc-400">
                             <span>{b.label}</span>
                             <span className="tabular-nums font-medium text-violet-600 dark:text-violet-300">

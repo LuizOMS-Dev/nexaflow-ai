@@ -4,9 +4,10 @@ import { Star, Bot, User, Hourglass, Camera, Mic, Film, FileText, Paperclip, Spa
 import { cn, initials, leadPriorityLabel } from "@/lib/utils";
 import { getContactDisplayName } from "@/lib/format-contact";
 import { getConversationPreview, type ConversationPreviewKind } from "@/lib/conversation-preview";
+import type { ConversationListItem } from "./inbox-types";
 
 export type InboxConversationItemProps = {
-  conversation: any;
+  conversation: ConversationListItem;
   selected: boolean;
   onSelect: () => void;
   userId?: string;
