@@ -163,7 +163,7 @@ describe("Media Sending Pipeline Centralizado", () => {
     vi.unstubAllGlobals();
   });
 
-  it("6. Fallback de /api/sendVoice e /api/sendVideo para /api/sendFile caso endpoint falhe", async () => {
+  it("6. Nunca degrada mensagem de voz para arquivo quando /api/sendVoice falha", async () => {
     const connector = new WahaConnector();
     const urlsCalled: string[] = [];
 
@@ -177,10 +177,7 @@ describe("Media Sending Pipeline Centralizado", () => {
           json: async () => ({ message: "Endpoint not found" }),
         };
       }
-      return {
-        ok: true,
-        json: async () => ({ id: "msg_fallback_ok" }),
-      };
+      return { ok: true, json: async () => ({ id: "unexpected" }) };
     });
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -197,12 +194,9 @@ describe("Media Sending Pipeline Centralizado", () => {
       dataBase64: "YXVkaW8=",
     });
 
-    expect(res.ok).toBe(true);
-    expect(res.externalId).toBe("msg_fallback_ok");
-    expect(urlsCalled).toEqual([
-      "http://waha:3000/api/sendVoice",
-      "http://waha:3000/api/sendFile",
-    ]);
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe("Endpoint not found");
+    expect(urlsCalled).toEqual(["http://waha:3000/api/sendVoice"]);
 
     vi.unstubAllGlobals();
   });

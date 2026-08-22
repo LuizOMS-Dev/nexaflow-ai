@@ -213,26 +213,19 @@ export class WahaConnector implements WhatsAppConnector {
       if (media.caption) body.caption = media.caption;
     }
 
-    let res = await fetch(`${base}${endpoint}`, {
+    const res = await fetch(`${base}${endpoint}`, {
       method: "POST",
       headers: this.headers(config.apiKey),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(45_000),
     }).catch(() => null);
 
-    // Fallback para sendFile caso endpoint específico não exista ou falhe no WAHA
-    if ((!res || !res.ok) && (endpoint === "/api/sendVideo" || endpoint === "/api/sendVoice")) {
-      delete body.convert;
-      if (media.caption) body.caption = media.caption;
-      res = await fetch(`${base}/api/sendFile`, {
-        method: "POST",
-        headers: this.headers(config.apiKey),
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(45_000),
-      }).catch(() => null);
-    }
-
     if (!res) {
+      console.error("[waha-media] Gateway indisponível", {
+        endpoint,
+        kind: media.kind,
+        mimetype: media.mimetype,
+      });
       return { ok: false, error: "Serviço WhatsApp não respondeu ao envio de mídia (timeout ou desconexão)" };
     }
 
@@ -243,6 +236,13 @@ export class WahaConnector implements WhatsAppConnector {
         (typeof raw.error === "string" && raw.error) ||
         (typeof raw.description === "string" && raw.description) ||
         JSON.stringify(raw).slice(0, 300);
+      console.error("[waha-media] Gateway rejeitou mídia", {
+        endpoint,
+        status: res.status,
+        kind: media.kind,
+        mimetype: media.mimetype,
+        error: errorMsg.slice(0, 300),
+      });
       return { ok: false, error: errorMsg, raw };
     }
 

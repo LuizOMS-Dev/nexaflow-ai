@@ -87,6 +87,8 @@ export type StoredMedia = {
 function classifyMime(raw?: string | null): { mime: string; ext: string; kind: StoredMedia["kind"] } | null {
   if (!raw) return null;
   const mime = raw.split(";")[0].trim().toLowerCase();
+  // Alguns engines anunciam OGG como application/ogg; normalize para o player de áudio.
+  if (mime === "application/ogg") return { mime: "audio/ogg", ext: "ogg", kind: "AUDIO" };
   const hit = ALLOWED[mime];
   if (hit) return { mime, ext: hit.ext, kind: hit.kind };
   if (mime.startsWith("image/")) return { mime, ext: "jpg", kind: "IMAGE" };
@@ -159,10 +161,10 @@ async function persistBuffer(
 }
 
 /** Resolve URL para conexão interna segura com o gateway WAHA (protege contra SSRF) */
-export function resolveAllowedWahaMediaUrl(raw: string): string | null {
+export function resolveAllowedWahaMediaUrl(raw: string, gatewayBaseUrl?: string | null): string | null {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.startsWith("data:")) return null;
-  const base = (env.waGatewayUrl || "http://waha:3000").replace(/\/+$/, "");
+  const base = (gatewayBaseUrl || env.waGatewayUrl || "http://waha:3000").replace(/\/+$/, "");
   let target: URL;
   try {
     target = trimmed.startsWith("/")
@@ -202,6 +204,8 @@ export async function downloadWahaMedia(opts: {
   mime?: string | null;
   filename?: string | null;
   client?: WahaClient;
+  gatewayBaseUrl?: string | null;
+  gatewayApiKey?: string | null;
 }): Promise<StoredMedia | null> {
   if (opts.dataBase64) {
     const cleanBase64 = opts.dataBase64.replace(/^data:[^;]+;base64,/, "");
@@ -213,16 +217,16 @@ export async function downloadWahaMedia(opts: {
 
   let safeUrl: string | null = null;
   if (opts.url) {
-    safeUrl = resolveAllowedWahaMediaUrl(opts.url);
+    safeUrl = resolveAllowedWahaMediaUrl(opts.url, opts.gatewayBaseUrl);
   } else if (opts.filename) {
-    const base = (env.waGatewayUrl || "http://waha:3000").replace(/\/+$/, "");
+    const base = (opts.gatewayBaseUrl || env.waGatewayUrl || "http://waha:3000").replace(/\/+$/, "");
     safeUrl = `${base}/api/files/${encodeURIComponent(opts.filename)}`;
   }
 
   if (!safeUrl) return null;
 
   const headers: Record<string, string> = {};
-  const key = (env.waGatewayApiKey || "").trim();
+  const key = (opts.gatewayApiKey || env.waGatewayApiKey || "").trim();
   if (key && !/^sha512:/i.test(key)) headers["X-Api-Key"] = key;
 
   // Tentativas de download com backoff exponencial limitado (até 3 tentativas)

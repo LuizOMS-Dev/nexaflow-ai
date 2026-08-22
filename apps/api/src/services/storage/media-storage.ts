@@ -43,6 +43,7 @@ const MIME_MAP: Record<string, { ext: string; kind: MediaKind; maxSize: number }
   "image/x-ms-bmp": { ext: "bmp", kind: "IMAGE", maxSize: MAX_IMAGE_SIZE },
   // Áudios e Voz
   "audio/ogg": { ext: "ogg", kind: "VOICE", maxSize: MAX_AUDIO_SIZE },
+  "application/ogg": { ext: "ogg", kind: "VOICE", maxSize: MAX_AUDIO_SIZE },
   "audio/opus": { ext: "opus", kind: "VOICE", maxSize: MAX_AUDIO_SIZE },
   "audio/mpeg": { ext: "mp3", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },
   "audio/mp3": { ext: "mp3", kind: "AUDIO", maxSize: MAX_AUDIO_SIZE },

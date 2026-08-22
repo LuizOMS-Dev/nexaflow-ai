@@ -27,6 +27,7 @@ describe("Conversas Media - Pipeline Completo Inbound & Outbound", () => {
     // Áudio e Voz
     expect(classifyFile("audio/ogg", "voz.ogg").kind).toBe("VOICE");
     expect(classifyFile("audio/opus", "audio.opus").kind).toBe("VOICE");
+    expect(classifyFile("application/ogg", "audio-sem-extensao").kind).toBe("VOICE");
     expect(classifyFile("audio/mpeg", "musica.mp3").kind).toBe("AUDIO");
     expect(classifyFile("audio/mp4", "gravacao.m4a").kind).toBe("AUDIO");
     expect(classifyFile("audio/wav", "som.wav").kind).toBe("AUDIO");
@@ -215,6 +216,12 @@ describe("Conversas Media - Pipeline Completo Inbound & Outbound", () => {
     expect(resolveAllowedWahaMediaUrl("/api/files/test.png")).toContain("/api/files/test.png");
     expect(resolveAllowedWahaMediaUrl("http://waha:3000/api/files/test.png")).toContain("/api/files/test.png");
     expect(resolveAllowedWahaMediaUrl("http://localhost:3000/api/files/test.png")).toContain("/api/files/test.png");
+    expect(
+      resolveAllowedWahaMediaUrl(
+        "https://gateway.example.com/api/files/test.png",
+        "https://gateway.example.com"
+      )
+    ).toBe("https://gateway.example.com/api/files/test.png");
 
     // Bloqueia tentativas de SSRF para IPs de metadados de nuvem e hosts externos
     expect(resolveAllowedWahaMediaUrl("http://169.254.169.254/latest/meta-data")).toBeNull();

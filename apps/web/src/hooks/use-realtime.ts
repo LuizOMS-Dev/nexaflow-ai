@@ -45,8 +45,8 @@ export function useRealtime() {
       flushTimer.current = null;
       const p = pendingRef.current;
       if (p.conversations) {
-        void qc.invalidateQueries({ queryKey: ["conversations"] });
-        void qc.invalidateQueries({ queryKey: ["conversation-nav-counts"] });
+        void qc.invalidateQueries({ queryKey: ["conversations"], refetchType: "active" });
+        void qc.invalidateQueries({ queryKey: ["conversation-nav-counts"], refetchType: "active" });
       }
       if (p.dashboard) {
         void qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -55,10 +55,10 @@ export function useRealtime() {
         void qc.invalidateQueries({ queryKey: ["human-queue-pending"] });
       }
       if (p.allConversations) {
-        void qc.invalidateQueries({ queryKey: ["conversation"] });
+        void qc.invalidateQueries({ queryKey: ["conversation"], refetchType: "active" });
       } else {
         for (const id of p.conversationIds) {
-          void qc.invalidateQueries({ queryKey: ["conversation", id] });
+          void qc.invalidateQueries({ queryKey: ["conversation", id], refetchType: "active" });
         }
       }
       if (p.contacts) {
@@ -167,6 +167,11 @@ export function useRealtime() {
                 new CustomEvent("nexaflow:inbound-message", { detail: msg.payload })
               );
             }
+            window.dispatchEvent(
+              new CustomEvent("nexaflow:conversation-updated", {
+                detail: msg.payload,
+              })
+            );
           } catch {
             /* ignore */
           }

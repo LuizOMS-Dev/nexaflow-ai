@@ -7,7 +7,7 @@
  * 3. Idempotência por clientMessageId / idempotencyKey e controle de concorrência in-flight.
  * 4. Normalização de dados em base64 com prefixo Data URI compatível com todos os engines da WAHA.
  * 5. Despacho resiliente com timeout configurável e retries com backoff apenas para falhas recuperáveis.
- * 6. Fallback inteligente de endpoints (/api/sendVoice -> /api/sendFile, /api/sendVideo -> /api/sendFile).
+ * 6. Preservação estrita do tipo de mídia (voz nunca degrada para documento).
  * 7. Observabilidade estruturada com logs sem segredos.
  */
 
@@ -290,7 +290,8 @@ async function runMediaPipeline(
     }
 
     // Sanitização e determinação de mimetype
-    const rawFilename = params.filename || params.originalName || "arquivo";
+    // O nome persistido contém hashes internos; o WhatsApp deve receber o nome original.
+    const rawFilename = params.originalName || params.filename || "arquivo";
     const cleanFilename = sanitizeFilename(rawFilename);
     const classification = classifyFile(params.mimetype || "", cleanFilename);
     const finalMime = params.mimetype || classification.mime;

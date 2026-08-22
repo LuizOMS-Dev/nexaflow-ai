@@ -221,6 +221,7 @@ export async function ingestInboundMessage(params: {
   remoteJidAlt?: string;
   addressingMode?: string;
   providerTimestamp?: Date;
+  mediaGateway?: { baseUrl?: string; apiKey?: string };
 }) {
   const eventTime = params.providerTimestamp || new Date();
   if (params.externalId) {
@@ -261,6 +262,8 @@ export async function ingestInboundMessage(params: {
         dataBase64: params.mediaData,
         mime: params.mediaMime,
         filename: params.mediaFilename,
+        gatewayBaseUrl: params.mediaGateway?.baseUrl,
+        gatewayApiKey: params.mediaGateway?.apiKey,
       });
       if (stored) {
         storedMediaUrl = stored.publicUrl;
@@ -268,7 +271,7 @@ export async function ingestInboundMessage(params: {
           params.mediaType === "VOICE" ||
           (params.mediaMime || "").includes("ogg") ||
           (params.mediaMime || "").includes("opus");
-        messageType = isVoice && stored.kind === "AUDIO" ? "VOICE" : stored.kind;
+        messageType = isVoice ? "VOICE" : stored.kind;
         mediaMeta = {
           mimetype: stored.mime,
           filename: stored.filename,
@@ -532,6 +535,7 @@ export async function ingestExternalOutboundMessage(params: {
   remoteJidAlt?: string;
   addressingMode?: string;
   providerTimestamp?: Date;
+  mediaGateway?: { baseUrl?: string; apiKey?: string };
 }) {
   const eventTime = params.providerTimestamp || new Date();
   if (params.externalId) {
@@ -589,6 +593,8 @@ export async function ingestExternalOutboundMessage(params: {
         dataBase64: params.mediaData,
         mime: params.mediaMime,
         filename: params.mediaFilename,
+        gatewayBaseUrl: params.mediaGateway?.baseUrl,
+        gatewayApiKey: params.mediaGateway?.apiKey,
       });
       if (stored) {
         storedMediaUrl = stored.publicUrl;
@@ -596,7 +602,7 @@ export async function ingestExternalOutboundMessage(params: {
           params.mediaType === "VOICE" ||
           (params.mediaMime || "").includes("ogg") ||
           (params.mediaMime || "").includes("opus");
-        messageType = isVoice && stored.kind === "AUDIO" ? "VOICE" : stored.kind;
+        messageType = isVoice ? "VOICE" : stored.kind;
         mediaMeta = {
           mimetype: stored.mime,
           filename: stored.filename,

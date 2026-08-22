@@ -897,6 +897,10 @@ export async function whatsappRoutes(app: FastifyInstance) {
             remoteJidAlt: msg.remoteJidAlt,
             addressingMode: msg.addressingMode,
             providerTimestamp: msg.providerTimestamp,
+            mediaGateway: {
+              baseUrl: typeof config.baseUrl === "string" ? config.baseUrl : undefined,
+              apiKey: typeof config.apiKey === "string" ? config.apiKey : undefined,
+            },
           });
           processedCount++;
         } catch (err) {
@@ -927,6 +931,10 @@ export async function whatsappRoutes(app: FastifyInstance) {
           remoteJidAlt: msg.remoteJidAlt,
           addressingMode: msg.addressingMode,
           providerTimestamp: msg.providerTimestamp,
+          mediaGateway: {
+            baseUrl: typeof config.baseUrl === "string" ? config.baseUrl : undefined,
+            apiKey: typeof config.apiKey === "string" ? config.apiKey : undefined,
+          },
         });
         processedCount++;
       } catch (err) {

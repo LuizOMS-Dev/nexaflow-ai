@@ -442,7 +442,8 @@ function InboxPageContent() {
         `/conversations?${p.toString()}`
       );
     },
-    refetchInterval: 15_000,
+    // Fallback resiliente caso o WebSocket de produção seja interrompido.
+    refetchInterval: 5_000,
     refetchIntervalInBackground: false,
   });
 
@@ -472,7 +473,7 @@ function InboxPageContent() {
     queryKey: ["conversation", selectedId],
     enabled: !!selectedId,
     queryFn: () => api<ConversationDetail>(`/conversations/${selectedId}`),
-    refetchInterval: selectedId ? 30_000 : false,
+    refetchInterval: selectedId ? 5_000 : false,
     refetchIntervalInBackground: false,
   });
 
@@ -598,10 +599,21 @@ function InboxPageContent() {
 
   const handleSendVoice = async (blob: Blob, durationSecs: number) => {
     try {
-      const file = new File([blob], `audio_${Date.now()}.ogg`, { type: blob.type });
+      const normalizedMime = blob.type.split(";")[0].trim().toLowerCase();
+      const extension =
+        normalizedMime === "audio/ogg" || normalizedMime === "audio/opus"
+          ? "ogg"
+          : normalizedMime === "audio/mp4"
+            ? "m4a"
+            : normalizedMime === "audio/webm"
+              ? "webm"
+              : "audio";
+      const originalName = `audio_${Date.now()}.${extension}`;
+      const file = new File([blob], originalName, { type: blob.type || "audio/webm" });
       const formData = new FormData();
-      formData.append("file", file);
+      // Campos devem vir antes do arquivo para o Fastify multipart disponibilizá-los.
       formData.append("isVoice", "true");
+      formData.append("file", file);
 
       const res = await api<{
         url: string;
@@ -619,6 +631,7 @@ function InboxPageContent() {
         mediaUrl: res.url,
         metadata: {
           filename: res.filename,
+          originalName,
           mimetype: res.mimetype,
           sizeBytes: res.sizeBytes,
           isVoice: true,

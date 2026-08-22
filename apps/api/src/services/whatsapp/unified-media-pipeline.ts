@@ -533,7 +533,7 @@ export async function processInboundMedia(req: InboundMediaRequest) {
           (req.mediaMime || "").includes("ogg") ||
           (req.mediaMime || "").includes("opus");
 
-        classifiedKind = isVoice && stored.kind === "AUDIO" ? "VOICE" : (stored.kind as UnifiedMediaKind);
+        classifiedKind = isVoice ? "VOICE" : (stored.kind as UnifiedMediaKind);
         metadata = {
           ...metadata,
           filename: stored.filename,
