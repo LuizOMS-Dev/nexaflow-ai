@@ -14,6 +14,7 @@ import {
   Play,
   Pause,
   Square,
+  Trash2,
   Loader2,
   AlertCircle,
 } from "lucide-react";
@@ -77,6 +78,8 @@ export function InboxComposer({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
   const recordSecondsRef = useRef<number>(0);
+  const finalDurationRef = useRef<number>(0);
+  const recordingSessionRef = useRef<number>(0);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Auto-resize do textarea compacto (min 36px, max 120px)
@@ -159,6 +162,7 @@ export function InboxComposer({
     setPreviewCurrentTime(0);
     setRecordSeconds(0);
     recordSecondsRef.current = 0;
+    finalDurationRef.current = 0;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -177,15 +181,24 @@ export function InboxComposer({
 
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
+      const recordingSessionId = ++recordingSessionRef.current;
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       recorder.onstop = () => {
+        if (recordingSessionId !== recordingSessionRef.current) {
+          chunksRef.current = [];
+          return;
+        }
         const finalType = recorder.mimeType || "audio/ogg";
         const blob = new Blob(chunksRef.current, { type: finalType });
-        const finalDur = Math.max(1, recordSecondsRef.current || 1);
+        const measuredDuration = (Date.now() - startTimeRef.current) / 1000;
+        const finalDur = Math.max(
+          1,
+          finalDurationRef.current || recordSecondsRef.current || measuredDuration
+        );
         const url = URL.createObjectURL(blob);
 
         setRecordedBlob(blob);
@@ -218,9 +231,10 @@ export function InboxComposer({
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    const elapsed = Math.max(1, Math.floor((Date.now() - startTimeRef.current) / 1000));
+    const elapsed = Math.max(1, (Date.now() - startTimeRef.current) / 1000);
+    finalDurationRef.current = elapsed;
     recordSecondsRef.current = elapsed;
-    setRecordSeconds(elapsed);
+    setRecordSeconds(Math.floor(elapsed));
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
@@ -234,6 +248,7 @@ export function InboxComposer({
 
   // Descartar gravação
   const discardRecording = () => {
+    recordingSessionRef.current += 1;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -257,6 +272,7 @@ export function InboxComposer({
     setIsRecording(false);
     setRecordSeconds(0);
     recordSecondsRef.current = 0;
+    finalDurationRef.current = 0;
     setRecordedBlob(null);
     setRecordedDuration(0);
     setPreviewPlaying(false);
@@ -421,21 +437,24 @@ export function InboxComposer({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={discardRecording}
-                  className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-muted hover:bg-black/5 hover:text-ink dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 transition-colors"
-                >
-                  Descartar
-                </button>
-                <button
-                  type="button"
-                  onClick={stopRecording}
-                  className="inline-flex h-6.5 items-center gap-1.5 rounded-md bg-rose-600 px-2.5 text-xs font-medium text-white hover:bg-rose-700 transition-colors shadow-xs active:scale-95"
-                >
-                  <Square className="h-2.5 w-2.5 fill-current" />
-                  Parar
-                </button>
+                <div className="flex items-center gap-0.5 rounded-lg border border-black/[0.06] bg-black/[0.02] p-0.5 dark:border-white/[0.08] dark:bg-white/[0.035]">
+                  <button
+                    type="button"
+                    onClick={discardRecording}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-medium text-ink-muted transition-colors hover:bg-white hover:text-ink hover:shadow-2xs dark:text-zinc-400 dark:hover:bg-white/[0.07] dark:hover:text-zinc-200"
+                  >
+                    <Trash2 className="h-3 w-3" aria-hidden />
+                    Descartar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-rose-500/20 bg-rose-500/10 px-2.5 text-[11px] font-semibold text-rose-700 transition-all hover:border-rose-500/30 hover:bg-rose-500/15 active:scale-[0.98] dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300 dark:hover:bg-rose-400/15"
+                  >
+                    <Square className="h-2.5 w-2.5 fill-current" aria-hidden />
+                    Parar
+                  </button>
+                </div>
               </div>
             </div>
           ) : recordedBlob && previewAudioUrl ? (
@@ -447,13 +466,10 @@ export function InboxComposer({
                 preload="metadata"
                 onLoadedMetadata={() => {
                   const audio = previewAudioRef.current;
-                  if (
-                    audio &&
-                    isFinite(audio.duration) &&
-                    audio.duration > 0 &&
-                    Math.abs(audio.duration - recordSecondsRef.current) <= 1.5
-                  ) {
-                    setRecordedDuration(Math.round(audio.duration));
+                  if (audio && isFinite(audio.duration) && audio.duration > 0) {
+                    setRecordedDuration((currentDuration) =>
+                      Math.max(currentDuration, audio.duration)
+                    );
                   }
                 }}
                 onTimeUpdate={() => {
