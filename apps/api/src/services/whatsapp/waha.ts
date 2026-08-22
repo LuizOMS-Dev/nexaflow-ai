@@ -196,9 +196,10 @@ export class WahaConnector implements WhatsAppConnector {
     }
 
     const file = {
+      url: formattedDataUri,
+      data: formattedDataUri,
       mimetype: media.mimetype,
       filename: defaultFilename,
-      data: formattedDataUri,
     };
 
     let endpoint = "/api/sendFile";
