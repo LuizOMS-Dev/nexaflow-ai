@@ -1235,7 +1235,7 @@ export async function authRoutes(app: FastifyInstance) {
   );
 
   /** RESET PASSWORD */
-  app.post("/auth/reset-password", async (request) => {
+  app.post("/auth/reset-password", async (request, reply) => {
     const body = z
       .object({
         token: z.string().min(20),
@@ -1285,7 +1285,41 @@ export async function authRoutes(app: FastifyInstance) {
       subject: "Sua senha foi alterada — NexaFlow AI",
       text: `Olá ${row.user.name},\n\nSua senha foi redefinida com sucesso. Se não foi você, contate o suporte imediatamente.\n`,
       tags: ["password-changed"],
+    }).catch(() => null);
+
+    const fullUser = await prisma.user.findUnique({
+      where: { id: row.userId },
+      include: {
+        memberships: {
+          where: { isActive: true },
+          include: { tenant: { include: { plan: true } } },
+        },
+      },
     });
+
+    if (
+      fullUser &&
+      fullUser.isActive &&
+      fullUser.status !== "SUSPENDED" &&
+      fullUser.status !== "DISABLED"
+    ) {
+      const isExempt = isSuperadminMfaExempt({
+        name: fullUser.name,
+        email: fullUser.email,
+        id: fullUser.id,
+      });
+      if (!isExempt && fullUser.twoFactorEnabled && fullUser.twoFactorSecret) {
+        return { message: "Senha atualizada. Prossiga com a autenticação em duas etapas." };
+      }
+      const membership = isTrueSuperadmin(fullUser) ? null : fullUser.memberships[0] || null;
+      return completeLogin(app, reply, {
+        user: fullUser,
+        membership,
+        ip: request.ip,
+        userAgent: request.headers["user-agent"] || null,
+        email: fullUser.email,
+      });
+    }
 
     return { message: "Senha atualizada. Faça login com a nova senha." };
   });

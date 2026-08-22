@@ -129,6 +129,31 @@ export async function gatewaySignIn(
     };
   }
 
+  if (user.mustChangePassword) {
+    const raw = randomBytes(32).toString("base64url");
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashOpaqueToken(raw),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        ip,
+      },
+    });
+    await recordSecurityEvent({
+      type: "PASSWORD_RESET_REQUESTED",
+      userId: user.id,
+      ip,
+      userAgent,
+      metadata: { reason: "must_change_password" },
+    });
+    return {
+      status: "reset" as const,
+      mustChangePassword: true as const,
+      resetToken: raw,
+      message: "Altere a senha temporária para continuar.",
+    };
+  }
+
   return issueSession(app, reply, {
     user,
     membership,

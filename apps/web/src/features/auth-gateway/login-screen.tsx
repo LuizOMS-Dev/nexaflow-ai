@@ -103,6 +103,14 @@ export function LoginScreen() {
       setCode("");
       return;
     }
+    if ((data.status === "reset" || data.mustChangePassword) && data.resetToken) {
+      setResetToken(data.resetToken);
+      setStep("reset");
+      setBusy(false);
+      setPassword("");
+      setPassword2("");
+      return;
+    }
     if (!data.user) {
       setError("Não foi possível concluir o acesso.");
       setBusy(false);

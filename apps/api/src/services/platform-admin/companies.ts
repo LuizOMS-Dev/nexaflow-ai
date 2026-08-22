@@ -381,9 +381,10 @@ export async function createCompany(
     throw new AppError("Nome do administrador deve ter pelo menos 2 caracteres.", 400, "INVALID_ADMIN_NAME");
   }
 
+  const adminPassword = input.adminPassword?.trim();
   const accessMethod: FirstAccessMethod = resolveFirstAccessMethod(
     input.accessMethod,
-    input.adminPassword
+    adminPassword
   );
 
   const preexistingAdmin = await prisma.user.findUnique({
@@ -399,7 +400,7 @@ export async function createCompany(
     await recycleOrphanCompanyUser(preexistingAdmin.id);
   }
   const liveAdmin = await prisma.user.findUnique({ where: { email } });
-  const newAdminCreds = await credentialsForNewUser(accessMethod, input.adminPassword);
+  const newAdminCreds = await credentialsForNewUser(accessMethod, adminPassword);
 
   let created;
   try {
@@ -460,8 +461,8 @@ export async function createCompany(
         });
       } else {
         // Usuário existente: se nova senha foi fornecida, atualiza com a nova senha
-        if (input.adminPassword?.trim() && accessMethod === "temporary_password") {
-          const creds = await credentialsForNewUser(accessMethod, input.adminPassword);
+        if (adminPassword && accessMethod === "temporary_password") {
+          const creds = await credentialsForNewUser(accessMethod, adminPassword);
           await tx.user.update({
             where: { id: user.id },
             data: {

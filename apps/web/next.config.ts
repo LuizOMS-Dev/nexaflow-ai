@@ -3,7 +3,7 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  output: "standalone",
+  output: process.env.NEXT_STANDALONE === "true" || process.env.DOCKER_BUILD === "1" ? "standalone" : undefined,
   outputFileTracingRoot: path.join(__dirname, "../.."),
   turbopack: {},
   async headers() {

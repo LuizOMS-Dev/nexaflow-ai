@@ -320,12 +320,13 @@ export async function credentialsForNewUser(
   accessMethod: FirstAccessMethod | undefined,
   temporaryPassword?: string
 ): Promise<{ passwordHash: string; mustChangePassword: boolean; method: FirstAccessMethod }> {
-  const method = resolveFirstAccessMethod(accessMethod, temporaryPassword);
+  const trimmed = temporaryPassword?.trim();
+  const method = resolveFirstAccessMethod(accessMethod, trimmed);
   if (method === "temporary_password") {
-    const policy = validatePasswordPolicy(temporaryPassword || "");
+    const policy = validatePasswordPolicy(trimmed || "");
     if (policy) throw new AppError(policy, 400, "WEAK_PASSWORD");
     return {
-      passwordHash: await hashPassword(temporaryPassword!),
+      passwordHash: await hashPassword(trimmed!),
       mustChangePassword: true,
       method,
     };

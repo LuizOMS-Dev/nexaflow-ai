@@ -321,7 +321,7 @@ export default function LoginPage() {
       setLoading(true);
       setError("");
       try {
-        await api("/auth/reset-password", {
+        const res = await api<LoginOk & { message?: string }>("/auth/reset-password", {
           method: "POST",
           json: { token: resetToken, password },
         });
@@ -330,6 +330,10 @@ export default function LoginPage() {
           window.history.replaceState({}, "", "/login");
         } catch {
           /* ignore */
+        }
+        if (res?.accessToken || res?.token || res?.user) {
+          finishLogin(res);
+          return;
         }
         if (email.includes("@")) {
           const data = await api<LoginOk>("/auth/login", {

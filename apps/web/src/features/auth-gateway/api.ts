@@ -16,8 +16,10 @@ export type GatewayUser = {
 };
 
 export type GatewayOk = {
-  status: "authenticated" | "challenge";
+  status: "authenticated" | "challenge" | "reset";
   challengeId?: string;
+  mustChangePassword?: boolean;
+  resetToken?: string;
   message?: string;
   accessToken?: string;
   user?: GatewayUser;

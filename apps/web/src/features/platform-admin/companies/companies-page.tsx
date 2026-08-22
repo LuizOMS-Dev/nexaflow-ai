@@ -602,7 +602,7 @@ function CreateCompanyModal({
     if (!name || name.length < 2) errs.name = "Nome da empresa deve ter pelo menos 2 caracteres.";
     if (!adminName || adminName.length < 2) errs.adminName = "Nome do administrador deve ter pelo menos 2 caracteres.";
     if (!adminEmail || !adminEmail.includes("@")) errs.adminEmail = "E-mail inválido.";
-    if (adminPassword && adminPassword.length < 8) errs.adminPassword = "A senha deve ter pelo menos 8 caracteres.";
+    if (adminPassword && adminPassword.length < 10) errs.adminPassword = "A senha deve ter pelo menos 10 caracteres.";
 
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
@@ -614,6 +614,7 @@ function CreateCompanyModal({
       adminName,
       adminEmail,
       adminPassword: adminPassword || undefined,
+      accessMethod: adminPassword ? "temporary_password" : "invite",
       planId: selectedPlanId || undefined,
       forceSimilarName: force,
     });
@@ -712,11 +713,12 @@ function CreateCompanyModal({
               >
                 <div className="relative">
                   <input
+                    id="company-admin-password"
                     name="adminPassword"
                     type={showPassword ? "text" : "password"}
-                    minLength={8}
+                    minLength={10}
                     autoComplete="new-password"
-                    placeholder="Mínimo de 8 caracteres (ou deixe em branco se já cadastrado)"
+                    placeholder="Mínimo de 10 caracteres (ou deixe em branco se já cadastrado)"
                     className={`${inputClass} pr-9 ${fieldErrors.adminPassword ? "border-rose-500/60 focus:border-rose-500" : ""}`}
                   />
                   <button

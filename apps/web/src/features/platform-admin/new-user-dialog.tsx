@@ -331,86 +331,90 @@ export function NewUserDialog({ open, onClose }: Props) {
             </>
           ) : null}
           {existingUser ? (
-            <ConsequenceBanner tone="warning">
+            <ConsequenceBanner tone="info">
               <p>Este usuário já possui uma conta no NexaFlow.</p>
               <p className="mt-1 text-[12px] text-gray-400">
-                {kind === "platform"
-                  ? "Somente o papel global será atualizado. Senha, MFA e sessões permanecem iguais."
-                  : "Será criado somente o vínculo com esta empresa. Senha, MFA e sessões permanecem iguais."}
+                {accessMethod === "temporary_password"
+                  ? "Ao definir uma nova senha temporária, a senha será atualizada e a troca será exigida no próximo login."
+                  : kind === "platform"
+                    ? "Somente o papel global será atualizado. Senha, MFA e sessões permanecem iguais."
+                    : "Será criado somente o vínculo com esta empresa. Senha, MFA e sessões permanecem iguais."}
               </p>
             </ConsequenceBanner>
-          ) : (
-            <div>
-              <span className="mb-1.5 block text-[12px] font-medium text-gray-300">Primeiro acesso</span>
-              <RadioGroup
-                aria-label="Primeiro acesso"
-                value={accessMethod}
-                disabled={busy}
-                onChange={(v) => setAccessMethod(v as AccessMethod)}
-                options={[
-                  {
-                    value: "invite",
-                    label: "Enviar convite por e-mail",
-                    description: "O usuário receberá um link seguro para definir sua senha.",
-                  },
-                  {
-                    value: "temporary_password",
-                    label: "Definir senha temporária",
-                    description:
-                      "O administrador define uma senha inicial e o usuário deverá alterá-la no primeiro acesso.",
-                  },
-                ]}
-              />
-              {accessMethod === "temporary_password" ? (
-                <div className="mt-3 space-y-3">
-                  <label className="block">
-                    <span className="mb-1 block text-[12px] font-medium text-gray-300">Senha temporária</span>
-                    <input
-                      className={cn(inputClass, errors.temporaryPassword && "border-rose-400/50")}
-                      type="password"
-                      autoComplete="new-password"
-                      value={temporaryPassword}
-                      disabled={busy}
-                      onChange={(e) => setTemporaryPassword(e.target.value)}
-                    />
-                    {errors.temporaryPassword ? (
-                      <p className="mt-1 text-[12px] text-rose-400">{errors.temporaryPassword}</p>
-                    ) : null}
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-[12px] font-medium text-gray-300">Confirmar senha</span>
-                    <input
-                      className={cn(inputClass, errors.temporaryPasswordConfirm && "border-rose-400/50")}
-                      type="password"
-                      autoComplete="new-password"
-                      value={temporaryPasswordConfirm}
-                      disabled={busy}
-                      onChange={(e) => setTemporaryPasswordConfirm(e.target.value)}
-                    />
-                    {errors.temporaryPasswordConfirm ? (
-                      <p className="mt-1 text-[12px] text-rose-400">{errors.temporaryPasswordConfirm}</p>
-                    ) : null}
-                  </label>
-                  <ul className="space-y-1">
-                    {passwordChecks(temporaryPassword).map((c) => (
-                      <li
-                        key={c.label}
-                        className={cn(
-                          "text-[11.5px]",
-                          c.ok ? "text-emerald-400" : "text-gray-500"
-                        )}
-                      >
-                        {c.ok ? "✓" : "○"} {c.label}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-[12.5px] text-gray-400">
-                    O usuário deverá alterar esta senha no primeiro acesso.
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          )}
+          ) : null}
+
+          <div>
+            <span className="mb-1.5 block text-[12px] font-medium text-gray-300">Primeiro acesso</span>
+            <RadioGroup
+              aria-label="Primeiro acesso"
+              value={accessMethod}
+              disabled={busy}
+              onChange={(v) => setAccessMethod(v as AccessMethod)}
+              options={[
+                {
+                  value: "invite",
+                  label: existingUser ? "Manter senha existente / Enviar convite" : "Enviar convite por e-mail",
+                  description: existingUser
+                    ? "O usuário continuará com a senha atual ou receberá link para redefinir."
+                    : "O usuário receberá um link seguro para definir sua senha.",
+                },
+                {
+                  value: "temporary_password",
+                  label: "Definir senha temporária",
+                  description:
+                    "O administrador define uma senha inicial e o usuário deverá alterá-la no primeiro acesso.",
+                },
+              ]}
+            />
+            {accessMethod === "temporary_password" ? (
+              <div className="mt-3 space-y-3">
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-medium text-gray-300">Senha temporária</span>
+                  <input
+                    className={cn(inputClass, errors.temporaryPassword && "border-rose-400/50")}
+                    type="password"
+                    autoComplete="new-password"
+                    value={temporaryPassword}
+                    disabled={busy}
+                    onChange={(e) => setTemporaryPassword(e.target.value)}
+                  />
+                  {errors.temporaryPassword ? (
+                    <p className="mt-1 text-[12px] text-rose-400">{errors.temporaryPassword}</p>
+                  ) : null}
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[12px] font-medium text-gray-300">Confirmar senha</span>
+                  <input
+                    className={cn(inputClass, errors.temporaryPasswordConfirm && "border-rose-400/50")}
+                    type="password"
+                    autoComplete="new-password"
+                    value={temporaryPasswordConfirm}
+                    disabled={busy}
+                    onChange={(e) => setTemporaryPasswordConfirm(e.target.value)}
+                  />
+                  {errors.temporaryPasswordConfirm ? (
+                    <p className="mt-1 text-[12px] text-rose-400">{errors.temporaryPasswordConfirm}</p>
+                  ) : null}
+                </label>
+                <ul className="space-y-1">
+                  {passwordChecks(temporaryPassword).map((c) => (
+                    <li
+                      key={c.label}
+                      className={cn(
+                        "text-[11.5px]",
+                        c.ok ? "text-emerald-400" : "text-gray-500"
+                      )}
+                    >
+                      {c.ok ? "✓" : "○"} {c.label}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[12.5px] text-gray-400">
+                  O usuário deverá alterar esta senha no primeiro acesso.
+                </p>
+              </div>
+            ) : null}
+          </div>
           {kind === "platform" ? (
             <>
               <ConsequenceBanner tone="warning">
