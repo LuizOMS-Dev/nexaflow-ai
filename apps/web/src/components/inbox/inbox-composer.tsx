@@ -165,9 +165,12 @@ export function InboxComposer({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      let mimeType = "audio/webm;codecs=opus";
+      let mimeType = "audio/ogg;codecs=opus";
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = "audio/ogg;codecs=opus";
+        mimeType = "audio/webm;codecs=opus";
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = "audio/webm";
       }
       if (!MediaRecorder.isTypeSupported(mimeType)) {
         mimeType = "audio/mp4";

@@ -209,9 +209,11 @@ export class WahaConnector implements WhatsAppConnector {
       endpoint = "/api/sendImage";
       if (media.caption) body.caption = media.caption;
     } else if (media.kind === "VOICE" || media.kind === "AUDIO") {
-      // /api/sendFile entrega áudio garantido para todos os clientes WhatsApp sem rejeição de container
-      endpoint = "/api/sendFile";
-      if (media.caption) body.caption = media.caption;
+      endpoint = "/api/sendVoice";
+      file.mimetype = "audio/ogg; codecs=opus";
+      file.filename = "voice.ogg";
+      file.url = `data:audio/ogg; codecs=opus;base64,${cleanBase64}`;
+      file.data = file.url;
     } else if (media.kind === "VIDEO") {
       endpoint = "/api/sendVideo";
       if (media.caption) body.caption = media.caption;

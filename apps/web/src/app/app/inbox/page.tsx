@@ -599,19 +599,10 @@ function InboxPageContent() {
 
   const handleSendVoice = async (blob: Blob, durationSecs: number) => {
     let uploadRes: { url: string; filename: string; mimetype: string; sizeBytes: number };
-    const normalizedMime = blob.type.split(";")[0].trim().toLowerCase();
-    const extension =
-      normalizedMime === "audio/ogg" || normalizedMime === "audio/opus"
-        ? "ogg"
-        : normalizedMime === "audio/mp4"
-          ? "m4a"
-          : normalizedMime === "audio/webm"
-            ? "webm"
-            : "audio";
-    const originalName = `audio_${Date.now()}.${extension}`;
+    const originalName = `voice_${Date.now()}.ogg`;
 
     try {
-      const file = new File([blob], originalName, { type: blob.type || "audio/webm" });
+      const file = new File([blob], originalName, { type: blob.type || "audio/ogg" });
       const formData = new FormData();
       // Campos devem vir antes do arquivo para o Fastify multipart disponibilizá-los.
       formData.append("isVoice", "true");
@@ -643,7 +634,7 @@ function InboxPageContent() {
       metadata: {
         filename: uploadRes.filename,
         originalName,
-        mimetype: uploadRes.mimetype,
+        mimetype: "audio/ogg; codecs=opus",
         sizeBytes: uploadRes.sizeBytes,
         isVoice: true,
         duration: durationSecs,
