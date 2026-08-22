@@ -1612,19 +1612,23 @@ function InboxPageContent() {
                             (m.type === "VOICE" || m.type === "AUDIO" || (meta.mimetype as string)?.startsWith("audio/")) &&
                             (!m.content || /^\[(?:mídia|midia|áudio|audio)(?::\s*[^\]]+)?\]$/i.test(m.content.trim()));
 
+                          const isImageOnly =
+                            (m.type === "IMAGE" || (meta.mimetype as string)?.startsWith("image/")) &&
+                            (!m.content || /^\[(?:mídia|midia|imagem|foto)(?::\s*[^\]]+)?\]$/i.test(m.content.trim()));
+
                           return (
                             <div
                               className={cn(
-                                "w-fit max-w-full text-[13px] leading-relaxed transition-colors",
-                                isAudioOnly ? "px-3 py-2" : "px-3.5 py-2",
+                                "w-fit max-w-full text-[13px] leading-relaxed transition-all shadow-xs",
+                                isImageOnly ? "p-1.5" : isAudioOnly ? "px-3 py-2" : "px-3.5 py-2",
                                 bubbleRadius,
                                 origin === "INTERNAL_NOTE"
                                   ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
                                   : origin === "HUMAN"
-                                    ? "bg-[#181a20] text-white dark:bg-[#1a1f2c] dark:text-zinc-100 dark:border dark:border-white/[0.08] shadow-xs"
+                                    ? "bg-violet-600 text-white shadow-violet-600/10 dark:bg-violet-600 dark:text-white dark:border dark:border-violet-500/25"
                                     : origin === "AI"
-                                      ? "border border-violet-500/20 bg-violet-500/[0.06] text-ink dark:border-violet-400/20 dark:bg-violet-950/40 dark:text-zinc-100"
-                                      : "border border-black/[0.05] bg-white text-ink shadow-xs dark:border-white/[0.06] dark:bg-[#121620] dark:text-zinc-100"
+                                      ? "border border-violet-500/25 bg-violet-500/[0.08] text-ink dark:border-violet-400/25 dark:bg-violet-950/40 dark:text-zinc-100"
+                                      : "border border-black/[0.06] bg-white text-ink dark:border-white/[0.07] dark:bg-[#151922] dark:text-zinc-100"
                               )}
                             >
                               {/* Renderização de Mídia */}

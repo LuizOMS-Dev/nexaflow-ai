@@ -743,19 +743,12 @@ export function MediaBubble({
 
   // DOCUMENT ou FILE genérico com contraste perfeito em Light e Dark Mode
   return (
-    <div
-      className={cn(
-        "my-1 flex items-center gap-3 rounded-xl border p-2.5 transition-colors",
-        isOutbound
-          ? "border-white/15 bg-white/10 text-white hover:bg-white/15 dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-100 dark:hover:bg-white/[0.08]"
-          : "border-black/[0.08] bg-black/[0.02] text-ink hover:bg-black/[0.04] dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-zinc-100 dark:hover:bg-white/[0.06]"
-      )}
-    >
+    <div className="flex items-center gap-3 py-1 min-w-[220px] max-w-[280px]">
       <div
         className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-xs",
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-xs",
           isOutbound
-            ? "bg-white/20 text-white dark:bg-white/10 dark:text-zinc-200"
+            ? "bg-white/20 text-white dark:bg-white/15 dark:text-white"
             : style.badgeBg + " " + style.iconColor
         )}
       >
@@ -786,7 +779,7 @@ export function MediaBubble({
           className={cn(
             "text-[10.5px] mt-0.5 font-medium",
             isOutbound
-              ? "text-white/75 dark:text-zinc-400"
+              ? "text-white/75 dark:text-zinc-300"
               : "text-ink-muted dark:text-zinc-400"
           )}
         >
@@ -801,9 +794,9 @@ export function MediaBubble({
           rel="noopener noreferrer"
           download={filename}
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all shadow-xs cursor-pointer",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all active:scale-95 shadow-xs cursor-pointer",
             isOutbound
-              ? "bg-white/20 hover:bg-white/30 text-white dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
+              ? "bg-white/20 hover:bg-white/30 text-white dark:bg-white/15 dark:hover:bg-white/25 dark:text-white"
               : "bg-black/5 hover:bg-black/10 text-ink dark:bg-white/10 dark:hover:bg-white/20 dark:text-zinc-200"
           )}
           title="Baixar arquivo"
@@ -847,9 +840,9 @@ function ImageBubbleItem({
     return (
       <div
         className={cn(
-          "my-1 flex items-center gap-2 p-2.5 rounded-xl border text-xs",
+          "flex items-center gap-2 p-2 rounded-xl border text-xs transition-colors",
           isOutbound
-            ? "border-white/15 bg-white/10 text-white dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
+            ? "border-white/20 bg-white/10 text-white dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200"
             : "border-black/[0.08] bg-black/[0.02] text-ink dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-200"
         )}
       >
@@ -859,6 +852,7 @@ function ImageBubbleItem({
           href={downloadUrl}
           target="_blank"
           rel="noopener noreferrer"
+          download
           className="ml-auto underline font-medium text-[11px]"
         >
           Baixar
@@ -868,9 +862,9 @@ function ImageBubbleItem({
   }
 
   return (
-    <div className="mt-1 mb-1 overflow-hidden rounded-xl">
+    <div className="overflow-hidden rounded-xl">
       <div
-        className="group relative cursor-pointer overflow-hidden rounded-xl bg-black/[0.03] dark:bg-white/[0.04] max-h-72 min-h-[140px] min-w-[200px] flex items-center justify-center"
+        className="group relative cursor-pointer overflow-hidden rounded-xl bg-black/[0.03] dark:bg-white/[0.04] max-h-72 min-h-[120px] min-w-[180px] flex items-center justify-center"
         onClick={() => onOpenLightbox?.(src)}
       >
         {!loaded && (
@@ -888,13 +882,13 @@ function ImageBubbleItem({
             setFailed(true);
           }}
           className={cn(
-            "max-h-72 w-auto max-w-full rounded-xl object-contain transition-all duration-200 group-hover:scale-[1.01]",
+            "max-h-72 w-auto max-w-full rounded-xl object-contain transition-all duration-200 group-hover:scale-[1.015]",
             loaded ? "opacity-100 scale-100" : "opacity-0 scale-95"
           )}
         />
         {loaded && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100 z-20">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white shadow-lg">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100 z-20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-xs shadow-md">
               <Maximize2 className="h-4 w-4" />
             </div>
           </div>
