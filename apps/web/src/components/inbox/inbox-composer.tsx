@@ -299,15 +299,31 @@ export function InboxComposer({
     const audio = previewAudioRef.current;
     if (!audio) return;
 
-    if (previewPlaying) {
+    if (!audio.paused && !audio.ended) {
       audio.pause();
       setPreviewPlaying(false);
     } else {
-      audio.play().then(() => {
-        setPreviewPlaying(true);
-      }).catch(() => {
-        setPreviewPlaying(false);
-      });
+      if (audio.ended || Math.abs(audio.currentTime - (recordedDuration || 0)) < 0.2) {
+        audio.currentTime = 0;
+        setPreviewCurrentTime(0);
+      }
+      audio
+        .play()
+        .then(() => {
+          setPreviewPlaying(true);
+        })
+        .catch((err) => {
+          console.warn("[composer] Preview audio play fallback:", err);
+          try {
+            audio.load();
+            audio
+              .play()
+              .then(() => setPreviewPlaying(true))
+              .catch(() => setPreviewPlaying(false));
+          } catch {
+            setPreviewPlaying(false);
+          }
+        });
     }
   };
 
@@ -315,8 +331,12 @@ export function InboxComposer({
     const audio = previewAudioRef.current;
     const nextTime = Math.max(0, Math.min(Number(e.target.value), recordedDuration || 0));
     setPreviewCurrentTime(nextTime);
-    if (audio) {
-      audio.currentTime = nextTime;
+    if (audio && isFinite(nextTime)) {
+      try {
+        audio.currentTime = nextTime;
+      } catch {
+        /* ignore seek error on unseekable streams */
+      }
     }
   };
 
@@ -463,7 +483,7 @@ export function InboxComposer({
               <audio
                 ref={previewAudioRef}
                 src={previewAudioUrl}
-                preload="metadata"
+                preload="auto"
                 onLoadedMetadata={() => {
                   const audio = previewAudioRef.current;
                   if (audio && isFinite(audio.duration) && audio.duration > 0) {
@@ -472,6 +492,8 @@ export function InboxComposer({
                     );
                   }
                 }}
+                onPlay={() => setPreviewPlaying(true)}
+                onPause={() => setPreviewPlaying(false)}
                 onTimeUpdate={() => {
                   if (previewAudioRef.current) {
                     const ct = previewAudioRef.current.currentTime;

@@ -8,6 +8,7 @@ import {
   getBaileysSession,
   getSessionDiagnostics,
   sendBaileysText,
+  sendBaileysMedia,
   startBaileysSession,
   stopBaileysSession,
 } from "./baileys-manager";
@@ -102,5 +103,20 @@ export class BaileysConnector implements WhatsAppConnector {
   async sendText(config: WhatsAppChannelConfig, to: string, text: string): Promise<SendTextResult> {
     const name = config.instanceName || config.session || "";
     return sendBaileysText(name, to, text);
+  }
+
+  async sendMedia(
+    config: WhatsAppChannelConfig,
+    to: string,
+    media: {
+      kind: "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE";
+      mimetype: string;
+      filename?: string;
+      dataBase64: string;
+      caption?: string;
+    }
+  ): Promise<SendTextResult> {
+    const name = config.instanceName || config.session || "";
+    return sendBaileysMedia(name, to, media);
   }
 }

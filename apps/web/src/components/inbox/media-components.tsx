@@ -136,6 +136,10 @@ export function AudioVoicePlayer({
     if (isPlaying) {
       audio.pause();
     } else {
+      if (audio.ended || (duration > 0 && Math.abs(audio.currentTime - duration) < 0.2)) {
+        audio.currentTime = 0;
+        setCurrentTime(0);
+      }
       audio.play().catch(() => {
         setIsPlaying(false);
         setHasError(true);

@@ -183,6 +183,16 @@ export function resolveAllowedWahaMediaUrl(raw: string, gatewayBaseUrl?: string 
   }
 
   const host = target.hostname.toLowerCase();
+  const isCdn =
+    host.endsWith(".whatsapp.net") ||
+    host.endsWith(".whatsapp.com") ||
+    host.endsWith(".fbcdn.net") ||
+    host.endsWith(".fbsbx.com");
+
+  if (isCdn) {
+    return target.toString();
+  }
+
   const okHost =
     host === allowedHost.toLowerCase() ||
     host === "waha" ||

@@ -52,6 +52,10 @@ type InboundHandler = (msg: {
   content: string;
   externalId?: string;
   fromMe?: boolean;
+  mediaData?: string;
+  mediaMime?: string;
+  mediaType?: string;
+  mediaFilename?: string;
 }) => Promise<void> | void;
 
 const sessions = new Map<string, SessionState>();
@@ -391,7 +395,53 @@ export async function startBaileysSession(instanceName: string): Promise<Session
             (rawMessage?.locationMessage ? "[localização]" : null) ||
             "[mensagem]";
 
-          if (!content) continue;
+          let mediaBuffer: Buffer | null = null;
+          let mediaMime: string | undefined = undefined;
+          let mediaType: string | undefined = undefined;
+          let mediaFilename: string | undefined = undefined;
+
+          try {
+            const baileys = await import("@whiskeysockets/baileys");
+            const downloadMedia = (baileys as any).downloadMediaMessage;
+
+            if (rawMessage?.audioMessage || rawMessage?.pttMessage) {
+              const isPtt = Boolean(rawMessage?.pttMessage || rawMessage?.audioMessage?.ptt);
+              mediaType = isPtt ? "VOICE" : "AUDIO";
+              mediaMime =
+                rawMessage?.audioMessage?.mimetype ||
+                rawMessage?.pttMessage?.mimetype ||
+                "audio/ogg; codecs=opus";
+              if (typeof downloadMedia === "function") {
+                mediaBuffer = (await downloadMedia(m, "buffer", {})) as Buffer;
+              }
+            } else if (rawMessage?.imageMessage) {
+              mediaType = "IMAGE";
+              mediaMime = rawMessage.imageMessage.mimetype || "image/jpeg";
+              if (typeof downloadMedia === "function") {
+                mediaBuffer = (await downloadMedia(m, "buffer", {})) as Buffer;
+              }
+            } else if (rawMessage?.videoMessage) {
+              mediaType = "VIDEO";
+              mediaMime = rawMessage.videoMessage.mimetype || "video/mp4";
+              if (typeof downloadMedia === "function") {
+                mediaBuffer = (await downloadMedia(m, "buffer", {})) as Buffer;
+              }
+            } else if (rawMessage?.documentMessage) {
+              mediaType = "DOCUMENT";
+              mediaMime = rawMessage.documentMessage.mimetype || "application/pdf";
+              mediaFilename = rawMessage.documentMessage.fileName || "documento";
+              if (typeof downloadMedia === "function") {
+                mediaBuffer = (await downloadMedia(m, "buffer", {})) as Buffer;
+              }
+            }
+          } catch (err) {
+            console.warn("[baileys] Falha ao processar download de mídia recebida:", err);
+          }
+
+          const mediaData =
+            mediaBuffer && mediaMime
+              ? `data:${mediaMime};base64,${mediaBuffer.toString("base64")}`
+              : undefined;
 
           state.lastMessageReceivedAt = new Date();
           state.lastEventAt = new Date();
@@ -404,6 +454,10 @@ export async function startBaileysSession(instanceName: string): Promise<Session
               content,
               externalId: m.key?.id,
               fromMe,
+              mediaData,
+              mediaMime,
+              mediaType,
+              mediaFilename,
             });
           }
         }
@@ -478,6 +532,79 @@ export async function sendBaileysText(instanceName: string, to: string, text: st
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Falha ao enviar",
+    };
+  }
+}
+
+export async function sendBaileysMedia(
+  instanceName: string,
+  to: string,
+  media: {
+    kind: "IMAGE" | "AUDIO" | "VOICE" | "VIDEO" | "DOCUMENT" | "FILE";
+    mimetype: string;
+    filename?: string;
+    dataBase64: string;
+    caption?: string;
+  }
+) {
+  const state = sessions.get(instanceName);
+  if (!state?.sock || state.status !== "open") {
+    return { ok: false, error: "Sessão WhatsApp não conectada" };
+  }
+  const cleanBase64 = (media.dataBase64 || "").replace(/^data:[^;]+;base64,/, "");
+  const buffer = Buffer.from(cleanBase64, "base64");
+  if (!buffer.length) {
+    return { ok: false, error: "Buffer de mídia vazio" };
+  }
+
+  const { formatWahaDestinationChatId } = await import("./identity-resolver");
+  const formattedChatId = formatWahaDestinationChatId(to);
+  const jid = formattedChatId.includes("@")
+    ? (formattedChatId.endsWith("@c.us") ? formattedChatId.replace("@c.us", "@s.whatsapp.net") : formattedChatId)
+    : `${to.replace(/\D/g, "")}@s.whatsapp.net`;
+
+  try {
+    let result: any;
+    if (media.kind === "VOICE") {
+      result = await state.sock.sendMessage(jid, {
+        audio: buffer,
+        mimetype: "audio/ogg; codecs=opus",
+        ptt: true,
+      });
+    } else if (media.kind === "AUDIO") {
+      result = await state.sock.sendMessage(jid, {
+        audio: buffer,
+        mimetype: media.mimetype || "audio/mp4",
+        ptt: false,
+      });
+    } else if (media.kind === "IMAGE") {
+      result = await state.sock.sendMessage(jid, {
+        image: buffer,
+        caption: media.caption,
+        mimetype: media.mimetype || "image/jpeg",
+      });
+    } else if (media.kind === "VIDEO") {
+      result = await state.sock.sendMessage(jid, {
+        video: buffer,
+        caption: media.caption,
+        mimetype: media.mimetype || "video/mp4",
+      });
+    } else {
+      result = await state.sock.sendMessage(jid, {
+        document: buffer,
+        mimetype: media.mimetype || "application/octet-stream",
+        fileName: media.filename || "arquivo",
+        caption: media.caption,
+      });
+    }
+
+    state.lastMessageSentAt = new Date();
+    state.lastEventAt = new Date();
+    return { ok: true, externalId: result?.key?.id, raw: result };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Falha ao enviar mídia",
     };
   }
 }

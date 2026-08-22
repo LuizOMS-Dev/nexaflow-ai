@@ -240,8 +240,15 @@ async function runMediaPipeline(
 
     // Resolução segura de absPath com isolamento de tenant
     if (!absPath && params.mediaUrl) {
-      const cleanUrl = params.mediaUrl.replace(/^\/(?:api\/)?media\/(?:files|wa)\//, "");
-      const parts = cleanUrl.split("/");
+      const cleanUrl = params.mediaUrl
+        .replace(/^https?:\/\/[^/]+/, "")
+        .replace(/^\/nexa-api/, "")
+        .replace(/^\/api/, "")
+        .replace(/^\/storage/, "")
+        .replace(/^\/media\/(?:files|wa)\//, "")
+        .replace(/^\/(?:files|wa)\//, "");
+
+      const parts = cleanUrl.split("/").filter(Boolean);
       if (parts.length >= 2) {
         const fileTenantId = parts[0];
         const filename = parts[1];
@@ -329,8 +336,8 @@ async function runMediaPipeline(
         "default",
     };
 
-    const { WahaConnector } = await import("./waha");
-    const connector = new WahaConnector();
+    const { getConnector } = await import("./index");
+    const connector = getConnector(provider);
 
     // Executa envio com retry apenas para falhas recuperáveis (backoff: 1s, 2s)
     let sendResult = { ok: false, externalId: undefined as string | undefined, error: undefined as string | undefined };
@@ -339,13 +346,20 @@ async function runMediaPipeline(
     const maxAttempts = 2;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const res = await connector.sendMedia(config as any, destination, {
-          kind: params.mediaType,
-          mimetype: finalMime,
-          filename: cleanFilename,
-          dataBase64: formattedDataUri,
-          caption: params.caption,
-        });
+        const res =
+          typeof connector.sendMedia === "function"
+            ? await connector.sendMedia(config as any, destination, {
+                kind: params.mediaType,
+                mimetype: finalMime,
+                filename: cleanFilename,
+                dataBase64: formattedDataUri,
+                caption: params.caption,
+              })
+            : await connector.sendText(
+                config as any,
+                destination,
+                params.caption ? `[${params.mediaType}] ${params.caption}` : `[Arquivo: ${cleanFilename}]`
+              );
 
         if (res.ok) {
           sendResult = { ok: true, externalId: res.externalId, error: undefined };

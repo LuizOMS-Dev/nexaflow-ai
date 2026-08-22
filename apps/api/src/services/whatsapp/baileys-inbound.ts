@@ -14,9 +14,13 @@ export async function handleBaileysInbound(msg: {
   content: string;
   externalId?: string;
   fromMe?: boolean;
+  mediaData?: string;
+  mediaMime?: string;
+  mediaType?: string;
+  mediaFilename?: string;
 }) {
   const content = (msg.content || "").trim();
-  if (!content) return;
+  if (!content && !msg.mediaData) return;
 
   const meta = await resolveSessionMeta(msg.instanceName);
   if (!meta) {
@@ -34,6 +38,10 @@ export async function handleBaileysInbound(msg: {
       phone: msg.phone,
       content,
       externalId: msg.externalId,
+      mediaData: msg.mediaData,
+      mediaMime: msg.mediaMime,
+      mediaType: msg.mediaType,
+      mediaFilename: msg.mediaFilename,
     });
   }
 
@@ -45,6 +53,10 @@ export async function handleBaileysInbound(msg: {
     name: msg.name,
     content,
     externalId: msg.externalId,
+    mediaData: msg.mediaData,
+    mediaMime: msg.mediaMime,
+    mediaType: msg.mediaType,
+    mediaFilename: msg.mediaFilename,
   });
 }
 

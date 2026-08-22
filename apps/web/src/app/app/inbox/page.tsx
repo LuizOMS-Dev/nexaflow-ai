@@ -598,24 +598,26 @@ function InboxPageContent() {
   };
 
   const handleSendVoice = async (blob: Blob, durationSecs: number) => {
+    let uploadRes: { url: string; filename: string; mimetype: string; sizeBytes: number };
+    const normalizedMime = blob.type.split(";")[0].trim().toLowerCase();
+    const extension =
+      normalizedMime === "audio/ogg" || normalizedMime === "audio/opus"
+        ? "ogg"
+        : normalizedMime === "audio/mp4"
+          ? "m4a"
+          : normalizedMime === "audio/webm"
+            ? "webm"
+            : "audio";
+    const originalName = `audio_${Date.now()}.${extension}`;
+
     try {
-      const normalizedMime = blob.type.split(";")[0].trim().toLowerCase();
-      const extension =
-        normalizedMime === "audio/ogg" || normalizedMime === "audio/opus"
-          ? "ogg"
-          : normalizedMime === "audio/mp4"
-            ? "m4a"
-            : normalizedMime === "audio/webm"
-              ? "webm"
-              : "audio";
-      const originalName = `audio_${Date.now()}.${extension}`;
       const file = new File([blob], originalName, { type: blob.type || "audio/webm" });
       const formData = new FormData();
       // Campos devem vir antes do arquivo para o Fastify multipart disponibilizá-los.
       formData.append("isVoice", "true");
       formData.append("file", file);
 
-      const res = await api<{
+      uploadRes = await api<{
         url: string;
         filename: string;
         mimetype: string;
@@ -624,28 +626,29 @@ function InboxPageContent() {
         method: "POST",
         body: formData,
       });
-
-      await sendMutation.mutateAsync({
-        content: "",
-        type: "VOICE",
-        mediaUrl: res.url,
-        metadata: {
-          filename: res.filename,
-          originalName,
-          mimetype: res.mimetype,
-          sizeBytes: res.sizeBytes,
-          isVoice: true,
-          duration: durationSecs,
-        },
-      });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Não foi possível enviar a gravação";
+      const msg = e instanceof Error ? e.message : "Não foi possível processar o áudio";
       toast({
         kind: "error",
         title: "Falha no envio do áudio",
         description: msg,
       });
+      return;
     }
+
+    await sendMutation.mutateAsync({
+      content: "",
+      type: "VOICE",
+      mediaUrl: uploadRes.url,
+      metadata: {
+        filename: uploadRes.filename,
+        originalName,
+        mimetype: uploadRes.mimetype,
+        sizeBytes: uploadRes.sizeBytes,
+        isVoice: true,
+        duration: durationSecs,
+      },
+    });
   };
 
   const retryMessageMutation = useMutation({
