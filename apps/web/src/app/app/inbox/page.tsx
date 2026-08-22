@@ -1607,11 +1607,37 @@ function InboxPageContent() {
                             (m.type === "IMAGE" || (meta.mimetype as string)?.startsWith("image/")) &&
                             (!m.content || /^\[(?:mídia|midia|imagem|foto)(?::\s*[^\]]+)?\]$/i.test(m.content.trim()));
 
+                          const footerMeta = (
+                            <div
+                              className={cn(
+                                "flex items-center justify-end gap-1 text-[10px] tabular-nums text-ink-faint dark:text-zinc-400 select-none",
+                                isAudioOnly ? "ml-1" : "mt-1"
+                              )}
+                            >
+                              <span>{time}</span>
+                              {origin === "HUMAN" && (
+                                <span className="inline-flex items-center ml-0.5">
+                                  {meta.deliveryStatus === "READ" ? (
+                                    <CheckCheck className="h-3 w-3 text-sky-500 dark:text-sky-400" />
+                                  ) : meta.deliveryStatus === "DELIVERED" ? (
+                                    <CheckCheck className="h-3 w-3 opacity-75" />
+                                  ) : meta.deliveryStatus === "FAILED" || meta.deliveryError ? (
+                                    <AlertCircle className="h-3 w-3 text-rose-500" />
+                                  ) : meta.deliveryStatus === "SENDING" || meta.deliveryStatus === "UPLOADING" ? (
+                                    <Loader2 className="h-2.5 w-2.5 animate-spin opacity-75" />
+                                  ) : (
+                                    <Check className="h-3 w-3 opacity-75" />
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          );
+
                           return (
                             <div
                               className={cn(
                                 "w-fit max-w-full text-[13px] leading-relaxed transition-all shadow-xs",
-                                isImageOnly ? "p-1.5" : isAudioOnly ? "px-3 py-2" : "px-3.5 py-2",
+                                isImageOnly ? "p-1.5" : isAudioOnly ? "px-3 py-1.5" : "px-3.5 py-2",
                                 bubbleRadius,
                                 origin === "INTERNAL_NOTE"
                                   ? "border border-dashed border-amber-500/35 bg-amber-500/[0.08] text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/[0.1] dark:text-amber-100"
@@ -1635,6 +1661,7 @@ function InboxPageContent() {
                                   isOutbound={origin === "HUMAN"}
                                   content={m.content}
                                   onOpenLightbox={(url) => setLightboxSrc(url)}
+                                  footerRight={isAudioOnly ? footerMeta : undefined}
                                 />
                               )}
 
@@ -1647,29 +1674,7 @@ function InboxPageContent() {
                                 )}
 
                               {/* Metadados e Status de Entrega */}
-                              <div
-                                className={cn(
-                                  "flex items-center justify-end gap-1 text-[10px] tabular-nums text-ink-faint dark:text-zinc-400",
-                                  isAudioOnly ? "mt-0.5" : "mt-1"
-                                )}
-                              >
-                                <span>{time}</span>
-                                {origin === "HUMAN" && (
-                                  <span className="inline-flex items-center ml-0.5">
-                                    {meta.deliveryStatus === "READ" ? (
-                                      <CheckCheck className="h-3 w-3 text-sky-500 dark:text-sky-400" />
-                                    ) : meta.deliveryStatus === "DELIVERED" ? (
-                                      <CheckCheck className="h-3 w-3 opacity-75" />
-                                    ) : meta.deliveryStatus === "FAILED" || meta.deliveryError ? (
-                                      <AlertCircle className="h-3 w-3 text-rose-500" />
-                                    ) : meta.deliveryStatus === "SENDING" || meta.deliveryStatus === "UPLOADING" ? (
-                                      <Loader2 className="h-2.5 w-2.5 animate-spin opacity-75" />
-                                    ) : (
-                                      <Check className="h-3 w-3 opacity-75" />
-                                    )}
-                                  </span>
-                                )}
-                              </div>
+                              {!isAudioOnly && footerMeta}
                             </div>
                           );
                         })()}

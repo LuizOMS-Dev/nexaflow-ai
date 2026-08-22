@@ -32,10 +32,12 @@ export function AudioVoicePlayer({
   src,
   initialDuration,
   isOutbound,
+  footerRight,
 }: {
   src: string;
   initialDuration?: number;
   isOutbound?: boolean;
+  footerRight?: React.ReactNode;
 }) {
   const resolvedSrc = resolveMediaUrl(src) || src;
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -194,24 +196,24 @@ export function AudioVoicePlayer({
   };
 
   return (
-    <div className="flex items-center gap-3 py-1 w-[220px] sm:w-[245px] max-w-full select-none">
+    <div className="flex items-center gap-3 py-0.5 w-[235px] sm:w-[265px] max-w-full select-none">
       <audio ref={audioRef} src={resolvedSrc} preload="metadata" />
       <button
         type="button"
         onClick={togglePlay}
         aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
-        className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400 transition-all active:scale-95 shadow-xs cursor-pointer"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-400 transition-all active:scale-95 shadow-xs cursor-pointer"
       >
         {isLoading ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : isPlaying ? (
-          <Pause className="h-3.5 w-3.5 fill-current" />
+          <Pause className="h-4 w-4 fill-current" />
         ) : (
-          <Play className="h-3.5 w-3.5 fill-current translate-x-[1px]" />
+          <Play className="h-4 w-4 fill-current translate-x-[1px]" />
         )}
       </button>
 
-      <div className="flex flex-1 flex-col justify-center gap-1 min-w-0">
+      <div className="flex flex-1 flex-col justify-center gap-1.5 min-w-0">
         <div className="relative flex items-center w-full">
           <input
             type="range"
@@ -247,6 +249,7 @@ export function AudioVoicePlayer({
             >
               {speed}x
             </button>
+            {footerRight}
           </div>
         </div>
       </div>
@@ -619,6 +622,7 @@ export function MediaBubble({
   isOutbound,
   content,
   onOpenLightbox,
+  footerRight,
 }: {
   type: string;
   mediaUrl?: string | null;
@@ -626,6 +630,7 @@ export function MediaBubble({
   isOutbound?: boolean;
   content?: string | null;
   onOpenLightbox?: (url: string) => void;
+  footerRight?: React.ReactNode;
 }) {
   const meta = metadata || {};
   const filename = (meta.originalName as string) || (meta.filename as string) || "arquivo";
@@ -704,7 +709,14 @@ export function MediaBubble({
   // Áudio ou Mensagem de Voz
   if (type === "VOICE" || type === "AUDIO" || mime.startsWith("audio/")) {
     const audioDur = Number(meta.duration) || Number(meta.durationSecs) || undefined;
-    return <AudioVoicePlayer src={resolvedUrl} initialDuration={audioDur} isOutbound={isOutbound} />;
+    return (
+      <AudioVoicePlayer
+        src={resolvedUrl}
+        initialDuration={audioDur}
+        isOutbound={isOutbound}
+        footerRight={footerRight}
+      />
+    );
   }
 
   // Vídeo
