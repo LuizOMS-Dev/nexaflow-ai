@@ -16,13 +16,14 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Loader2,
   Lock,
   Mail,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/store/auth";
 import { Logo } from "@/components/brand/logo";
-import { AuthShowcase } from "@/components/auth/auth-showcase";
+import { LoginAtmosphere } from "@/components/auth/login-atmosphere";
 import {
   AuthTransition,
   markAppEntrance,
@@ -34,9 +35,9 @@ import { needsCompanyOnboarding } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import type { TenantInfo } from "@/store/auth";
 
-/** Confirm → overlay → exit — total ideal ~1.0–1.6s */
-const T_CONFIRM_MS = 280;
-const T_OVERLAY_MS = 900;
+/** Confirm → overlay → exit — total stays ~1.56s so the redirect moment does not move. */
+const T_CONFIRM_MS = 520;
+const T_OVERLAY_MS = 660;
 const T_EXIT_MS = 380;
 const T_OVERLAY_FIRST_MS = 1100;
 const T_EXIT_FIRST_MS = 420;
@@ -488,12 +489,15 @@ export default function LoginPage() {
 
   if (!hydrated) {
     return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 bg-[#07060f]">
-        <Logo variant="full-white" size="md" withAi />
-        <div className="h-1 w-28 overflow-hidden rounded-full bg-white/10">
-          <div className="nf-auth-transition-bar h-full w-full origin-left rounded-full bg-gradient-to-r from-indigo-400 to-violet-500" />
+      <div className="relative flex min-h-[100dvh] flex-col items-center justify-center gap-4 overflow-hidden bg-[#07060f]">
+        <LoginAtmosphere />
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <Logo variant="full-white" size="md" withAi />
+          <div className="h-1 w-28 overflow-hidden rounded-full bg-white/10">
+            <div className="nf-auth-transition-bar h-full w-full origin-left rounded-full bg-gradient-to-r from-indigo-400 to-violet-500" />
+          </div>
+          <p className="text-[12px] text-white/70">Carregando…</p>
         </div>
-        <p className="text-[12px] text-white/30">Carregando…</p>
       </div>
     );
   }
@@ -565,13 +569,19 @@ export default function LoginPage() {
     );
   }
 
+  const busyLabel =
+    view === "forgot"
+      ? "Enviando…"
+      : view === "mfa"
+        ? "Verificando…"
+        : view === "reset"
+          ? "Salvando…"
+          : "Entrando…";
+
   return (
-    <div
-      className={cn(
-        "relative min-h-[100dvh] overflow-hidden bg-[#07060f]",
-        "grid lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] xl:grid-cols-[minmax(0,1.1fr)_minmax(440px,0.9fr)]"
-      )}
-    >
+    <div className="relative min-h-[100dvh] overflow-hidden bg-[#07060f]">
+      <LoginAtmosphere />
+
       {(phase === "overlay" || phase === "exit") && (
         <AuthTransition
           mode={transitionMode}
@@ -581,45 +591,18 @@ export default function LoginPage() {
         />
       )}
 
-      <AuthShowcase
-        variant="login"
-        className={cn(coverLogin && "nf-login-under-overlay")}
-      />
-
-      <div
+      <main
         className={cn(
-          "relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden px-5 py-8 sm:px-8 lg:px-10 lg:py-10",
+          "relative z-10 flex min-h-[100dvh] flex-col items-center justify-center px-4 py-8 sm:px-6",
+          "pb-[max(2rem,env(safe-area-inset-bottom))]",
           coverLogin && "nf-login-under-overlay"
         )}
       >
-        {/* fundo direito — mesma família cromática da esquerda */}
-        <div className="pointer-events-none absolute inset-0" aria-hidden>
-          <div className="absolute inset-0 bg-[#07060f]" />
-          <div className="absolute inset-0 bg-gradient-to-bl from-[#0c0a1c] via-[#07060f] to-[#05040c]" />
-          <div className="absolute -right-20 top-[10%] h-[340px] w-[340px] rounded-full bg-violet-600/[0.1] blur-[90px]" />
-          <div className="absolute -left-24 bottom-[5%] h-[260px] w-[260px] rounded-full bg-indigo-700/[0.08] blur-[70px]" />
-          <div
-            className="absolute inset-0 opacity-[0.025]"
-            style={{
-              backgroundImage:
-                "linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)",
-              backgroundSize: "52px 52px",
-            }}
-          />
-          {/* soft join from left column */}
-          <div className="absolute inset-y-0 left-0 hidden w-20 bg-gradient-to-r from-[#07060f]/80 to-transparent lg:block" />
-        </div>
-
         <div
           className={cn(
-            "relative w-full max-w-[400px] sm:max-w-[420px] lg:max-w-[440px] transition-[opacity,transform] duration-200",
-            inFlow && "nf-auth-form-dim"
+            "relative w-full max-w-[400px] transition-[opacity,transform,filter] duration-300 sm:max-w-[420px]"
           )}
         >
-          {/* mobile brand */}
-          <div className="nf-anim-up mb-8 flex flex-col items-center lg:hidden">
-            <Logo variant="full-white" size="md" withAi />
-          </div>
 
           {maintenance.data?.enabled && (
             <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
@@ -637,16 +620,32 @@ export default function LoginPage() {
             </div>
           )}
 
+          <div className="nf-anim-up nf-delay-1">
+            <div className="nf-login-float">
+          <div className="nf-login-card-glow" aria-hidden />
           <div
             className={cn(
-              "nf-anim-up nf-delay-1 nf-login-glass relative overflow-hidden rounded-2xl border border-white/[0.1]",
-              "px-7 py-8 sm:px-9 sm:py-9",
-              "shadow-[0_32px_80px_-32px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.03),inset_0_1px_0_0_rgba(255,255,255,0.07)]",
+              "nf-login-stage-card relative z-[1] overflow-hidden rounded-[28px] border border-white/[0.14]",
+              "px-7 py-8 sm:px-8 sm:py-9",
               shake && "nf-shake",
-              phase === "confirm" && "border-emerald-400/30"
+              (shake || Boolean(error)) && "border-rose-400/40",
+              phase === "confirm" && "nf-login-card-success"
             )}
           >
-            <div className="relative mb-6">
+            {loading && phase === "idle" ? (
+              <div className="nf-login-progress pointer-events-none absolute inset-x-0 top-0 h-[2px] overflow-hidden" aria-hidden>
+                <span className="nf-login-progress-bar" />
+              </div>
+            ) : null}
+            <p className="sr-only" aria-live="polite">
+              {phase !== "idle"
+                ? "Acesso confirmado. Abrindo o painel."
+                : loading
+                  ? busyLabel
+                  : ""}
+            </p>
+            <div key={view} className="nf-login-swap">
+            <div className="relative">
               {(view === "forgot" ||
                 view === "forgot-sent" ||
                 view === "mfa" ||
@@ -672,23 +671,26 @@ export default function LoginPage() {
                       setResetToken(null);
                     }
                   }}
-                  className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-white/50 transition-colors hover:text-white/85"
+                  className="mb-5 inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-white/70 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                 >
                   <ArrowLeft className="h-3.5 w-3.5" />
                   Voltar
                 </button>
               )}
 
-              <h1 className="font-display text-[1.65rem] font-semibold tracking-[-0.035em] text-white sm:text-[1.8rem]">
-                {title}
-              </h1>
-              {subtitle ? (
-                <p className="mt-2 text-[14px] leading-relaxed text-white/50">{subtitle}</p>
-              ) : view === "login" ? (
-                <p className="mt-2 text-[14px] leading-relaxed text-white/50">
-                  Acesse sua conta para continuar.
-                </p>
-              ) : null}
+              <div className="mb-7 flex flex-col items-center text-center">
+                <Logo variant="full-white" size="md" withAi />
+                <h1 className="mt-4 font-display text-[1.6rem] font-semibold leading-[1.15] tracking-[-0.04em] text-white sm:text-[1.72rem]">
+                  {title}
+                </h1>
+                {subtitle ? (
+                  <p className="mt-2 max-w-[32ch] text-[13.5px] leading-relaxed text-white/[0.72]">{subtitle}</p>
+                ) : view === "login" ? (
+                  <p className="mt-2 text-[13.5px] leading-relaxed text-white/[0.72]">
+                    Acesse sua conta para continuar.
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             {view === "forgot-sent" ? (
@@ -697,15 +699,15 @@ export default function LoginPage() {
                   <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.06] text-white/70 ring-1 ring-white/10">
                     <Mail className="h-5 w-5" strokeWidth={1.6} />
                   </span>
-                  <p className="text-[13.5px] leading-relaxed text-white/55">
+                  <p className="text-[13.5px] leading-relaxed text-white/75">
                     {info ||
                       "Se houver uma conta vinculada ao endereço informado, você receberá as instruções para redefinir sua senha."}
                   </p>
-                  <p className="mt-2 text-[12px] text-white/35">O link expira em 30 minutos.</p>
+                  <p className="mt-2 text-[12px] text-white/55">O link expira em 30 minutos.</p>
                 </div>
                 <button
                   type="button"
-                  className="nf-login-cta flex h-[3.15rem] w-full items-center justify-center gap-2 rounded-xl bg-[#6D5EF5] text-[15px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(109,94,245,0.55)] transition-[background,transform,box-shadow] duration-150 hover:bg-[#7B6CF7] active:scale-[0.99]"
+                  className="nf-login-cta is-ready flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[14.5px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                   onClick={() => {
                     setView("login");
                     setInfo("");
@@ -720,13 +722,13 @@ export default function LoginPage() {
                   <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/25">
                     <Check className="h-5 w-5" strokeWidth={2} />
                   </span>
-                  <p className="text-[13.5px] text-white/50">
+                  <p className="text-[13.5px] text-white/[0.78]">
                     Sua senha foi redefinida com sucesso.
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="nf-login-cta flex h-[3.1rem] w-full items-center justify-center rounded-xl bg-[#6D5EF5] text-[15px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(109,94,245,0.55)] hover:bg-[#7B6CF7]"
+                  className="nf-login-cta is-ready flex h-12 w-full items-center justify-center rounded-xl text-[14.5px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                   onClick={() => {
                     setView("login");
                     setInfo("");
@@ -737,12 +739,12 @@ export default function LoginPage() {
               </div>
             ) : view === "link-invalid" ? (
               <div className="space-y-5">
-                <p className="text-center text-[13.5px] leading-relaxed text-white/50">
+                <p className="text-center text-[13.5px] leading-relaxed text-white/[0.78]">
                   Este link não é válido ou expirou.
                 </p>
                 <button
                   type="button"
-                  className="nf-login-cta flex h-[3.1rem] w-full items-center justify-center rounded-xl bg-[#6D5EF5] text-[15px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(109,94,245,0.55)] hover:bg-[#7B6CF7]"
+                  className="nf-login-cta is-ready flex h-12 w-full items-center justify-center rounded-xl text-[14.5px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                   onClick={() => {
                     setError("");
                     setView("forgot");
@@ -752,7 +754,7 @@ export default function LoginPage() {
                 </button>
               </div>
             ) : (
-              <form onSubmit={onSubmit} className="relative space-y-4" noValidate>
+              <form onSubmit={onSubmit} className="relative space-y-4" noValidate aria-busy={loading || inFlow}>
                 {view === "invite" && (
                   <>
                     <Field label="Nome (opcional)" htmlFor="invite-name">
@@ -789,14 +791,8 @@ export default function LoginPage() {
                 {view === "login" && (
                   <>
                     <Field label="E-mail" htmlFor="email">
-                      <div
-                        className={cn(
-                          "relative rounded-[0.95rem] transition-shadow duration-200",
-                          focused === "email" &&
-                            "ring-1 ring-violet-400/50"
-                        )}
-                      >
-                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/[0.3]" />
+                      <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/50" />
                         <input
                           id="email"
                           className={cn(inputClass(), "pl-11")}
@@ -822,7 +818,7 @@ export default function LoginPage() {
                       trailing={
                         <button
                           type="button"
-                          className="text-[13px] font-medium normal-case tracking-normal text-violet-300/95 transition-colors duration-150 hover:text-violet-200"
+                          className="rounded-md text-[13px] font-medium normal-case tracking-normal text-violet-200 transition-colors duration-150 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                           onClick={() => {
                             setError("");
                             setInfo("");
@@ -857,13 +853,7 @@ export default function LoginPage() {
 
                 {view === "forgot" && (
                   <Field label="E-mail" htmlFor="forgot-email">
-                    <div
-                      className={cn(
-                        "relative rounded-xl",
-                        focused === "email" &&
-                          "ring-1 ring-violet-400/50"
-                      )}
-                    >
+                    <div className="relative">
                       <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
                       <input
                         id="forgot-email"
@@ -927,13 +917,7 @@ export default function LoginPage() {
                       label={mfaRecovery ? "Código de recuperação" : "Código"}
                       htmlFor="mfa"
                     >
-                      <div
-                        className={cn(
-                          "relative rounded-xl",
-                          focused === "mfa" &&
-                            "ring-1 ring-violet-400/50"
-                        )}
-                      >
+                      <div className="relative">
                         <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
                         <input
                           id="mfa"
@@ -963,7 +947,7 @@ export default function LoginPage() {
                     </Field>
                     <button
                       type="button"
-                      className="text-[12.5px] font-medium text-white/40 transition-colors hover:text-white/70"
+                      className="rounded-md text-[12.5px] font-medium text-white/70 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                       onClick={() => {
                         setMfaRecovery((v) => !v);
                         setMfaCode("");
@@ -980,7 +964,7 @@ export default function LoginPage() {
                 {error && (
                   <div
                     role="alert"
-                    className="nf-anim-in rounded-[0.95rem] border border-red-400/25 bg-red-500/[0.12] px-3.5 py-3 text-[13px] leading-relaxed text-red-100"
+                    className="nf-login-error-in rounded-[0.95rem] border border-red-300/35 bg-red-500/[0.16] px-3.5 py-3 text-[13px] leading-relaxed text-red-50"
                   >
                     {error}
                   </div>
@@ -998,16 +982,18 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   className={cn(
-                    "nf-login-cta group relative mt-3 flex h-[3.15rem] w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[15px] font-semibold transition-[background,transform,box-shadow,opacity] duration-150",
-                    "active:scale-[0.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400/70",
-                    phase === "confirm" || phase === "overlay" || phase === "exit"
-                      ? "nf-auth-btn-success text-white"
+                    "nf-login-cta group relative mt-2 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[14.5px] font-semibold tracking-[-0.01em] transition-[background,box-shadow,transform] duration-300",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300",
+                    "motion-safe:active:scale-[0.985]",
+                    phase !== "idle"
+                      ? "is-success nf-auth-btn-success text-white"
                       : canSubmit || loading
-                        ? "bg-[#6D5EF5] text-white shadow-[0_14px_32px_-12px_rgba(109,94,245,0.7)] hover:bg-[#7B6CF7] hover:shadow-[0_16px_36px_-12px_rgba(109,94,245,0.8)]"
-                        : "cursor-not-allowed bg-white/[0.08] text-white/40",
-                    loading && "pointer-events-none"
+                        ? "is-ready"
+                        : "is-idle",
+                    loading && phase === "idle" && "is-loading pointer-events-none"
                   )}
                   disabled={!canSubmit && phase === "idle"}
+                  aria-live="off"
                 >
                   {phase !== "idle" ? (
                     <>
@@ -1015,55 +1001,51 @@ export default function LoginPage() {
                       Acesso confirmado
                     </>
                   ) : loading ? (
-                    <span className="inline-flex items-center gap-2 text-white">
-                      {view === "forgot"
-                        ? "Enviando…"
-                        : view === "mfa"
-                          ? "Verificando…"
-                          : view === "reset"
-                            ? "Salvando…"
-                            : "Entrando..."}
+                    <span className="inline-flex items-center gap-2.5 text-white">
+                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                      {busyLabel}
                     </span>
                   ) : (
-                    <span className={canSubmit ? "text-white" : "text-white/40"}>
-                      {ctaLabel}
-                    </span>
+                    <span>{ctaLabel}</span>
                   )}
                 </button>
               </form>
             )}
+            </div>
+          </div>
+            </div>
           </div>
 
           {!inFlow && (
-            <div className="nf-anim-up nf-delay-3 mt-7 flex flex-col items-center gap-1.5 text-center">
-              <p className="flex items-center justify-center gap-x-2 text-[12px] text-white/40">
+            <div className="nf-anim-up nf-delay-3 mt-5 flex flex-col items-center gap-1 text-center">
+              <p className="flex items-center justify-center gap-x-2 text-[12px] text-white/60">
                 <Link
                   href="/termos"
-                  className="transition-colors duration-150 hover:text-white/70"
+                  className="rounded-sm text-white/75 transition-colors duration-150 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                 >
                   Termos
                 </Link>
-                <span className="text-white/20" aria-hidden>
+                <span className="text-white/35" aria-hidden>
                   ·
                 </span>
                 <Link
                   href="/privacidade"
-                  className="transition-colors duration-150 hover:text-white/70"
+                  className="rounded-sm text-white/75 transition-colors duration-150 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                 >
                   Privacidade
                 </Link>
               </p>
-              <p className="text-[11px] text-white/28">© 2026 NexaFlow AI</p>
+              <p className="text-[11px] text-white/60">© 2026 NexaFlow AI</p>
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
 
 function inputClass() {
-  return "nf-login-input h-[3.05rem] w-full rounded-xl border border-white/[0.11] bg-white/[0.045] px-3.5 text-[15px] text-white outline-none transition-[border-color,background,box-shadow] duration-150 placeholder:text-white/[0.28] focus:border-violet-400/50 focus:bg-white/[0.06] focus:ring-1 focus:ring-violet-400/25";
+  return "nf-login-input h-12 w-full rounded-[14px] border border-white/[0.1] bg-white/[0.04] px-3.5 text-[14.5px] text-white outline-none transition-[border-color,background,box-shadow] duration-200 placeholder:text-white/[0.48] focus:border-white/25 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(167,139,250,0.18)]";
 }
 
 function Field({
@@ -1079,9 +1061,9 @@ function Field({
 }) {
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <label
-          className="block text-[13px] font-medium text-white/65"
+          className="block text-[12px] font-medium tracking-[0.01em] text-white/75"
           htmlFor={htmlFor}
         >
           {label}
@@ -1124,12 +1106,9 @@ function PasswordInput({
 }) {
   return (
     <div
-      className={cn(
-        "relative rounded-[0.95rem] transition-shadow duration-200",
-        focused && "ring-1 ring-violet-400/50"
-      )}
+      className="relative"
     >
-      <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/[0.3]" />
+      <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/50" />
       <input
         id={id}
         className={cn(inputClass(), "pl-11 pr-12")}
@@ -1147,9 +1126,8 @@ function PasswordInput({
       />
       <button
         type="button"
-        className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-white/[0.35] transition-colors hover:bg-white/[0.06] hover:text-white/80"
+        className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
         onClick={onToggle}
-        tabIndex={-1}
         aria-label={show ? "Ocultar senha" : "Mostrar senha"}
       >
         {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

@@ -10738,3 +10738,256 @@ html:not(.dark) .nf-asb {
 .nf-audio-slider:hover::-moz-range-thumb {
   transform: scale(1.25);
 }
+
+/* ===== Login — palco centrado (atmosfera + estados) ===== */
+.nf-login-atmo {
+  --px: 0px;
+  --py: 0px;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #07060f;
+}
+
+.nf-login-float {
+  position: relative;
+  transform: translate3d(var(--px, 0px), var(--py, 0px), 0) rotate(var(--tilt, 0deg));
+  transform-origin: 50% 58%;
+}
+
+.nf-login-swap {
+  animation: nf-login-swap 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nf-login-card-glow {
+  position: absolute;
+  z-index: 0;
+  inset: -26%;
+  border-radius: 40px;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    230px circle at var(--cx, 50%) var(--cy, 48%),
+    rgba(214, 204, 255, 0.95),
+    rgba(132, 112, 246, 0.42) 40%,
+    transparent 70%
+  );
+  filter: blur(26px);
+  transition: opacity 0.35s ease;
+}
+
+.nf-login-float.is-following .nf-login-card-glow {
+  opacity: 1;
+}
+
+.nf-login-stage-card {
+  position: relative;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.035) 16%, transparent 38%),
+    linear-gradient(180deg, rgba(27, 24, 48, 0.96) 0%, rgba(12, 10, 20, 0.98) 100%);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -20px 36px rgba(0, 0, 0, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 40px -24px rgba(0, 0, 0, 0.7),
+    0 36px 70px -36px rgba(72, 52, 160, 0.45);
+  transition: border-color 0.45s ease, box-shadow 0.45s ease;
+}
+
+.nf-login-stage-card::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 16%;
+  right: 16%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.22) 22%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.22) 78%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.nf-login-card-success {
+  border-color: rgba(110, 231, 183, 0.42) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 1px rgba(52, 211, 153, 0.28),
+    0 0 36px -10px rgba(16, 185, 129, 0.42),
+    0 28px 60px -28px rgba(16, 185, 129, 0.38);
+}
+
+.nf-login-progress {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nf-login-progress-bar {
+  display: block;
+  height: 100%;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.95), transparent);
+  animation: nf-login-progress 1.05s ease-in-out infinite;
+}
+
+.nf-login-cta.is-ready {
+  color: #fff;
+  background: linear-gradient(180deg, #9a8df9 0%, #6d5ef5 46%, #5648dc 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 12px 26px -14px rgba(109, 94, 245, 0.95);
+}
+
+.nf-login-cta.is-ready:hover:not(:disabled) {
+  background: linear-gradient(180deg, #a79bfb 0%, #7b6cf7 46%, #6256e4 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 16px 32px -12px rgba(109, 94, 245, 0.98);
+}
+
+.nf-login-cta.is-success.nf-auth-btn-success {
+  color: #fff;
+  background: linear-gradient(180deg, #5ee0b5 0%, #10b981 46%, #059669 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    0 14px 28px -12px rgba(16, 185, 129, 0.9) !important;
+}
+
+.nf-login-cta.is-idle,
+.nf-login-cta:disabled.is-idle {
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  cursor: not-allowed;
+}
+
+.nf-login-cta.is-success {
+  animation: nf-login-cta-pop 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.nf-login-cta.is-success::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 28%,
+    rgba(255, 255, 255, 0.32) 50%,
+    transparent 72%
+  );
+  animation: nf-login-sheen 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.nf-login-cta.is-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.2) 50%,
+    transparent 80%
+  );
+  animation: nf-login-sheen 1.8s ease-in-out infinite;
+}
+
+.nf-login-error-in {
+  animation: nf-login-error-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes nf-login-progress {
+  0% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes nf-login-sheen {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes nf-login-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nf-login-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nf-login-cta-pop {
+  0% {
+    transform: scale(0.992);
+  }
+  60% {
+    transform: scale(1.012);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nf-login-progress-bar,
+  .nf-login-cta.is-loading::after,
+  .nf-login-cta.is-success,
+  .nf-login-cta.is-success::after,
+  .nf-login-error-in,
+  .nf-login-swap,
+  .nf-login-card-glow {
+    animation: none !important;
+    transition: none !important;
+  }
+  .nf-login-float {
+    transform: none !important;
+  }
+  .nf-login-progress-bar {
+    width: 100%;
+    opacity: 0.7;
+    transform: none;
+  }
+}
+
+html[data-reduce-motion="true"] .nf-login-progress-bar,
+html[data-reduce-motion="true"] .nf-login-cta.is-loading::after,
+html[data-reduce-motion="true"] .nf-login-cta.is-success,
+html[data-reduce-motion="true"] .nf-login-cta.is-success::after,
+html[data-reduce-motion="true"] .nf-login-error-in,
+html[data-reduce-motion="true"] .nf-login-swap,
+html[data-reduce-motion="true"] .nf-login-card-glow {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-reduce-motion="true"] .nf-login-float {
+  transform: none !important;
+}
