@@ -35,9 +35,9 @@ import { needsCompanyOnboarding } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import type { TenantInfo } from "@/store/auth";
 
-/** Confirm → overlay → exit — total ideal ~1.0–1.6s */
-const T_CONFIRM_MS = 280;
-const T_OVERLAY_MS = 900;
+/** Confirm → overlay → exit — total stays ~1.56s so the redirect moment does not move. */
+const T_CONFIRM_MS = 520;
+const T_OVERLAY_MS = 660;
 const T_EXIT_MS = 380;
 const T_OVERLAY_FIRST_MS = 1100;
 const T_EXIT_FIRST_MS = 420;
@@ -600,8 +600,7 @@ export default function LoginPage() {
       >
         <div
           className={cn(
-            "relative w-full max-w-[400px] transition-[opacity,transform,filter] duration-300 sm:max-w-[420px]",
-            inFlow && "nf-auth-form-dim"
+            "relative w-full max-w-[400px] transition-[opacity,transform,filter] duration-300 sm:max-w-[420px]"
           )}
         >
 
@@ -622,6 +621,7 @@ export default function LoginPage() {
           )}
 
           <div className="nf-anim-up nf-delay-1">
+            <div className="nf-login-float">
           <div
             className={cn(
               "nf-login-stage-card relative overflow-hidden rounded-[28px] border border-white/[0.12]",
@@ -644,6 +644,7 @@ export default function LoginPage() {
                   ? busyLabel
                   : ""}
             </p>
+            <div key={view} className="nf-login-swap">
             <div className="relative">
               {(view === "forgot" ||
                 view === "forgot-sent" ||
@@ -698,11 +699,11 @@ export default function LoginPage() {
                   <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.06] text-white/70 ring-1 ring-white/10">
                     <Mail className="h-5 w-5" strokeWidth={1.6} />
                   </span>
-                  <p className="text-[13.5px] leading-relaxed text-white/55">
+                  <p className="text-[13.5px] leading-relaxed text-white/75">
                     {info ||
                       "Se houver uma conta vinculada ao endereço informado, você receberá as instruções para redefinir sua senha."}
                   </p>
-                  <p className="mt-2 text-[12px] text-white/35">O link expira em 30 minutos.</p>
+                  <p className="mt-2 text-[12px] text-white/55">O link expira em 30 minutos.</p>
                 </div>
                 <button
                   type="button"
@@ -797,7 +798,7 @@ export default function LoginPage() {
                             "ring-1 ring-violet-400/50"
                         )}
                       >
-                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/[0.3]" />
+                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/50" />
                         <input
                           id="email"
                           className={cn(inputClass(), "pl-11")}
@@ -964,7 +965,7 @@ export default function LoginPage() {
                     </Field>
                     <button
                       type="button"
-                      className="text-[12.5px] font-medium text-white/40 transition-colors hover:text-white/70"
+                      className="rounded-md text-[12.5px] font-medium text-white/70 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                       onClick={() => {
                         setMfaRecovery((v) => !v);
                         setMfaCode("");
@@ -1029,7 +1030,9 @@ export default function LoginPage() {
                 </button>
               </form>
             )}
+            </div>
           </div>
+            </div>
           </div>
 
           {!inFlow && (
@@ -1127,7 +1130,7 @@ function PasswordInput({
         focused && "ring-1 ring-violet-400/50"
       )}
     >
-      <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/[0.3]" />
+      <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/50" />
       <input
         id={id}
         className={cn(inputClass(), "pl-11 pr-12")}

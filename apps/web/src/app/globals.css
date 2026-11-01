@@ -10858,11 +10858,21 @@ html:not(.dark) .nf-asb {
     linear-gradient(to bottom, rgba(7, 6, 15, 0.45), transparent 16%, transparent 84%, rgba(7, 6, 15, 0.55));
 }
 
+.nf-login-float {
+  transform: translate3d(calc(var(--px) * 0.16), calc(var(--py) * 0.12), 0)
+    rotate(var(--tilt, 0deg));
+  transform-origin: 50% 42%;
+}
+
+.nf-login-swap {
+  animation: nf-login-swap 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .nf-login-card-glow {
   background: radial-gradient(
-    240px circle at var(--lx, 50%) var(--ly, 28%),
-    rgba(255, 255, 255, 0.08),
-    transparent 62%
+    190px circle at var(--cx, 50%) var(--cy, 16%),
+    rgba(255, 255, 255, 0.16),
+    transparent 68%
   );
 }
 
@@ -10986,6 +10996,17 @@ html:not(.dark) .nf-asb {
   }
 }
 
+@keyframes nf-login-swap {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nf-login-mesh,
   .nf-login-orb-a,
@@ -10993,13 +11014,15 @@ html:not(.dark) .nf-asb {
   .nf-login-orb-c,
   .nf-login-progress-bar,
   .nf-login-cta.is-loading::after,
-  .nf-login-error-in {
+  .nf-login-error-in,
+  .nf-login-swap {
     animation: none !important;
   }
   .nf-login-parallax-far,
   .nf-login-parallax-mid,
   .nf-login-parallax-near,
-  .nf-login-grid {
+  .nf-login-grid,
+  .nf-login-float {
     transform: none !important;
   }
   .nf-login-spotlight {
@@ -11027,14 +11050,16 @@ html[data-reduce-motion="true"] .nf-login-orb-b,
 html[data-reduce-motion="true"] .nf-login-orb-c,
 html[data-reduce-motion="true"] .nf-login-progress-bar,
 html[data-reduce-motion="true"] .nf-login-cta.is-loading::after,
-html[data-reduce-motion="true"] .nf-login-error-in {
+html[data-reduce-motion="true"] .nf-login-error-in,
+html[data-reduce-motion="true"] .nf-login-swap {
   animation: none !important;
 }
 
 html[data-reduce-motion="true"] .nf-login-parallax-far,
 html[data-reduce-motion="true"] .nf-login-parallax-mid,
 html[data-reduce-motion="true"] .nf-login-parallax-near,
-html[data-reduce-motion="true"] .nf-login-grid {
+html[data-reduce-motion="true"] .nf-login-grid,
+html[data-reduce-motion="true"] .nf-login-float {
   transform: none !important;
 }
 
