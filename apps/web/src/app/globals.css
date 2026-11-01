@@ -10756,66 +10756,28 @@ html:not(.dark) .nf-asb {
   position: absolute;
   left: 50%;
   top: 46%;
-  width: min(720px, 88vw);
-  height: min(560px, 70vh);
+  width: min(860px, 96vw);
+  height: min(680px, 78vh);
   transform: translate(-50%, -50%);
   background: radial-gradient(
     ellipse at center,
-    rgba(132, 122, 255, 0.16) 0%,
-    rgba(88, 70, 190, 0.06) 42%,
-    transparent 72%
+    rgba(124, 114, 236, 0.2) 0%,
+    rgba(72, 58, 168, 0.07) 46%,
+    transparent 74%
   );
-  animation: nf-login-well 28s ease-in-out infinite;
-}
-
-.nf-login-parallax {
-  position: absolute;
-  inset: 0;
-}
-
-.nf-login-parallax-far {
-  transform: translate3d(calc(var(--px) * 0.35), calc(var(--py) * 0.28), 0);
-}
-
-.nf-login-parallax-mid {
-  transform: translate3d(calc(var(--px) * -0.45), calc(var(--py) * -0.32), 0);
-}
-
-.nf-login-orb {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(80px);
+  animation: nf-login-well 32s ease-in-out infinite;
 }
 
 .nf-login-orb-a {
-  left: -8%;
-  top: -18%;
-  width: min(52vw, 620px);
-  height: min(52vw, 620px);
-  background: radial-gradient(circle, rgba(124, 114, 255, 0.2), transparent 70%);
-  animation: nf-login-drift-a 38s ease-in-out infinite;
-}
-
-.nf-login-orb-b {
-  right: -10%;
-  bottom: -20%;
-  width: min(46vw, 520px);
-  height: min(46vw, 520px);
-  background: radial-gradient(circle, rgba(168, 140, 255, 0.14), transparent 72%);
-  animation: nf-login-drift-b 46s ease-in-out infinite;
-}
-
-.nf-login-spotlight {
   position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    460px circle at var(--lx) var(--ly),
-    rgba(214, 206, 255, 0.14),
-    rgba(109, 94, 245, 0.04) 34%,
-    transparent 66%
-  );
-  -webkit-mask-image: radial-gradient(ellipse 72% 64% at 50% 48%, transparent 58%, #000 80%);
-  mask-image: radial-gradient(ellipse 72% 64% at 50% 48%, transparent 58%, #000 80%);
+  left: -18%;
+  top: -28%;
+  width: min(78vw, 920px);
+  height: min(68vw, 780px);
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(118, 106, 230, 0.14), transparent 70%);
+  filter: blur(36px);
+  animation: nf-login-drift-a 48s ease-in-out infinite;
 }
 
 .nf-login-vignette {
@@ -10828,22 +10790,19 @@ html:not(.dark) .nf-asb {
 
 .nf-login-float {
   position: relative;
-  transform: translate3d(calc(var(--px) * 0.7), calc(var(--py) * 0.7), 0)
-    rotate(var(--tilt, 0deg));
-  transform-origin: 50% 46%;
+  transform: translate3d(var(--px, 0px), var(--py, 0px), 0);
 }
 
 .nf-login-float::before {
   content: "";
   position: absolute;
   z-index: -1;
-  left: 16%;
-  right: 16%;
-  bottom: -18px;
-  height: 36px;
-  background: radial-gradient(ellipse at center, rgba(88, 72, 190, 0.38), transparent 72%);
-  filter: blur(14px);
-  transform: translate3d(calc(var(--px) * -0.35), 0, 0);
+  left: 18%;
+  right: 18%;
+  bottom: -12px;
+  height: 28px;
+  background: radial-gradient(ellipse at center, rgba(84, 70, 180, 0.32), transparent 72%);
+  filter: blur(12px);
   pointer-events: none;
 }
 
@@ -10854,17 +10813,19 @@ html:not(.dark) .nf-asb {
 .nf-login-card-glow {
   position: absolute;
   z-index: 0;
-  inset: -22%;
+  left: 14%;
+  right: 14%;
+  top: 8%;
+  bottom: -4%;
+  border-radius: 32px;
   pointer-events: none;
   background: radial-gradient(
-    150px circle at var(--cx, 50%) var(--cy, 50%),
-    rgba(206, 198, 255, 0.55),
-    rgba(120, 104, 240, 0.12) 48%,
-    transparent 74%
+    ellipse at var(--cx, 50%) var(--cy, 46%),
+    rgba(164, 154, 245, 0.55),
+    rgba(98, 82, 210, 0.16) 58%,
+    transparent 76%
   );
-  filter: blur(18px);
-  -webkit-mask-image: radial-gradient(ellipse 70% 72% at 50% 50%, transparent 62%, #000 86%);
-  mask-image: radial-gradient(ellipse 70% 72% at 50% 50%, transparent 62%, #000 86%);
+  filter: blur(22px);
 }
 
 .nf-login-stage-card {
@@ -10872,7 +10833,7 @@ html:not(.dark) .nf-asb {
   z-index: 1;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.035) 16%, transparent 38%),
-    linear-gradient(180deg, rgba(32, 28, 58, 0.9) 0%, rgba(14, 12, 24, 0.94) 100%);
+    linear-gradient(180deg, rgba(27, 24, 48, 0.96) 0%, rgba(12, 10, 20, 0.98) 100%);
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
@@ -11000,16 +10961,6 @@ html:not(.dark) .nf-asb {
   }
 }
 
-@keyframes nf-login-drift-b {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-3.5%, -3%, 0) scale(1.035);
-  }
-}
-
 @keyframes nf-login-progress {
   0% {
     transform: translateX(-130%);
@@ -11076,7 +11027,6 @@ html:not(.dark) .nf-asb {
 
 @media (prefers-reduced-motion: reduce) {
   .nf-login-orb-a,
-  .nf-login-orb-b,
   .nf-login-well,
   .nf-login-progress-bar,
   .nf-login-cta.is-loading::after,
@@ -11086,18 +11036,8 @@ html:not(.dark) .nf-asb {
   .nf-login-swap {
     animation: none !important;
   }
-  .nf-login-parallax-far,
-  .nf-login-parallax-mid,
-  .nf-login-float,
-  .nf-login-float::before {
+  .nf-login-float {
     transform: none !important;
-  }
-  .nf-login-spotlight {
-    background: radial-gradient(
-      460px circle at 50% 42%,
-      rgba(167, 139, 250, 0.1),
-      transparent 64%
-    );
   }
   .nf-login-progress-bar {
     width: 100%;
@@ -11107,7 +11047,6 @@ html:not(.dark) .nf-asb {
 }
 
 html[data-reduce-motion="true"] .nf-login-orb-a,
-html[data-reduce-motion="true"] .nf-login-orb-b,
 html[data-reduce-motion="true"] .nf-login-well,
 html[data-reduce-motion="true"] .nf-login-progress-bar,
 html[data-reduce-motion="true"] .nf-login-cta.is-loading::after,
@@ -11118,9 +11057,6 @@ html[data-reduce-motion="true"] .nf-login-swap {
   animation: none !important;
 }
 
-html[data-reduce-motion="true"] .nf-login-parallax-far,
-html[data-reduce-motion="true"] .nf-login-parallax-mid,
-html[data-reduce-motion="true"] .nf-login-float,
-html[data-reduce-motion="true"] .nf-login-float::before {
+html[data-reduce-motion="true"] .nf-login-float {
   transform: none !important;
 }
