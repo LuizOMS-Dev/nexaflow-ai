@@ -19,13 +19,15 @@ export function LoginAtmosphere() {
       reduceQuery.matches || document.documentElement.dataset.reduceMotion === "true";
 
     let reduce = reduced();
-    const rest = { x: 0, y: 0, cx: 50, cy: 46 };
+    const rest = { x: 0, y: 0, tilt: 0, lx: 50, ly: 42, cx: 50, cy: 48 };
     const aim = { ...rest };
-    const pose = { x: 0, y: 0 };
-    const poseV = { x: 0, y: 0 };
+    const pose = { x: 0, y: 0, tilt: 0 };
+    const poseV = { x: 0, y: 0, tilt: 0 };
+    const light = { x: rest.lx, y: rest.ly };
+    const lightV = { x: 0, y: 0 };
     const glow = { x: rest.cx, y: rest.cy };
     const glowV = { x: 0, y: 0 };
-    let written = { x: Number.NaN, y: Number.NaN };
+    let written = Number.NaN;
     let frame = 0;
     let last = performance.now();
     let lastMove = 0;
@@ -36,11 +38,30 @@ export function LoginAtmosphere() {
     const apply = () => {
       const px = `${pose.x.toFixed(2)}px`;
       const py = `${pose.y.toFixed(2)}px`;
-      host.style.setProperty("--px", px);
-      host.style.setProperty("--py", py);
+      const tilt = `${pose.tilt.toFixed(3)}deg`;
+      const lx = `${light.x.toFixed(2)}%`;
+      const ly = `${light.y.toFixed(2)}%`;
+      for (const el of host === root ? [root] : [root, host]) {
+        el.style.setProperty("--px", px);
+        el.style.setProperty("--py", py);
+        el.style.setProperty("--tilt", tilt);
+        el.style.setProperty("--lx", lx);
+        el.style.setProperty("--ly", ly);
+      }
       const glowHost = card?.parentElement ?? card;
       glowHost?.style.setProperty("--cx", `${glow.x.toFixed(1)}%`);
       glowHost?.style.setProperty("--cy", `${glow.y.toFixed(1)}%`);
+    };
+
+    const spring = (
+      value: number,
+      velocity: number,
+      goal: number,
+      omega: number,
+      dt: number
+    ) => {
+      const nextV = velocity + (omega * omega * (goal - value) - 2 * omega * velocity) * dt;
+      return { value: value + nextV * dt, velocity: nextV };
     };
 
     const tick = (now: number) => {
@@ -51,34 +72,47 @@ export function LoginAtmosphere() {
       if (!card || !card.isConnected) {
         card = host.querySelector<HTMLElement>(".nf-login-stage-card");
       }
-      const idle = now - lastMove > 240;
+      const idle = now - lastMove > 520;
       const goal = idle ? rest : aim;
       let remaining = Math.min(0.2, Math.max(0, (now - last) / 1000));
       last = now;
       while (remaining > 0.0001) {
         const dt = Math.min(0.016, remaining);
         remaining -= dt;
-        const poseW = 8;
-        const glowW = 7;
-        poseV.x += (poseW * poseW * (goal.x - pose.x) - 2 * poseW * poseV.x) * dt;
-        poseV.y += (poseW * poseW * (goal.y - pose.y) - 2 * poseW * poseV.y) * dt;
-        pose.x += poseV.x * dt;
-        pose.y += poseV.y * dt;
-        glowV.x += (glowW * glowW * (goal.cx - glow.x) - 2 * glowW * glowV.x) * dt;
-        glowV.y += (glowW * glowW * (goal.cy - glow.y) - 2 * glowW * glowV.y) * dt;
-        glow.x += glowV.x * dt;
-        glow.y += glowV.y * dt;
+        const px = spring(pose.x, poseV.x, goal.x, 6.2, dt);
+        const py = spring(pose.y, poseV.y, goal.y, 6.2, dt);
+        const pt = spring(pose.tilt, poseV.tilt, goal.tilt, 6.2, dt);
+        pose.x = px.value;
+        poseV.x = px.velocity;
+        pose.y = py.value;
+        poseV.y = py.velocity;
+        pose.tilt = pt.value;
+        poseV.tilt = pt.velocity;
+        const lx = spring(light.x, lightV.x, goal.lx, 5.2, dt);
+        const ly = spring(light.y, lightV.y, goal.ly, 5.2, dt);
+        light.x = lx.value;
+        lightV.x = lx.velocity;
+        light.y = ly.value;
+        lightV.y = ly.velocity;
+        const cx = spring(glow.x, glowV.x, goal.cx, 7.4, dt);
+        const cy = spring(glow.y, glowV.y, goal.cy, 7.4, dt);
+        glow.x = cx.value;
+        glowV.x = cx.velocity;
+        glow.y = cy.value;
+        glowV.y = cy.velocity;
       }
-      if (Math.hypot(pose.x, pose.y) < 0.05 && idle) {
+      if (idle && Math.hypot(pose.x, pose.y) < 0.08) {
         pose.x = 0;
         pose.y = 0;
+        pose.tilt = 0;
         poseV.x = 0;
         poseV.y = 0;
+        poseV.tilt = 0;
       }
-      const moved = Math.hypot(pose.x - written.x, pose.y - written.y);
-      if (moved > 0.04 || Number.isNaN(written.x)) {
+      const signature = pose.x + pose.y + light.x * 0.01 + glow.x * 0.01;
+      if (Math.abs(signature - written) > 0.03 || Number.isNaN(written)) {
         apply();
-        written = { x: pose.x, y: pose.y };
+        written = signature;
       }
       frame = window.requestAnimationFrame(tick);
     };
@@ -90,8 +124,13 @@ export function LoginAtmosphere() {
 
     const stop = () => {
       halt();
-      host.style.removeProperty("--px");
-      host.style.removeProperty("--py");
+      for (const el of host === root ? [root] : [root, host]) {
+        el.style.removeProperty("--px");
+        el.style.removeProperty("--py");
+        el.style.removeProperty("--tilt");
+        el.style.removeProperty("--lx");
+        el.style.removeProperty("--ly");
+      }
       card?.parentElement?.style.removeProperty("--cx");
       card?.parentElement?.style.removeProperty("--cy");
     };
@@ -102,10 +141,23 @@ export function LoginAtmosphere() {
       const h = window.innerHeight || 1;
       const dx = event.clientX / w - 0.5;
       const dy = event.clientY / h - 0.46;
-      aim.x = Math.max(-3.5, Math.min(3.5, dx * 7));
-      aim.y = Math.max(-2.5, Math.min(2.5, dy * 5));
-      aim.cx = Math.max(42, Math.min(58, 50 + dx * 12));
-      aim.cy = Math.max(38, Math.min(56, 46 + dy * 10));
+      aim.x = Math.max(-11, Math.min(11, dx * 22));
+      aim.y = Math.max(-8, Math.min(8, dy * 16));
+      aim.tilt = Math.max(-0.7, Math.min(0.7, dx * 1.2));
+      aim.lx = Math.max(6, Math.min(94, (event.clientX / w) * 100));
+      aim.ly = Math.max(6, Math.min(94, (event.clientY / h) * 100));
+      if (!card || !card.isConnected) {
+        card = host.querySelector<HTMLElement>(".nf-login-stage-card");
+      }
+      const rect = card?.getBoundingClientRect();
+      if (rect && rect.width) {
+        const nx = Math.max(-0.4, Math.min(1.4, (event.clientX - rect.left) / rect.width));
+        const ny = Math.max(-0.35, Math.min(1.4, (event.clientY - rect.top) / rect.height));
+        const inset = 0.24;
+        const span = 1 + inset * 2;
+        aim.cx = Math.max(22, Math.min(78, ((nx + inset) / span) * 100));
+        aim.cy = Math.max(22, Math.min(78, ((ny + inset) / span) * 100));
+      }
       lastMove = performance.now();
     };
 
@@ -136,7 +188,7 @@ export function LoginAtmosphere() {
     document.documentElement.addEventListener("pointerout", onLeave);
     if (!reduce) {
       apply();
-      written = { x: pose.x, y: pose.y };
+      written = 0;
       frame = window.requestAnimationFrame(tick);
     }
 
@@ -152,8 +204,12 @@ export function LoginAtmosphere() {
 
   return (
     <div ref={ref} className="nf-login-atmo" aria-hidden>
-      <div className="nf-login-well" />
-      <div className="nf-login-orb nf-login-orb-a" />
+      <div className="nf-login-shift">
+        <div className="nf-login-well" />
+        <div className="nf-login-orb nf-login-orb-a" />
+        <div className="nf-login-orb nf-login-orb-b" />
+      </div>
+      <div className="nf-login-spotlight" />
       <div className="nf-login-vignette" />
     </div>
   );

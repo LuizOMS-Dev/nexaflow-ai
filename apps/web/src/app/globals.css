@@ -10752,32 +10752,62 @@ html:not(.dark) .nf-asb {
   background: #07060f;
 }
 
+.nf-login-shift {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(calc(var(--px) * 1.7), calc(var(--py) * 1.5), 0);
+}
+
 .nf-login-well {
   position: absolute;
   left: 50%;
   top: 46%;
-  width: min(860px, 96vw);
-  height: min(680px, 78vh);
+  width: min(920px, 100vw);
+  height: min(720px, 82vh);
   transform: translate(-50%, -50%);
   background: radial-gradient(
     ellipse at center,
-    rgba(124, 114, 236, 0.2) 0%,
-    rgba(72, 58, 168, 0.07) 46%,
+    rgba(132, 120, 245, 0.28) 0%,
+    rgba(78, 62, 180, 0.1) 44%,
     transparent 74%
   );
-  animation: nf-login-well 32s ease-in-out infinite;
+  animation: nf-login-well 18s ease-in-out infinite;
+}
+
+.nf-login-orb-a,
+.nf-login-orb-b {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(48px);
 }
 
 .nf-login-orb-a {
+  left: -16%;
+  top: -26%;
+  width: min(72vw, 860px);
+  height: min(62vw, 720px);
+  background: radial-gradient(circle, rgba(124, 112, 240, 0.22), transparent 70%);
+  animation: nf-login-drift-a 22s ease-in-out infinite;
+}
+
+.nf-login-orb-b {
+  right: -18%;
+  bottom: -28%;
+  width: min(64vw, 760px);
+  height: min(56vw, 640px);
+  background: radial-gradient(circle, rgba(150, 120, 235, 0.16), transparent 72%);
+  animation: nf-login-drift-b 26s ease-in-out infinite;
+}
+
+.nf-login-spotlight {
   position: absolute;
-  left: -18%;
-  top: -28%;
-  width: min(78vw, 920px);
-  height: min(68vw, 780px);
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(118, 106, 230, 0.14), transparent 70%);
-  filter: blur(36px);
-  animation: nf-login-drift-a 48s ease-in-out infinite;
+  inset: -12%;
+  background: radial-gradient(
+    540px circle at var(--lx) var(--ly),
+    rgba(198, 188, 255, 0.28),
+    rgba(112, 96, 240, 0.08) 36%,
+    transparent 68%
+  );
 }
 
 .nf-login-vignette {
@@ -10790,7 +10820,8 @@ html:not(.dark) .nf-asb {
 
 .nf-login-float {
   position: relative;
-  transform: translate3d(var(--px, 0px), var(--py, 0px), 0);
+  transform: translate3d(var(--px, 0px), var(--py, 0px), 0) rotate(var(--tilt, 0deg));
+  transform-origin: 50% 58%;
 }
 
 .nf-login-float::before {
@@ -10813,19 +10844,16 @@ html:not(.dark) .nf-asb {
 .nf-login-card-glow {
   position: absolute;
   z-index: 0;
-  left: 14%;
-  right: 14%;
-  top: 8%;
-  bottom: -4%;
-  border-radius: 32px;
+  inset: -26%;
+  border-radius: 40px;
   pointer-events: none;
   background: radial-gradient(
-    ellipse at var(--cx, 50%) var(--cy, 46%),
-    rgba(164, 154, 245, 0.55),
-    rgba(98, 82, 210, 0.16) 58%,
-    transparent 76%
+    230px circle at var(--cx, 50%) var(--cy, 48%),
+    rgba(214, 204, 255, 0.92),
+    rgba(132, 112, 246, 0.38) 40%,
+    transparent 70%
   );
-  filter: blur(22px);
+  filter: blur(26px);
 }
 
 .nf-login-stage-card {
@@ -10957,7 +10985,17 @@ html:not(.dark) .nf-asb {
     transform: translate3d(0, 0, 0) scale(1);
   }
   50% {
-    transform: translate3d(3%, 4%, 0) scale(1.04);
+    transform: translate3d(6%, 5%, 0) scale(1.06);
+  }
+}
+
+@keyframes nf-login-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-5%, -4%, 0) scale(1.05);
   }
 }
 
@@ -11005,10 +11043,10 @@ html:not(.dark) .nf-asb {
   0%,
   100% {
     transform: translate(-50%, -50%) scale(1);
-    opacity: 0.82;
+    opacity: 0.78;
   }
   50% {
-    transform: translate(-50%, -48%) scale(1.035);
+    transform: translate(-50%, -47%) scale(1.07);
     opacity: 1;
   }
 }
@@ -11027,6 +11065,7 @@ html:not(.dark) .nf-asb {
 
 @media (prefers-reduced-motion: reduce) {
   .nf-login-orb-a,
+  .nf-login-orb-b,
   .nf-login-well,
   .nf-login-progress-bar,
   .nf-login-cta.is-loading::after,
@@ -11036,8 +11075,16 @@ html:not(.dark) .nf-asb {
   .nf-login-swap {
     animation: none !important;
   }
+  .nf-login-shift,
   .nf-login-float {
     transform: none !important;
+  }
+  .nf-login-spotlight {
+    background: radial-gradient(
+      540px circle at 50% 42%,
+      rgba(176, 166, 245, 0.16),
+      transparent 68%
+    );
   }
   .nf-login-progress-bar {
     width: 100%;
@@ -11047,6 +11094,7 @@ html:not(.dark) .nf-asb {
 }
 
 html[data-reduce-motion="true"] .nf-login-orb-a,
+html[data-reduce-motion="true"] .nf-login-orb-b,
 html[data-reduce-motion="true"] .nf-login-well,
 html[data-reduce-motion="true"] .nf-login-progress-bar,
 html[data-reduce-motion="true"] .nf-login-cta.is-loading::after,
@@ -11057,6 +11105,7 @@ html[data-reduce-motion="true"] .nf-login-swap {
   animation: none !important;
 }
 
+html[data-reduce-motion="true"] .nf-login-shift,
 html[data-reduce-motion="true"] .nf-login-float {
   transform: none !important;
 }
