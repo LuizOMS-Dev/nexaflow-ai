@@ -496,7 +496,7 @@ export default function LoginPage() {
           <div className="h-1 w-28 overflow-hidden rounded-full bg-white/10">
             <div className="nf-auth-transition-bar h-full w-full origin-left rounded-full bg-gradient-to-r from-indigo-400 to-violet-500" />
           </div>
-          <p className="text-[12px] text-white/45">Carregando…</p>
+          <p className="text-[12px] text-white/70">Carregando…</p>
         </div>
       </div>
     );
@@ -622,16 +622,16 @@ export default function LoginPage() {
 
           <div className="nf-anim-up nf-delay-1">
             <div className="nf-login-float">
+          <div className="nf-login-card-glow" aria-hidden />
           <div
             className={cn(
-              "nf-login-stage-card relative overflow-hidden rounded-[28px] border border-white/[0.12]",
-              "px-7 py-8 sm:px-9 sm:py-10",
+              "nf-login-stage-card relative z-[1] overflow-hidden rounded-[28px] border border-white/[0.12]",
+              "px-6 py-7 sm:px-8 sm:py-8",
               shake && "nf-shake",
               (shake || Boolean(error)) && "border-rose-400/40",
               phase === "confirm" && "nf-login-card-success"
             )}
           >
-            <div className="nf-login-card-glow pointer-events-none absolute inset-0" aria-hidden />
             {loading && phase === "idle" ? (
               <div className="nf-login-progress pointer-events-none absolute inset-x-0 top-0 h-[2px] overflow-hidden" aria-hidden>
                 <span className="nf-login-progress-bar" />
@@ -678,15 +678,15 @@ export default function LoginPage() {
                 </button>
               )}
 
-              <div className="mb-8 flex flex-col items-center text-center">
+              <div className="mb-6 flex flex-col items-center text-center">
                 <Logo variant="full-white" size="md" withAi />
-                <h1 className="mt-6 font-display text-[1.7rem] font-semibold tracking-[-0.04em] text-white sm:text-[1.85rem]">
+                <h1 className="mt-5 font-display text-[1.55rem] font-semibold leading-none tracking-[-0.045em] text-white sm:text-[1.68rem]">
                   {title}
                 </h1>
                 {subtitle ? (
-                  <p className="mt-2 max-w-[28ch] text-[14px] leading-relaxed text-white/70">{subtitle}</p>
+                  <p className="mt-2 max-w-[30ch] text-[13.5px] leading-snug text-white/[0.78]">{subtitle}</p>
                 ) : view === "login" ? (
-                  <p className="mt-2 text-[14px] leading-relaxed text-white/70">
+                  <p className="mt-2 text-[13.5px] leading-snug text-white/[0.78]">
                     Acesse sua conta para continuar.
                   </p>
                 ) : null}
@@ -707,7 +707,7 @@ export default function LoginPage() {
                 </div>
                 <button
                   type="button"
-                  className="nf-login-cta flex h-[3.15rem] w-full items-center justify-center gap-2 rounded-xl bg-[#6D5EF5] text-[15px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(109,94,245,0.55)] transition-[background,transform,box-shadow] duration-150 hover:bg-[#7B6CF7] active:scale-[0.99]"
+                  className="nf-login-cta is-ready flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[14.5px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                   onClick={() => {
                     setView("login");
                     setInfo("");
@@ -722,13 +722,13 @@ export default function LoginPage() {
                   <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-400/25">
                     <Check className="h-5 w-5" strokeWidth={2} />
                   </span>
-                  <p className="text-[13.5px] text-white/50">
+                  <p className="text-[13.5px] text-white/[0.78]">
                     Sua senha foi redefinida com sucesso.
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="nf-login-cta flex h-[3.1rem] w-full items-center justify-center rounded-xl bg-[#6D5EF5] text-[15px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(109,94,245,0.55)] hover:bg-[#7B6CF7]"
+                  className="nf-login-cta is-ready flex h-12 w-full items-center justify-center rounded-xl text-[14.5px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                   onClick={() => {
                     setView("login");
                     setInfo("");
@@ -739,12 +739,12 @@ export default function LoginPage() {
               </div>
             ) : view === "link-invalid" ? (
               <div className="space-y-5">
-                <p className="text-center text-[13.5px] leading-relaxed text-white/50">
+                <p className="text-center text-[13.5px] leading-relaxed text-white/[0.78]">
                   Este link não é válido ou expirou.
                 </p>
                 <button
                   type="button"
-                  className="nf-login-cta flex h-[3.1rem] w-full items-center justify-center rounded-xl bg-[#6D5EF5] text-[15px] font-semibold text-white shadow-[0_12px_28px_-10px_rgba(109,94,245,0.55)] hover:bg-[#7B6CF7]"
+                  className="nf-login-cta is-ready flex h-12 w-full items-center justify-center rounded-xl text-[14.5px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300"
                   onClick={() => {
                     setError("");
                     setView("forgot");
@@ -754,7 +754,7 @@ export default function LoginPage() {
                 </button>
               </div>
             ) : (
-              <form onSubmit={onSubmit} className="relative space-y-4" noValidate aria-busy={loading || inFlow}>
+              <form onSubmit={onSubmit} className="relative space-y-3.5" noValidate aria-busy={loading || inFlow}>
                 {view === "invite" && (
                   <>
                     <Field label="Nome (opcional)" htmlFor="invite-name">
@@ -1000,13 +1000,14 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   className={cn(
-                    "nf-login-cta group relative mt-3 flex h-[3.15rem] w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[15px] font-semibold transition-[background,transform,box-shadow,opacity] duration-150",
-                    "active:scale-[0.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400/70",
-                    phase === "confirm" || phase === "overlay" || phase === "exit"
-                      ? "nf-auth-btn-success text-white"
+                    "nf-login-cta group relative mt-1.5 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[14.5px] font-semibold tracking-[-0.01em] transition-[background,box-shadow,transform] duration-200",
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300",
+                    "motion-safe:active:scale-[0.985]",
+                    phase !== "idle"
+                      ? "is-success nf-auth-btn-success text-white"
                       : canSubmit || loading
-                        ? "bg-[#6D5EF5] text-white shadow-[0_14px_32px_-12px_rgba(109,94,245,0.7)] hover:bg-[#7B6CF7] hover:shadow-[0_16px_36px_-12px_rgba(109,94,245,0.8)]"
-                        : "cursor-not-allowed bg-white/[0.08] text-white/40",
+                        ? "is-ready"
+                        : "is-idle",
                     loading && phase === "idle" && "is-loading pointer-events-none"
                   )}
                   disabled={!canSubmit && phase === "idle"}
@@ -1023,9 +1024,7 @@ export default function LoginPage() {
                       {busyLabel}
                     </span>
                   ) : (
-                    <span className={canSubmit ? "text-white" : "text-white/40"}>
-                      {ctaLabel}
-                    </span>
+                    <span>{ctaLabel}</span>
                   )}
                 </button>
               </form>
@@ -1036,7 +1035,7 @@ export default function LoginPage() {
           </div>
 
           {!inFlow && (
-            <div className="nf-anim-up nf-delay-3 mt-7 flex flex-col items-center gap-1.5 text-center">
+            <div className="nf-anim-up nf-delay-3 mt-5 flex flex-col items-center gap-1 text-center">
               <p className="flex items-center justify-center gap-x-2 text-[12px] text-white/60">
                 <Link
                   href="/termos"
@@ -1054,7 +1053,7 @@ export default function LoginPage() {
                   Privacidade
                 </Link>
               </p>
-              <p className="text-[11px] text-white/50">© 2026 NexaFlow AI</p>
+              <p className="text-[11px] text-white/60">© 2026 NexaFlow AI</p>
             </div>
           )}
         </div>
@@ -1064,7 +1063,7 @@ export default function LoginPage() {
 }
 
 function inputClass() {
-  return "nf-login-input h-[3.05rem] w-full rounded-xl border border-white/[0.11] bg-white/[0.045] px-3.5 text-[15px] text-white outline-none transition-[border-color,background,box-shadow] duration-150 placeholder:text-white/[0.28] focus:border-violet-400/50 focus:bg-white/[0.06] focus:ring-1 focus:ring-violet-400/25";
+  return "nf-login-input h-12 w-full rounded-xl border border-white/[0.12] bg-black/25 px-3.5 text-[14.5px] text-white outline-none transition-[border-color,background,box-shadow] duration-150 placeholder:text-white/50 focus:border-violet-300/60 focus:bg-white/[0.05] focus:ring-1 focus:ring-violet-300/35";
 }
 
 function Field({
@@ -1080,9 +1079,9 @@ function Field({
 }) {
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <label
-          className="block text-[13px] font-medium text-white/80"
+          className="block text-[12.5px] font-medium tracking-[-0.01em] text-white/[0.84]"
           htmlFor={htmlFor}
         >
           {label}
