@@ -10741,8 +10741,6 @@ html:not(.dark) .nf-asb {
 
 /* ===== Login — palco centrado (atmosfera + estados) ===== */
 .nf-login-atmo {
-  --lx: 50%;
-  --ly: 40%;
   --px: 0px;
   --py: 0px;
   position: absolute;
@@ -10752,89 +10750,10 @@ html:not(.dark) .nf-asb {
   background: #07060f;
 }
 
-.nf-login-shift {
-  position: absolute;
-  inset: 0;
-  transform: translate3d(calc(var(--px) * 1.7), calc(var(--py) * 1.5), 0);
-}
-
-.nf-login-well {
-  position: absolute;
-  left: 50%;
-  top: 46%;
-  width: min(920px, 100vw);
-  height: min(720px, 82vh);
-  transform: translate(-50%, -50%);
-  background: radial-gradient(
-    ellipse at center,
-    rgba(132, 120, 245, 0.28) 0%,
-    rgba(78, 62, 180, 0.1) 44%,
-    transparent 74%
-  );
-  animation: nf-login-well 18s ease-in-out infinite;
-}
-
-.nf-login-orb-a,
-.nf-login-orb-b {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(48px);
-}
-
-.nf-login-orb-a {
-  left: -16%;
-  top: -26%;
-  width: min(72vw, 860px);
-  height: min(62vw, 720px);
-  background: radial-gradient(circle, rgba(124, 112, 240, 0.22), transparent 70%);
-  animation: nf-login-drift-a 22s ease-in-out infinite;
-}
-
-.nf-login-orb-b {
-  right: -18%;
-  bottom: -28%;
-  width: min(64vw, 760px);
-  height: min(56vw, 640px);
-  background: radial-gradient(circle, rgba(150, 120, 235, 0.16), transparent 72%);
-  animation: nf-login-drift-b 26s ease-in-out infinite;
-}
-
-.nf-login-spotlight {
-  position: absolute;
-  inset: -12%;
-  background: radial-gradient(
-    540px circle at var(--lx) var(--ly),
-    rgba(198, 188, 255, 0.28),
-    rgba(112, 96, 240, 0.08) 36%,
-    transparent 68%
-  );
-}
-
-.nf-login-vignette {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 78% 68% at 50% 46%, transparent 28%, rgba(7, 6, 15, 0.78) 100%),
-    linear-gradient(to bottom, rgba(7, 6, 15, 0.45), transparent 16%, transparent 84%, rgba(7, 6, 15, 0.55));
-}
-
 .nf-login-float {
   position: relative;
   transform: translate3d(var(--px, 0px), var(--py, 0px), 0) rotate(var(--tilt, 0deg));
   transform-origin: 50% 58%;
-}
-
-.nf-login-float::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  left: 18%;
-  right: 18%;
-  bottom: -12px;
-  height: 28px;
-  background: radial-gradient(ellipse at center, rgba(84, 70, 180, 0.32), transparent 72%);
-  filter: blur(12px);
-  pointer-events: none;
 }
 
 .nf-login-swap {
@@ -10847,13 +10766,19 @@ html:not(.dark) .nf-asb {
   inset: -26%;
   border-radius: 40px;
   pointer-events: none;
+  opacity: 0;
   background: radial-gradient(
     230px circle at var(--cx, 50%) var(--cy, 48%),
-    rgba(214, 204, 255, 0.92),
-    rgba(132, 112, 246, 0.38) 40%,
+    rgba(214, 204, 255, 0.95),
+    rgba(132, 112, 246, 0.42) 40%,
     transparent 70%
   );
   filter: blur(26px);
+  transition: opacity 0.35s ease;
+}
+
+.nf-login-float.is-following .nf-login-card-glow {
+  opacity: 1;
 }
 
 .nf-login-stage-card {
@@ -10979,26 +10904,6 @@ html:not(.dark) .nf-asb {
   animation: nf-login-error-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes nf-login-drift-a {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(6%, 5%, 0) scale(1.06);
-  }
-}
-
-@keyframes nf-login-drift-b {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-5%, -4%, 0) scale(1.05);
-  }
-}
-
 @keyframes nf-login-progress {
   0% {
     transform: translateX(-130%);
@@ -11039,18 +10944,6 @@ html:not(.dark) .nf-asb {
   }
 }
 
-@keyframes nf-login-well {
-  0%,
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.78;
-  }
-  50% {
-    transform: translate(-50%, -47%) scale(1.07);
-    opacity: 1;
-  }
-}
-
 @keyframes nf-login-cta-pop {
   0% {
     transform: scale(0.992);
@@ -11064,27 +10957,18 @@ html:not(.dark) .nf-asb {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nf-login-orb-a,
-  .nf-login-orb-b,
-  .nf-login-well,
   .nf-login-progress-bar,
   .nf-login-cta.is-loading::after,
   .nf-login-cta.is-success,
   .nf-login-cta.is-success::after,
   .nf-login-error-in,
-  .nf-login-swap {
+  .nf-login-swap,
+  .nf-login-card-glow {
     animation: none !important;
+    transition: none !important;
   }
-  .nf-login-shift,
   .nf-login-float {
     transform: none !important;
-  }
-  .nf-login-spotlight {
-    background: radial-gradient(
-      540px circle at 50% 42%,
-      rgba(176, 166, 245, 0.16),
-      transparent 68%
-    );
   }
   .nf-login-progress-bar {
     width: 100%;
@@ -11093,19 +10977,17 @@ html:not(.dark) .nf-asb {
   }
 }
 
-html[data-reduce-motion="true"] .nf-login-orb-a,
-html[data-reduce-motion="true"] .nf-login-orb-b,
-html[data-reduce-motion="true"] .nf-login-well,
 html[data-reduce-motion="true"] .nf-login-progress-bar,
 html[data-reduce-motion="true"] .nf-login-cta.is-loading::after,
 html[data-reduce-motion="true"] .nf-login-cta.is-success,
 html[data-reduce-motion="true"] .nf-login-cta.is-success::after,
 html[data-reduce-motion="true"] .nf-login-error-in,
-html[data-reduce-motion="true"] .nf-login-swap {
+html[data-reduce-motion="true"] .nf-login-swap,
+html[data-reduce-motion="true"] .nf-login-card-glow {
   animation: none !important;
+  transition: none !important;
 }
 
-html[data-reduce-motion="true"] .nf-login-shift,
 html[data-reduce-motion="true"] .nf-login-float {
   transform: none !important;
 }
