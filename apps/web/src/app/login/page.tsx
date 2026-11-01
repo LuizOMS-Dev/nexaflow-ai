@@ -625,8 +625,8 @@ export default function LoginPage() {
           <div className="nf-login-card-glow" aria-hidden />
           <div
             className={cn(
-              "nf-login-stage-card relative z-[1] overflow-hidden rounded-[28px] border border-white/[0.12]",
-              "px-6 py-7 sm:px-8 sm:py-8",
+              "nf-login-stage-card relative z-[1] overflow-hidden rounded-[28px] border border-white/[0.14]",
+              "px-7 py-8 sm:px-8 sm:py-9",
               shake && "nf-shake",
               (shake || Boolean(error)) && "border-rose-400/40",
               phase === "confirm" && "nf-login-card-success"
@@ -678,15 +678,15 @@ export default function LoginPage() {
                 </button>
               )}
 
-              <div className="mb-6 flex flex-col items-center text-center">
+              <div className="mb-7 flex flex-col items-center text-center">
                 <Logo variant="full-white" size="md" withAi />
-                <h1 className="mt-5 font-display text-[1.55rem] font-semibold leading-none tracking-[-0.045em] text-white sm:text-[1.68rem]">
+                <h1 className="mt-4 font-display text-[1.6rem] font-semibold leading-[1.15] tracking-[-0.04em] text-white sm:text-[1.72rem]">
                   {title}
                 </h1>
                 {subtitle ? (
-                  <p className="mt-2 max-w-[30ch] text-[13.5px] leading-snug text-white/[0.78]">{subtitle}</p>
+                  <p className="mt-2 max-w-[32ch] text-[13.5px] leading-relaxed text-white/[0.72]">{subtitle}</p>
                 ) : view === "login" ? (
-                  <p className="mt-2 text-[13.5px] leading-snug text-white/[0.78]">
+                  <p className="mt-2 text-[13.5px] leading-relaxed text-white/[0.72]">
                     Acesse sua conta para continuar.
                   </p>
                 ) : null}
@@ -754,7 +754,7 @@ export default function LoginPage() {
                 </button>
               </div>
             ) : (
-              <form onSubmit={onSubmit} className="relative space-y-3.5" noValidate aria-busy={loading || inFlow}>
+              <form onSubmit={onSubmit} className="relative space-y-4" noValidate aria-busy={loading || inFlow}>
                 {view === "invite" && (
                   <>
                     <Field label="Nome (opcional)" htmlFor="invite-name">
@@ -791,13 +791,7 @@ export default function LoginPage() {
                 {view === "login" && (
                   <>
                     <Field label="E-mail" htmlFor="email">
-                      <div
-                        className={cn(
-                          "relative rounded-[0.95rem] transition-shadow duration-200",
-                          focused === "email" &&
-                            "ring-1 ring-violet-400/50"
-                        )}
-                      >
+                      <div className="relative">
                         <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/50" />
                         <input
                           id="email"
@@ -859,13 +853,7 @@ export default function LoginPage() {
 
                 {view === "forgot" && (
                   <Field label="E-mail" htmlFor="forgot-email">
-                    <div
-                      className={cn(
-                        "relative rounded-xl",
-                        focused === "email" &&
-                          "ring-1 ring-violet-400/50"
-                      )}
-                    >
+                    <div className="relative">
                       <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
                       <input
                         id="forgot-email"
@@ -929,13 +917,7 @@ export default function LoginPage() {
                       label={mfaRecovery ? "Código de recuperação" : "Código"}
                       htmlFor="mfa"
                     >
-                      <div
-                        className={cn(
-                          "relative rounded-xl",
-                          focused === "mfa" &&
-                            "ring-1 ring-violet-400/50"
-                        )}
-                      >
+                      <div className="relative">
                         <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
                         <input
                           id="mfa"
@@ -1000,7 +982,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   className={cn(
-                    "nf-login-cta group relative mt-1.5 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[14.5px] font-semibold tracking-[-0.01em] transition-[background,box-shadow,transform] duration-200",
+                    "nf-login-cta group relative mt-2 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[14.5px] font-semibold tracking-[-0.01em] transition-[background,box-shadow,transform] duration-300",
                     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-300",
                     "motion-safe:active:scale-[0.985]",
                     phase !== "idle"
@@ -1063,7 +1045,7 @@ export default function LoginPage() {
 }
 
 function inputClass() {
-  return "nf-login-input h-12 w-full rounded-xl border border-white/[0.12] bg-black/25 px-3.5 text-[14.5px] text-white outline-none transition-[border-color,background,box-shadow] duration-150 placeholder:text-white/50 focus:border-violet-300/60 focus:bg-white/[0.05] focus:ring-1 focus:ring-violet-300/35";
+  return "nf-login-input h-12 w-full rounded-[14px] border border-white/[0.1] bg-white/[0.04] px-3.5 text-[14.5px] text-white outline-none transition-[border-color,background,box-shadow] duration-200 placeholder:text-white/[0.48] focus:border-white/25 focus:bg-white/[0.07] focus:shadow-[0_0_0_3px_rgba(167,139,250,0.18)]";
 }
 
 function Field({
@@ -1081,7 +1063,7 @@ function Field({
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-3">
         <label
-          className="block text-[12.5px] font-medium tracking-[-0.01em] text-white/[0.84]"
+          className="block text-[12px] font-medium tracking-[0.01em] text-white/75"
           htmlFor={htmlFor}
         >
           {label}
@@ -1124,10 +1106,7 @@ function PasswordInput({
 }) {
   return (
     <div
-      className={cn(
-        "relative rounded-[0.95rem] transition-shadow duration-200",
-        focused && "ring-1 ring-violet-400/50"
-      )}
+      className="relative"
     >
       <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-white/50" />
       <input
